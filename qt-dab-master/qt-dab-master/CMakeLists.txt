@@ -1,0 +1,1203 @@
+cmake_minimum_required( VERSION 3.21 )
+
+# set CMAKE_BUILD_TYPE to "Release" if not defined (like call from command line)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Set build type to Release if not specified" FORCE)
+endif()
+
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/Modules/CMakeFunctions.cmake)
+
+project(Qt-DAB VERSION 6)
+set (objectName qt-dab-6.10)
+set (objectName "Qt-DAB")
+set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+set(CMAKE_AUTORCC ON)
+
+if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set (CMAKE_INSTALL_PREFIX "/usr/local/bin" CACHE PATH "default install path" FORCE )
+endif()
+
+add_definitions(-DAPP_NAME="${objectName}")
+add_definitions(-DPRJ_NAME="${PROJECT_NAME}")
+add_definitions(-DPRJ_VERS="${PROJECT_VERSION}")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    # regarding using QWT < 6.2.0 (6.1.4) to avoid many deprecated massages (only suppressed on release versions)
+    add_definitions(-DQT_NO_DEPRECATED_WARNINGS)
+endif()
+
+if(MINGW)
+	add_definitions ( -municode)
+endif()
+
+add_definitions (-D__HAS_CHANNEL__)
+add_definitions (-D__FFTW3__)
+
+# handle GIT hash
+get_git_commit_hash() # returns GIT_COMMIT_HASH
+print(GIT_COMMIT_HASH)
+if (GIT_COMMIT_HASH)
+    add_definitions("-DGITHASH=\"${GIT_COMMIT_HASH}\"")
+else ()
+    add_definitions("-DGITHASH=\"(unknown)\"")
+endif ()
+
+
+########################################################################
+# select the release build type by default to get optimization flags
+########################################################################
+if(NOT CMAKE_BUILD_TYPE)
+   set(CMAKE_BUILD_TYPE "Release")
+endif(NOT CMAKE_BUILD_TYPE)
+set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE STRING "")
+
+### make sure our local CMake Modules path comes first
+list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake/Modules)
+
+######################################################################
+#
+#	if you want the audio output sent over the internet:
+set (TCP_STREAMER OFF)
+
+#####################################################################
+#
+# select one or more devices (set to ON)
+# Note that since there are problems with the rtlsdr interface under Windows we split the rtlsdr interface
+# into two versions one for Linux and one for Window
+option(RTLSDR ON)	
+option(AIRSPY ON)  
+option(SDRPLAY_V2 ON) 
+option(SDRPLAY_V3 ON)
+option(HACKRF ON)
+option(LIMESDR ON) 
+option(PLUTO ON) 
+option(SOAPY ON)
+option(SPY_SERVER_8 ON)
+option(SPY_SERVER_16 ON)
+option(UHD ON) 		# untested
+option(RTL_TCP ON)      
+
+# additional options
+option(USE_LTO "Set -flto flag" ON)  
+# special release version flags
+if (USE_LTO)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
+endif ()
+
+option(FDK_AAC ON)
+option(DATA_STREAMER OFF)
+option(VITERBI_SSE OFF)
+option(VITERBI_NEON OFF)
+
+
+####################################################################
+#
+#	Since more than one backend may be active, activating this
+#	option makes that each backend runs in its own thread
+add_definitions (-D__THREADED_BACKEND__)	# uncomment for use for an RPI
+#
+########################################################################
+########################################################################
+
+	find_package (PkgConfig)
+	find_package (LSBId)
+
+	find_package (Qt6Core REQUIRED)
+	find_package (Qt6Widgets REQUIRED)
+	find_package (Qt6Network REQUIRED)
+	find_package (Qt6Xml REQUIRED)
+	include_directories (
+	  ${Qt6Network_INCLUDE_DIRS}
+	  ${Qt6Xml_INCLUDE_DIRS}
+	)
+
+	search_for_library (QWT Qwt)
+	search_for_library (ZLIB zlib)
+
+	find_package(FFTW3f)
+        if (NOT FFTW3F_FOUND)
+            message(FATAL_ERROR "please install FFTW3")
+        endif ()
+	include_directories ( ${FFTW_INCLUDE_DIRS})
+        list(APPEND extraLibs ${FFTW3F_LIBRARIES})
+
+	if (NOT APPLE)
+	   find_library (PTHREADS pthread)
+	   if (NOT(PTHREADS))
+	      message (FATAL_ERROR "please install libpthread")
+	   else (NOT(PTHREADS))
+	      set (extraLibs ${extraLibs} ${PTHREADS})
+	   endif (NOT(PTHREADS))
+	endif (NOT APPLE)
+
+#######################################################################
+#
+#	Here we really start
+
+	include_directories (
+	           ${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+	           ${QT6Widgets_INCLUDES}
+	           ${QT_QTCORE_INCLUDE_DIR}
+	           ${QT_QTGUI_INCLUDE_DIR}
+	           ./sources/main
+	           ./sources/main/forms-v7
+	           ./sources/main/scopes
+	           ./sources/main/snr-viewer
+	           ./sources/eti-handler
+	           ./sources/support
+	           ./sources/support/gui-elements
+	           ./sources/frontend
+	           ./sources/frontend/fic-handling
+	           ./sources/backend
+	           ./sources/backend/audio
+	           ./sources/backend/data
+	           ./sources/backend/data/journaline
+	           ./sources/backend/data/mot
+	           ./sources/backend/data/epg
+	           ./sources/backend/reed-solomon
+	           ./sources/protection
+	           ./sources/output
+	           ./sources/output/portaudio
+	           ./sources/output/Qt6
+	           ./sources/devices
+	           ./sources/devices/filereaders/
+	           ./sources/devices/filereaders/new-reader
+	           ./sources/devices/filereaders/rawfiles-new
+	           ./sources/devices/filereaders/xml-filereader
+	           /usr/include/
+	)
+
+	set (${objectName}_HDRS
+	   ./sources/main/display-widget.h 
+	   ./sources/main/scopes/spectrum-scope.h 
+	   ./sources/main/scopes/correlation-scope.h 
+	   ./sources/main/scopes/null-scope.h 
+	   ./sources/main/scopes/channel-scope.h 
+	   ./sources/main/scopes/dev-scope.h 
+	   ./sources/main/scopes/waterfall-scope.h 
+	   ./sources/main/scopes/iqdisplay.h 
+	   ./sources/main/scopes/audio-display.h 
+	   ./sources/main//scopes/spectrogramdata.h 
+	   ./sources/main/snr-viewer/snr-viewer.h 
+	   ./sources/main/ensemble-handler.h 
+	   ./sources/main/config-handler.h 
+	   ./sources/main/tech-window.h 
+	   ./sources/main/copyrightLabel.h 
+	   ./sources/main/dxDisplay.h 
+	   ./sources/eti-handler/eti-generator.h 
+	   ./sources/frontend/ofdm-handler.h 
+	   ./sources/frontend/timesyncer.h 
+	   ./sources/frontend/sample-reader.h 
+	   ./sources/frontend/ofdm-decoder.h 
+	   ./sources/frontend/correlator.h 
+	   ./sources/frontend/estimator.h 
+	   ./sources/frontend/freqsyncer.h 
+	   ./sources/frontend/phasetable.h 
+	   ./sources/frontend/freq-interleaver.h 
+	   ./sources/frontend/tii-detector-1.h 
+	   ./sources/frontend/fic-handling/fic-handler.h 
+	   ./sources/frontend/fic-handling/ensemble.h  
+	   ./sources/frontend/fic-handling/fib-dbtypes.h  
+	   ./sources/frontend/fic-handling/fib-config.h  
+	   ./sources/frontend/fic-handling/fib-decoder.h  
+	   ./sources/frontend/fic-handling/fib-table.h 
+	   ./sources/protection/protTables.h 
+	   ./sources/protection/protection.h 
+	   ./sources/protection/eep-protection.h 
+	   ./sources/protection/uep-protection.h 
+	   ./sources/backend/msc-handler.h 
+	   ./sources/backend/reed-solomon/galois.h 
+	   ./sources/backend/reed-solomon/reed-solomon.h 
+	   ./sources/backend/frame-processor.h 
+	   ./sources/backend/backend.h 
+	   ./sources/backend/backend-driver.h 
+	   ./sources/backend/backend-deconvolver.h 
+	   ./sources/backend/audio/firecode-checker.h 
+	   ./sources/backend/audio/mp2processor.h 
+	   ./sources/backend/audio/mp4processor.h 
+	   ./sources/backend/audio/bitWriter.h 
+	   ./sources/backend/data/data-processor.h 
+	   ./sources/backend/data/pad-handler.h 
+	   ./sources/backend/data/virtual-datahandler.h 
+	   ./sources/backend/data/tdc-datahandler.h 
+	   ./sources/backend/data/ip-datahandler.h 
+	   ./sources/backend/data/adv-datahandler.h 
+	   ./sources/backend/data/mot/mot-handler.h 
+	   ./sources/backend/data/mot/mot-object.h 
+	   ./sources/backend/data/mot/mot-dir.h 
+	   ./sources/backend/data/journaline-controller.h 
+	   ./sources/backend/data/journaline-datahandler.h 
+	   ./sources/backend/data/journaline-screen.h 
+	   ./sources/backend/data/journaline/dabdatagroupdecoder.h 
+	   ./sources/backend/data/journaline/crc_8_16.h 
+	   ./sources/backend/data/journaline/log.h 
+	   ./sources/backend/data/journaline/newssvcdec_impl.h 
+	   ./sources/backend/data/journaline/Splitter.h 
+	   ./sources/backend/data/journaline/dabdgdec_impl.h 
+	   ./sources/backend/data/journaline/newsobject.h 
+	   ./sources/backend/data/journaline/NML.h 
+	   ./sources/backend/data/epg/epg-compiler.h 
+	   ./sources/backend/data/epg/xml-extractor.h 
+	   ./sources/output/converter_48000.h 
+	   ./sources/output/audio-player.h 
+	   ./sources/support/equalizer.h 
+	   ./sources/support/scan-handler.h 
+	   ./sources/support/scantable-handler.h 
+	   ./sources/support/audiosystem-selector.h 
+	   ./sources/support/dl2-handler.h 
+	   ./sources/support/http-handler.h 
+	   ./sources/support/timetable-control.h 
+	   ./sources/support/dab-constants.h 
+	   ./sources/support/bit-extractors.h 
+	   ./sources/support/charsets.h 
+	   ./sources/support/crc-handlers.h 
+	   ./sources/support/mot-content-types.h 
+	   ./sources/support/distances.h 
+	   ./sources/support/time-converter.h 
+	   ./sources/support/logger.h 
+	   ./sources/support/errorlog.h 
+	   ./sources/support/db-element.h 
+	   ./sources/support/settingNames.h 
+	   ./sources/support/fft-handler.h 
+	   ./sources/support/process-params.h 
+	   ./sources/support/ringbuffer.h 
+	   ./sources/support/dab-params.h 
+	   ./sources/support/dab-tables.h 
+	   ./sources/support/scanlist-handler.h 
+	   ./sources/support/scheduler.h
+	   ./sources/support/schedule-selector.h
+	   ./sources/support/element-selector.h
+	   ./sources/support/unified-timer-model.h
+	   ./sources/support/unified-timer-widget.h
+	   ./sources/support/recording-manager.h
+	   ./sources/support/epg-browser.h
+	   ./sources/support/ewf-monitor.h
+	   ./sources/support/dock-manager.h
+	   ./sources/main/winamp-shell.h
+	   ./sources/main/winamp-transport.h
+	   ./sources/support/time-table.h 
+	   ./sources/support/findfilenames.h 
+	   ./sources/support/dl-cache.h 
+	   ./sources/support/content-table.h 
+	   ./sources/support/ITU_Region_1.h 
+	   ./sources/support/coordinates.h 
+	   ./sources/support/skin-handler.h 
+	   ./sources/support/mapport.h 
+	   ./sources/support/bandpass-filter.h 
+	   ./sources/support/fir-filters.h 
+	   ./sources/support/tii-mapper.h 
+	   ./sources/support/tii-reader.h 
+	   ./sources/support/uploader.h 
+	   ./sources/support/basic-print.h 
+	   ./sources/support/gui-elements/position-handler.h 
+	   ./sources/support/gui-elements/settings-handler.h 
+	   ./sources/support/gui-elements/presetcombobox.h 
+	   ./sources/support/gui-elements/circular-button.h 
+	   ./sources/support/gui-elements/clickable-label.h 
+	   ./sources/support/gui-elements/color-selector.h 
+	   ./sources/support/gui-elements/font-chooser.h 
+	   ./sources/support/gui-elements/icon-label.h 
+	   ./sources/support/gui-elements/newpushbutton.h 
+	   ./sources/support/gui-elements/normalpushbutton.h 
+	   ./sources/support/gui-elements/smallcombobox.h 
+	   ./sources/support/gui-elements/smallpushbutton.h 
+	   ./sources/support/gui-elements/smallqlistview.h 
+	   ./sources/support/gui-elements/smallspinbox.h 
+	   ./sources/support/gui-elements/super-frame.h 
+	   ./sources/support/gui-elements/verysmallpushbutton.h 
+	   ./sources/support/gui-elements/qwt-2.h 
+	   ./sources/devices/selector.h 
+	   ./sources/devices/riff-writer.h 
+	   ./sources/devices/device-handler.h 
+	   ./sources/devices/device-chooser.h 
+	   ./sources/devices/device-exceptions.h 
+	   ./sources/devices/xml-filewriter.h 
+	   ./sources/devices/filereaders/new-reader/newfiles.h 
+	   ./sources/devices/filereaders/new-reader/new-reader.h 
+	   ./sources/devices/filereaders/new-reader/riff-reader.h 
+	   ./sources/devices/filereaders/rawfiles-new/rawfiles.h 
+	   ./sources/devices/filereaders/rawfiles-new/raw-reader.h 
+	   ./sources/devices/filereaders/xml-filereader/element-reader.h 
+	   ./sources/devices/filereaders/xml-filereader/xml-filereader.h 
+	   ./sources/devices/filereaders/xml-filereader/xml-reader.h 
+	   ./sources/devices/filereaders/xml-filereader/xml-descriptor.h 
+	)
+
+	set (${objectName}_SRCS
+	     ${${objectName}_SRCS}
+	   ./sources/main/main.cpp
+	   ./sources/main/radio.cpp 
+	   ./sources/main/display-widget.cpp 
+           ./sources/main/scopes/correlation-scope.cpp 
+           ./sources/main/scopes/spectrum-scope.cpp 
+           ./sources/main/scopes/null-scope.cpp 
+           ./sources/main/scopes/channel-scope.cpp 
+           ./sources/main/scopes/dev-scope.cpp 
+           ./sources/main/scopes/waterfall-scope.cpp 
+	   ./sources/main/scopes/iqdisplay.cpp 
+	   ./sources/main/scopes/audio-display.cpp 
+	   ./sources/main/scopes/spectrogramdata.cpp 
+	   ./sources/main/snr-viewer/snr-viewer.cpp 
+	   ./sources/main/copyrightLabel.cpp 
+	   ./sources/main/ensemble-handler.cpp 
+	   ./sources/main/tech-window.cpp 
+	   ./sources/main/config-handler.cpp 
+	   ./sources/main/dxDisplay.cpp 
+	   ./sources/eti-handler/eti-generator.cpp 
+	   ./sources/frontend/ofdm-handler.cpp 
+	   ./sources/frontend/timesyncer.cpp 
+	   ./sources/frontend/sample-reader.cpp 
+	   ./sources/frontend/ofdm-decoder.cpp 
+	   ./sources/frontend/correlator.cpp 
+	   ./sources/frontend/estimator.cpp 
+	   ./sources/frontend/freqsyncer.cpp 
+	   ./sources/frontend/phasetable.cpp 
+	   ./sources/frontend/freq-interleaver.cpp 
+	   ./sources/frontend/tii-detector-1.cpp 
+	   ./sources/frontend/fic-handling/fic-handler.cpp 
+	   ./sources/frontend/fic-handling/ensemble.cpp  
+	   ./sources/frontend/fic-handling/fib-config.cpp  
+	   ./sources/frontend/fic-handling/fib-decoder.cpp  
+	   ./sources/protection/protTables.cpp 
+	   ./sources/protection/protection.cpp 
+	   ./sources/protection/eep-protection.cpp 
+	   ./sources/protection/uep-protection.cpp 
+	   ./sources/backend/msc-handler.cpp 
+	   ./sources/backend/reed-solomon/galois.cpp 
+	   ./sources/backend/reed-solomon/reed-solomon.cpp 
+	   ./sources/backend/backend.cpp 
+           ./sources/backend/backend-driver.cpp 
+           ./sources/backend/backend-deconvolver.cpp 
+	   ./sources/backend/audio/firecode-checker.cpp 
+	   ./sources/backend/audio/mp2processor.cpp 
+	   ./sources/backend/audio/mp4processor.cpp 
+	   ./sources/backend/audio/bitWriter.cpp 
+	   ./sources/backend/data/pad-handler.cpp 
+	   ./sources/backend/data/data-processor.cpp 
+	   ./sources/backend/data/tdc-datahandler.cpp 
+	   ./sources/backend/data/ip-datahandler.cpp 
+	   ./sources/backend/data/adv-datahandler.cpp 
+	   ./sources/backend/data/mot/mot-handler.cpp 
+	   ./sources/backend/data/mot/mot-object.cpp 
+	   ./sources/backend/data/mot/mot-dir.cpp 
+	   ./sources/backend/data/journaline-controller.cpp 
+	   ./sources/backend/data/journaline-datahandler.cpp 
+	   ./sources/backend/data/journaline-screen.cpp 
+	   ./sources/backend/data/journaline/crc_8_16.c 
+	   ./sources/backend/data/journaline/log.c 
+	   ./sources/backend/data/journaline/newssvcdec_impl.cpp 
+	   ./sources/backend/data/journaline/Splitter.cpp 
+	   ./sources/backend/data/journaline/dabdgdec_impl.c 
+	   ./sources/backend/data/journaline/newsobject.cpp 
+	   ./sources/backend/data/journaline/NML.cpp 
+	   ./sources/backend/data/epg/epg-compiler.cpp 
+	   ./sources/backend/data/epg/xml-extractor.cpp 
+	   ./sources/output/converter_48000.cpp 
+	   ./sources/output/audio-player.cpp 
+	   ./sources/support/audiosystem-selector.cpp 
+	   ./sources/support/bandpass-filter.cpp 
+	   ./sources/support/basic-print.cpp 
+	   ./sources/support/charsets.cpp 
+	   ./sources/support/content-table.cpp 
+	   ./sources/support/coordinates.cpp 
+	   ./sources/support/crc-handlers.cpp 
+	   ./sources/support/dab-params.cpp 
+	   ./sources/support/dab-tables.cpp 
+	   ./sources/support/distances.cpp 
+	   ./sources/support/dl2-handler.cpp 
+	   ./sources/support/timetable-control.cpp 
+	   ./sources/support/element-selector.cpp 
+	   ./sources/support/errorlog.cpp 
+	   ./sources/support/fft-handler.cpp 
+	   ./sources/support/findfilenames.cpp 
+	   ./sources/support/fir-filters.cpp 
+	   ./sources/support/http-handler.cpp 
+	   ./sources/support/ITU_Region_1.cpp 
+	   ./sources/support/logger.cpp 
+	   ./sources/support/mapport.cpp 
+	   ./sources/support/scan-handler.cpp 
+	   ./sources/support/scanlist-handler.cpp 
+	   ./sources/support/scantable-handler.cpp 
+	   ./sources/support/scheduler.cpp
+	   ./sources/support/schedule-selector.cpp
+	   ./sources/support/skin-handler.cpp
+	   ./sources/support/unified-timer-model.cpp
+	   ./sources/support/unified-timer-widget.cpp
+	   ./sources/support/recording-manager.cpp
+	   ./sources/support/epg-browser.cpp
+	   ./sources/support/ewf-monitor.cpp
+	   ./sources/support/dock-manager.cpp
+	   ./sources/main/winamp-shell.cpp
+	   ./sources/main/winamp-transport.cpp
+	   ./sources/support/tii-mapper.cpp 
+	   ./sources/support/tii-reader.cpp 
+	   ./sources/support/time-converter.cpp 
+	   ./sources/support/time-table.cpp 
+	   ./sources/support/uploader.cpp 
+	   ./sources/support/gui-elements/settings-handler.cpp 
+	   ./sources/support/gui-elements/position-handler.cpp 
+	   ./sources/support/gui-elements/presetcombobox.cpp 
+	   ./sources/support/gui-elements/circular-button.cpp 
+	   ./sources/support/gui-elements/clickable-label.cpp 
+	   ./sources/support/gui-elements/color-selector.cpp 
+	   ./sources/support/gui-elements/font-chooser.cpp 
+	   ./sources/support/gui-elements/icon-label.cpp 
+	   ./sources/support/gui-elements/newpushbutton.cpp 
+	   ./sources/support/gui-elements/normalpushbutton.cpp 
+	   ./sources/support/gui-elements/smallcombobox.cpp 
+	   ./sources/support/gui-elements/smallpushbutton.cpp 
+	   ./sources/support/gui-elements/smallqlistview.cpp 
+	   ./sources/support/gui-elements/smallspinbox.cpp 
+	   ./sources/support/gui-elements/super-frame.cpp 
+	   ./sources/support/gui-elements/verysmallpushbutton.cpp 
+	   ./sources/devices/riff-writer.cpp 
+	   ./sources/devices/selector.cpp 
+	   ./sources/devices/device-handler.cpp 
+	   ./sources/devices/device-chooser.cpp 
+	   ./sources/devices/xml-filewriter.cpp 
+	   ./sources/devices/filereaders/rawfiles-new/rawfiles.cpp 
+	   ./sources/devices/filereaders/rawfiles-new/raw-reader.cpp 
+           ./sources/devices/filereaders/new-reader/newfiles.cpp 
+           ./sources/devices/filereaders/new-reader/new-reader.cpp 
+           ./sources/devices/filereaders/new-reader/riff-reader.cpp 
+	   ./sources/devices/filereaders/xml-filereader/xml-filereader.cpp 
+	   ./sources/devices/filereaders/xml-filereader/xml-reader.cpp 
+	   ./sources/devices/filereaders/xml-filereader/xml-descriptor.cpp 
+	)
+
+	set (${objectName}_MOCS
+	     ./sources/main/radio.h
+	     ./sources/main/ensemble-handler.h 
+	     ./sources/main/config-handler.h 
+	     ./sources/main/tech-window.h
+	     ./sources/main/copyrightLabel.h 
+	     ./sources/main/dxDisplay.h
+	     ./sources/main/display-widget.h 
+	     ./sources/main/scopes/correlation-scope.h 
+	     ./sources/main/scopes/spectrum-scope.h 
+	     ./sources/main/scopes/null-scope.h 
+	     ./sources/main/scopes/channel-scope.h 
+	     ./sources/main/scopes/dev-scope.h 
+	     ./sources/main/scopes/waterfall-scope.h 
+	     ./sources/main/scopes/iqdisplay.h 
+	     ./sources/main/scopes/audio-display.h
+ 	     ./sources/main/snr-viewer/snr-viewer.h
+	     ./sources/frontend/ofdm-handler.h
+	     ./sources/frontend/sample-reader.h
+	     ./sources/frontend/ofdm-decoder.h
+	     ./sources/frontend/correlator.h
+	     ./sources/frontend/freqsyncer.h
+	     ./sources/frontend/tii-detector.h
+	     ./sources/frontend/fic-handling/fic-handler.h
+	     ./sources/frontend/fic-handling/fib-decoder.h
+	     ./sources/frontend/fic-handling/fib-config.h
+	     ./sources/frontend/estimator.h
+	     ./sources/support/gui-elements/presetcombobox.h
+	     ./sources/support/gui-elements/clickable-label.h 
+	     ./sources/support/gui-elements/color-selector.h 
+	     ./sources/support/gui-elements/font-chooser.h
+	     ./sources/support/gui-elements/icon-label.h 
+	     ./sources/support/gui-elements/newpushbutton.h 
+	     ./sources/support/gui-elements/normalpushbutton.h 
+	     ./sources/support/gui-elements/smallcombobox.h 
+	     ./sources/support/gui-elements/smallpushbutton.h 
+	     ./sources/support/gui-elements/smallqlistview.h 
+	     ./sources/support/gui-elements/smallspinbox.h 
+	     ./sources/support/gui-elements/super-frame.h 
+	     ./sources/support/gui-elements/verysmallpushbutton.h 
+	     ./sources/support/scan-handler.h 
+	     ./sources/support/scantable-handler.h 
+	     ./sources/support/audiosystem-selector.h
+	     ./sources/support/scanlist-handler.h
+	     ./sources/support/scheduler.h
+	     ./sources/support/schedule-selector.h
+	     ./sources/support/element-selector.h
+	     ./sources/support/unified-timer-model.h
+	     ./sources/support/unified-timer-widget.h
+	     ./sources/support/recording-manager.h
+	     ./sources/support/epg-browser.h
+	     ./sources/support/ewf-monitor.h
+	     ./sources/support/dock-manager.h
+	     ./sources/main/winamp-shell.h
+	     ./sources/main/winamp-transport.h
+	     ./sources/support/timetable-control.h
+	     ./sources/support/time-table.h
+	     ./sources/support/content-table.h
+	     ./sources/support/coordinates.h
+	     ./sources/support/skin-handler.h
+	     ./sources/support/mapport.h
+	     ./sources/support/http-handler.h
+	     ./sources/backend/msc-handler.h
+	     ./sources/backend/backend.h
+	     ./sources/backend/audio/mp2processor.h
+	     ./sources/backend/audio/mp4processor.h
+	     ./sources/backend/data/data-processor.h
+	     ./sources/backend/data/virtual-datahandler.h
+	     ./sources/backend/data/pad-handler.h
+	     ./sources/backend/data/mot/mot-handler.h
+	     ./sources/backend/data/mot/mot-object.h
+	     ./sources/backend/data/mot/mot-dir.h
+	     ./sources/backend/data/ip-datahandler.h
+	     ./sources/backend/data/adv-datahandler.h
+	     ./sources/backend/data/tdc-datahandler.h
+	     ./sources/backend/data/journaline-controller.h
+	     ./sources/backend/data/journaline-datahandler.h
+	     ./sources/backend/data/journaline-screen.h
+	     ./sources/backend/data/epg/epg-compiler.h
+	     ./sources/backend/data/epg/xml-extractor.h
+	     ./sources/output/audio-player.h
+	     ./sources/output/converter_48000.h
+	    ./sources/devices/riff-writer.h 
+	    ./sources/devices/selector.h 
+	    ./sources/devices/device-handler.h 
+	    ./sources/devices/device-chooser.h 
+	    ./sources/devices/device-exceptions.h 
+	    ./sources/devices/xml-filewriter.h 
+	    ./sources/devices/filereaders/new-reader/newfiles.h 
+	    ./sources/devices/filereaders/new-reader/new-reader.h 
+	    ./sources/devices/filereaders/new-reader/riff-reader.h 
+	    ./sources/devices/filereaders/rawfiles-new/rawfiles.h 
+	    ./sources/devices/filereaders/rawfiles-new/raw-reader.h 
+	    ./sources/devices/filereaders/xml-filereader/element-reader.h 
+	    ./sources/devices/filereaders/xml-filereader/xml-filereader.h 
+	    ./sources/devices/filereaders/xml-filereader/xml-reader.h 
+	    ./sources/devices/filereaders/xml-filereader/xml-descriptor.h 
+	)
+
+	set (${objectName}_UIS
+	        ${${objectName}_UIS}
+	     ./sources/main/forms-v7/technical_data.ui
+	     ./sources/main/forms-v7/dabradio-6.ui
+	     ./sources/main/forms-v7/config-helper.ui
+	     ./sources/main/forms-v7/scopewidget.ui
+	     ./sources/main/forms-v7/aboutdialog.ui
+	     ./sources/main/snr-viewer/snr-widget.ui
+	     ./sources/devices/filereaders/xml-filereader/xmlfiles.ui
+	   )
+
+
+##########################################################################
+#devices
+##########################################################################
+
+	if (SDRPLAY_V2)
+	   set (${objectName}_UIS
+	        ${${objectName}_UIS}
+	        ./sources/devices/sdrplay-handler-v2/sdrplay-widget-v2.ui
+	   )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/drplay-handler-v2/sdrplay-handler-v2.h
+	   )
+
+	   include_directories (
+	     ./sources/devices/sdrplay-handler-v2
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/sdrplay-handler-v2/sdrplay-handler-v2.h
+	        ./sources/devices/sdrplay-handler-v2/mirsdrapi-rsp.h
+           )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/sdrplay-handler-v2/sdrplay-handler-v2.cpp
+	   )
+
+	   add_definitions (-DHAVE_SDRPLAY_V2)
+	endif (SDRPLAY_V2)
+
+	if (SDRPLAY_V3)
+	   set (${objectName}_UIS
+	        ${${objectName}_UIS}
+	        ./sources/devices/sdrplay-handler-v3/sdrplay-widget-v3.ui
+	   )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/sdrplay-handler-v3/sdrplay-handler-v3.h
+	        ./sources/devices/sdrplay-handler-v3/sdrplay-commands.h 
+	        ./sources/devices/sdrplay-handler-v3/Rsp-device.h 
+	        ./sources/devices/sdrplay-handler-v3/RspI-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/Rsp1A-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/RspII-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/RspDuo-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/RspDx-handler.h
+	   )
+
+	   include_directories (
+	     ./sources/devices/sdrplay-handler-v3
+	     ./sources/devices/sdrplay-handler-v3/include
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/sdrplay-handler-v3/sdrplay-handler-v3.h
+	        ./sources/devices/sdrplay-handler-v3/sdrplay-commands.h
+	        ./sources/devices/sdrplay-handler-v3/include/sdrplay_api.h
+	        ./sources/devices/sdrplay-handler-v3/Rsp-device.h 
+	        ./sources/devices/sdrplay-handler-v3/RspI-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/Rsp1A-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/RspII-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/RspDuo-handler.h 
+	        ./sources/devices/sdrplay-handler-v3/RspDx-handler.h
+           )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/sdrplay-handler-v3/sdrplay-handler-v3.cpp
+                ./sources/devices/sdrplay-handler-v3/Rsp-device.cpp 
+	        ./sources/devices/sdrplay-handler-v3/RspI-handler.cpp 
+	        ./sources/devices/sdrplay-handler-v3/Rsp1A-handler.cpp 
+	        ./sources/devices/sdrplay-handler-v3/RspII-handler.cpp 
+	        ./sources/devices/sdrplay-handler-v3/RspDuo-handler.cpp 
+	        ./sources/devices/sdrplay-handler-v3/RspDx-handler.cpp 
+	   )
+
+	 add_definitions (-DHAVE_SDRPLAY_V3)
+	endif (SDRPLAY_V3)
+
+	if (AIRSPY)
+#           find_package(LibAIRSPY)
+#           if (NOT LIBAIRSPY_FOUND)
+#               message(FATAL_ERROR "please install airspy library")
+#           endif ()
+#	   ## include_directories (${AIRSPYLIB_INCLUDE_DIR})
+
+	   set (${objectName}_UIS
+	        ${${objectName}_UIS}
+	        ./sources/devices/airspy-handler/airspy-widget.ui
+	   )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/airspy-handler/airspy-handler.h
+	   )
+
+	   include_directories (
+	     ./sources/devices/airspy-handler
+	     ./sources/devices/airspy-handler/libairspy
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/airspy-handler/airspy-handler.h
+	        ./sources/devices/airspy-handler/libairspy/airspy.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/airspy-handler/airspy-handler.cpp
+	   )
+
+	   add_definitions (-DHAVE_AIRSPY)
+	endif (AIRSPY)
+
+	if (HACKRF)
+	   set (${objectName}_UIS
+	        ${${objectName}_UIS}
+	        ./sources/devices/hackrf-handler/hackrf-widget.ui
+	   )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/hackrf-handler/hackrf-handler.h
+	   )
+
+	   include_directories (
+	     ./sources/devices/hackrf-handler
+	     ./sources/devices/hackrf-handler/libhackrf
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/hackrf-handler/hackrf-handler.h
+	        ./sources/devices/hackrf-handler/libhackrf/hackrf.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/hackrf-handler/hackrf-handler.cpp
+	   )
+
+	   add_definitions (-DHAVE_HACKRF)
+	endif (HACKRF)
+#
+	if (PLUTO)
+	   set (${objectName}_UIS
+	        ${${objectName}_UIS}
+	        ./sources/devices/pluto-handler/pluto-widget.ui
+	   )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/pluto-handler/pluto-handler.h
+	   )
+
+	   include_directories (
+	     ./sources/devices/pluto-handler
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/pluto-handler/pluto-handler.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/pluto-handler/pluto-handler.cpp
+	   )
+
+	   add_definitions (-DHAVE_PLUTO)
+	endif (PLUTO)
+#
+	if (LIMESDR)
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/lime-handler/lime-handler.h
+	        ./sources/devices/lime-handler/lime-widget.h
+	   )
+
+	   include_directories (
+	     ./sources/devices/lime-handler
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/lime-handler/lime-handler.h
+	        ./sources/devices/lime-handler/lime-widget.h
+	        ./sources/devices/lime-handler/LimeSuite.h
+	        ./sources/devices/lime-handler/LMS7002M_parameters.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/lime-handler/lime-handler.cpp
+	   )
+
+	   add_definitions (-DHAVE_LIME)
+	endif (LIMESDR)
+
+	if (RTLSDR)
+	   set (${objectName}_UIS
+                ${${objectName}_UIS}
+                ./sources/devices/rtlsdr-handler/rtlsdr-widget.ui
+           )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/rtlsdr-handler/rtl-dongleselect.h
+	        ./sources/devices/rtlsdr-handler/rtlsdr-handler.h
+	   )
+
+	   include_directories (
+	        ./sources/devices/rtlsdr-handler
+	   )
+
+	   set (${objectName}_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/rtlsdr-handler/rtlsdr-handler.h
+	        ./sources/devices/rtlsdr-handler/rtl-dongleselect.h
+	        ./sources/devices/rtlsdr-handler/rtl-sdr.h
+	        ./sources/devices/rtlsdr-handler/rtl-sdr_export.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/rtlsdr-handler/rtlsdr-handler.cpp
+	        ./sources/devices/rtlsdr-handler/rtl-dongleselect.cpp
+	   )
+
+	   add_definitions (-DHAVE_RTLSDR)
+	endif()
+
+	if (UHD)
+	   find_package(UHD REQUIRED)
+	   if (NOT UHD_FOUND)
+	      message(FATAL_ERROR "please install UHD library")
+	   endif ()
+	   list(APPEND extraLibs ${UHD_LIBRARIES})
+
+	   set(${objectName}_UIS
+	       ${${objectName}_UIS}
+               ./sources/devices/uhd/uhd-widget.ui
+	   )
+
+	   set(${objectName}_MOCS
+	      ${${objectName}_MOCS}
+	      ./sources/devices/uhd/uhd-handler.h
+	   )
+
+	   include_directories(
+	      ./sources/devices/uhd/
+	   )
+
+	   set(${objectName}_HDRS
+	      ${${objectName}_HDRS}
+	      ./sources/devices/uhd/uhd-handler.h
+	   )
+
+	   set(${objectName}_SRCS
+	      ${${objectName}_SRCS}
+	      ./sources/devices/uhd/uhd-handler.cpp
+	   )
+
+	   add_definitions(-DHAVE_UHD)
+	endif ()
+
+	if (SOAPY)
+	   set (${objectName}_UIS
+                ${${objectName}_UIS}
+                ./sources/devices/soapy/soapy-widget.ui
+           )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/soapy/soapy-handler.h
+	        ./sources/devices/soapy/soapy-converter.h
+	   )
+
+	   include_directories (
+	        ./sources/devices/soapy/
+	   )
+
+	   set (${objectName}_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/soapy/soapy-handler.h
+	        ./sources/devices/soapy/soapy-converter.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/soapy/soapy-handler.cpp
+	        ./sources/devices/soapy/soapy-converter.cpp
+	   )
+
+	   set (LIBSOAPY "-lSoapySDR -lsamplerate -lm")
+	   list(APPEND extraLibs ${LIBSOAPY})
+	   add_definitions (-DHAVE_SOAPY)
+	endif()
+
+	if (SPY_SERVER_8)
+	   include_directories (
+	        ./sources/devices/spy-server-8/
+	   )
+
+	   set (${objectName}_UIS
+                ${${objectName}_UIS}
+                ./sources/devices/spy-server-8/spyserver-widget-8.ui
+           )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/spy-server-8/spyserver-client-8.h
+	        ./sources/devices/spy-server-8/spy-handler-8.h
+	        ./sources/devices/spy-server-8/tcp-client-8.h
+	   )
+
+
+	   set (${objectName}_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/spy-server-8/spyserver-client-8.h
+	        ./sources/devices/spy-server-8/spy-handler-8.h
+	        ./sources/devices/spy-server-8/tcp-client-8.h
+	        ./sources/devices/spy-server-8/spyserver-protocol.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/spy-server-8/spyserver-client-8.cpp
+	        ./sources/devices/spy-server-8/spy-handler-8.cpp
+	        ./sources/devices/spy-server-8/tcp-client-8.cpp
+	   )
+
+	   add_definitions (-DHAVE_SPYSERVER_8)
+	endif()
+
+	if (SPY_SERVER_16)
+	   include_directories (
+	        ./sources/devices/spy-server-16/
+	   )
+
+	   set (${objectName}_UIS
+                ${${objectName}_UIS}
+                ./sources/devices/spy-server-16/spyserver-widget.ui
+           )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/spy-server-16/spyserver-client.h
+	        ./sources/devices/spy-server-16/spy-handler.h
+	        ./sources/devices/spy-server-16/tcp-client.h
+	   )
+
+
+	   set (${objectName}_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/spy-server-16/spyserver-client.h
+	        ./sources/devices/spy-server-16/spy-handler.h
+	        ./sources/devices/spy-server-16/tcp-client.h
+	        ./sources/devices/spy-server-16/spyserver-protocol.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/spy-server-16/spyserver-client.cpp
+	        ./sources/devices/spy-server-16/spy-handler.cpp
+	        ./sources/devices/spy-server-16/tcp-client.cpp
+	   )
+
+	   add_definitions (-DHAVE_SPYSERVER_16)
+	endif()
+
+#
+	if (RTL_TCP)
+	   find_package (Qt6Network REQUIRED)
+	   set (${objectName}_UIS
+	        ${${objectName}_UIS}
+	        ./sources/devices/rtl_tcp/rtl_tcp-widget.ui
+	   )
+
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/devices/rtl_tcp/rtl_tcp_client.h
+	   )
+
+	   include_directories (
+	      ./sources/devices/rtl_tcp
+	      ${Qt6Network_INCLUDE_DIRS}
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/devices/rtl_tcp/rtl_tcp_client.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/devices/rtl_tcp/rtl_tcp_client.cpp
+	   )
+
+	   set (RTLTCP_lib Qt6::Network)
+	   add_definitions (-DHAVE_RTL_TCP)
+	endif (RTL_TCP)
+
+#########################################################################
+
+	if (FDK_AAC)
+	   find_package(Fdk-AAC)
+	   if (NOT LIBFDK_AAC_FOUND)
+	      message(FATAL_ERROR, "Please install libfdk-aac")
+	   endif ()
+	   include_directories (../helpers/specials/fdk-aac)
+	   set($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources//backend/audio/fdk-aac.h
+	   )
+
+	   set(${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/backend/audio/fdk-aac.cpp
+	   )
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/backend/audio/fdk-aac.h
+	   )
+	   list(APPEND extraLibs ${FDK_AAC_LIBRARIES})
+	   add_definitions(-D__WITH_FDK_AAC__)
+	elseif (NOT FDK_AAC)
+	   find_package (Faad)
+	   if (NOT FAAD_FOUND)
+	      message(FATAL_ERROR "Please install libfaad")
+	   endif ()
+	   set(${objectName}_HDRS
+	       ${${objectName}_HDRS}
+	       ./sources/backend/audio/faad-decoder.h
+	   )
+
+	   set(${objectName}_SRCS
+	       ${${objectName}_SRCS}
+	       ./sources/backend/audio/faad-decoder.cpp
+	   )
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/backend/audio/faad-decoder.h
+	   )
+	   add_definitions(-D__WITH_FAAD__)
+	endif (FDK_AAC)
+
+#	the viterbi decoder
+#
+	if (VITERBI_NEON)
+	   set(VITERBI_SSE false)
+	   set (${objectName}_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/support/viterbi-spiral/spiral-neon.h
+	   )
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/support/viterbi-spiral/spiral-neon.c
+	   )
+	   
+	   add_definitions (-DNEON_AVAILABLE)
+	elseif(VITERBI_SSE)
+	   include_directories (
+	      ./sources/support/viterbi-spiral
+	      ./sources/support/viterbi-spiral/includes
+	   )
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources.support/viterbi-spiral/viterbi.h
+	        ./sources/support/viterbi-spiral/spiral-sse.h
+	   )
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/support/viterbi-spiral/viterbi.cpp
+	        ./sources/support/viterbi-spiral/spiral-sse.c
+	   )
+	   add_definitions (-DSSE_AVAILABLE)
+	else (VITERBI_SSE)
+	   include_directories (
+	      ./sources/support/viterbi-spiral
+	   )
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/support/viterbi-spiral/viterbi.h
+	        ./sources/support/viterbi-spiral/spiral-no-sse.h
+	   )
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/support/viterbi-spiral/viterbi.cpp
+	        ./sources/support/viterbi-spiral/spiral-no-sse.c
+	   )
+	endif (VITERBI_NEON)
+
+	if (TCP_STREAMER)
+	   add_definitions (-DTCP_STREAMER)
+	   find_package (Qt6Network REQUIRED)
+	   set (${objectName}_MOCS
+	        ${${objectName}_MOCS}
+	        ./sources/output/tcp-streamer.h
+	   )
+	   set (${objectName}_HDRS
+	        ${${objectName}_HDRS}
+	        ./sources/output/tcp-streamer.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	        ./sources/output/tcp-streamer.cpp
+	   )
+	endif (TCP_STREAMER)
+
+	if (DATA_STREAMER)
+	   include_directories (
+	      ./server-thread
+	   )
+
+	   set ($(objectName)_HDRS
+	        ${${objectName}_HDRS}
+	             ./server-thread/tcp-server.h
+	   )
+
+	   set (${objectName}_SRCS
+	        ${${objectName}_SRCS}
+	             ./server-thread/tcp-server.cpp
+	   )
+	   add_definitions (-DDATA_STREAMER)
+	endif (DATA_STREAMER)
+
+	if (NOT TCP_STREAMER)
+	   add_definitions (-DQT_AUDIO)
+           find_package(Portaudio)
+           if (NOT PORTAUDIO_FOUND)
+               message(FATAL_ERROR "please install portaudio V19")
+           endif ()
+           list(APPEND extraLibs ${PORTAUDIO_LIBRARIES})
+	   find_package (Qt6Multimedia REQUIRED)
+	   include_directories (
+	      ${Qt6Multimedia_INCLUDE_DIRS}
+	      ./sources/output/portaudio
+	      ./sources/output/Qt6
+	   )
+	   set (${objectName}_HDRS
+	        ${${objectName}_HDRS}
+	       ./sources/output/portadio/audiosink.h
+	       ./sources/output/Qt6/Qt-audio.h
+	       ./sources/output/Qt6/Qt-audiodevice.h
+	   )
+
+	   set (${objectName}_MOCS
+	       ${${objectName}_MOCS}
+	       ./sources/output/portaudio/audiosink.h
+	       ./sources/output/Qt6/Qt-audio.h
+	       ./sources/output/Qt6/Qt-audiodevice.h
+	   )
+
+	   set (${objectName}_SRCS
+	      ${${objectName}_SRCS}
+	      ./sources/output/portaudio/audiosink.cpp
+	      ./sources/output/Qt6/Qt-audio.cpp
+	      ./sources/output/Qt6/Qt-audiodevice.cpp
+	   )
+	endif (NOT TCP_STREAMER)
+
+	QT6_WRAP_UI (UIS ${${objectName}_UIS}
+	             ./sources/devices/filereaders/filereader-widget.ui)
+
+	include_directories (
+	          ${SDRPLAY_INCLUDES}
+	          ${QT6Widgets_INCLUDES}
+	          ${QT_QTCORE_INCLUDE_DIR}
+	          ${QT_QTGUI_INCLUDE_DIR}
+	          ${PORTAUDIO_INCLUDE_DIRS}
+	          ${FAAD_INCLUDE_DIRS}
+	)
+
+	QT6_WRAP_CPP (MOCS ${${objectName}_MOCS})
+
+	add_executable (${objectName} WIN32
+	                ${${objectName}_SRCS}
+	                ${UIS}
+	                ${RSCS}
+	                ${TRS}
+	                ${MOCS}
+	                resources.qrc
+	)
+
+	target_link_libraries (${objectName}
+	                       PRIVATE
+	                       Qt6::Widgets
+	                       Qt6::Network
+	                       Qt6::Xml
+	                       Qt6::Multimedia
+	                       ${RTLTCP_lib}
+	                       ${extraLibs}
+	                       ${FAAD_LIBRARIES}
+	                       ${CMAKE_DL_LIBS}
+	                       dwmapi
+	)
+#
+#	add devices
+#
+#	add_subdirectory (./sources/devices/)
+#	target_link_libraries (${objectName} PRIVATE ${objectName}_devices)
+
+	INSTALL (TARGETS ${objectName} DESTINATION  ${CMAKE_INSTALL_PREFIX})
+#	INSTALL (TARGETS ${objectName} DESTINATION ./linux-bin)
+
+########################################################################
+# Create uninstall target
+########################################################################
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+    IMMEDIATE @ONLY)
+
+add_custom_target(uninstall
+    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)

@@ -1,0 +1,14 @@
+./obsolete/
+./Makefile
+.qmake.stash
+./linux-bin/
+./moc*
+./*.o
+./build
+
+
+
+
+
+
+

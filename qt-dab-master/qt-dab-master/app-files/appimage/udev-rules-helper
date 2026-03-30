@@ -1,0 +1,15 @@
+#!/bin/bash
+
+HERE="$(dirname "$(readlink -f "${0}")")"
+
+rmmod dvb_usb_rtl28xxu || true
+
+cat > ./10-rtl-sdr.rules <<\EOF
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", MODE="0666", SYMLINK+="rtl_sdr"
+EOF
+
+mv ./10-rtl-sdr.rules /etc/udev/rules.d/10-rtl-sdr.rules
+
+udevadm control --reload-rules
+udevadm trigger --attr-match=subsystem=usb
+
