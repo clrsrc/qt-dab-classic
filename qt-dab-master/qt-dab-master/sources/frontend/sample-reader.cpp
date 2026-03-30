@@ -126,7 +126,7 @@ auto *buffer	= dynVec (std::complex<float>, nrSamples);
 	   }
 	}
 
-	if (!running. load())	
+	if (!running. load())
 	   throw 20;
 //
 //	so here, bufferContent >= n
@@ -145,6 +145,9 @@ auto *buffer	= dynVec (std::complex<float>, nrSamples);
 	   }
 	}
 //	OK, we have samples!!
+	bool doDcRemoval = dcRemoval. load ();
+	static int dcDisplayCounter = 0;
+
 	for (int i = 0; i < nrSamples; i ++) {
 	   float Alpha;
 	   if (dcSampleCounter < DC_FAST_SETTLE_SAMPLES)  {
@@ -152,25 +155,17 @@ auto *buffer	= dynVec (std::complex<float>, nrSamples);
 	      dcSampleCounter++;
 	   }
 	   else
-	      Alpha	= 1.0f / SAMPLERATE;
+	      Alpha	= ALPHA;
 	   std::complex<float> v = buffer [i];
-	   if (dcRemoval) {
+	   if (doDcRemoval) {
 	      dcReal		= compute_avg (dcReal, real (v), Alpha);
 	      dcImag		= compute_avg (dcImag, imag (v), Alpha);
 	      v = std::complex<float> (real (v) - dcReal, imag (v) - dcImag);
 	      v = theEqualizer. equalize (v);
 	      DABFLOAT real_V	= abs (real (v));
-	      DABFLOAT imag_V	= abs (imag (v)); 
+	      DABFLOAT imag_V	= abs (imag (v));
 	      IQ_Real		= compute_avg (IQ_Real, real_V, Alpha);
 	      IQ_Imag		= compute_avg (IQ_Imag, imag_V, Alpha);
-	      static int teller = 0;
-	      if (++teller >= SAMPLERATE) {
-	         DABFLOAT sum = IQ_Real + IQ_Imag;
-	         if (sum > 1.0e-10f)
-	            show_dcOffset (10 * (IQ_Real - IQ_Imag) / (sum / 2));
-	         teller = 0;
-	      }
-//	      v		= std::complex<float> (IQ_Real, IQ_Imag);
 	   }
 
 //	first: adjust frequency. We need Hz accuracy
@@ -179,9 +174,18 @@ auto *buffer	= dynVec (std::complex<float>, nrSamples);
 	   currentPhase	= (currentPhase + SAMPLERATE) % SAMPLERATE;
 	   if (saving && (localCounter < bufferSize))
 	      localBuffer [localCounter ++]     = v;
-	   v_out  [index + i]	= Complex (real (v),
-	                                   imag (v)) * oscillatorTable [currentPhase];
-	   sLevel = 0.00001 * jan_abs (v_out [i]) + (1 - 0.00001) * sLevel;
+	   v_out  [index + i]	= v * oscillatorTable [currentPhase];
+	   sLevel = 0.00001 * jan_abs (v_out [index + i]) + (1 - 0.00001) * sLevel;
+	}
+
+	if (doDcRemoval) {
+	   dcDisplayCounter += nrSamples;
+	   if (dcDisplayCounter >= SAMPLERATE) {
+	      DABFLOAT sum = IQ_Real + IQ_Imag;
+	      if (sum > 1.0e-10f)
+	         show_dcOffset (10 * (IQ_Real - IQ_Imag) / (sum / 2));
+	      dcDisplayCounter = 0;
+	   }
 	}
 
 	sampleCount	+= nrSamples;

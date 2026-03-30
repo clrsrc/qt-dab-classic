@@ -1,0 +1,239 @@
+================================================================================
+DAB+ Receiver v2.0 -- Signalverarbeitungs-Optimierung
+================================================================================
+Branch: v2.0-dev | Baseline: v1.0 (Tag)
+Start: 2026-03-30
+================================================================================
+
+MODULUEBERSICHT (HF -> Audio / Daten)
+================================================================================
+
+Nr  | Stufe                        | Prioritaet | Status
+----|------------------------------|------------|--------
+ 1  | HF-Eingang (Device)          | Tier 4     | [=] analysiert, USB/HW-limitiert, kein Bedarf
+ 2  | Sample-Aufbereitung/IQ-Korr. | Tier 3     | [x] erledigt
+ 3  | Zeitsynchronisation (Grob)   | Tier 4     | [=] analysiert, einfach + nur bei Sync-Verlust
+ 4  | Fein-Sync (Zeit & Frequenz)  | Tier 2     | [=] kein Bedarf (OPT-5.1 Wisdom deckt ab)
+ 5  | OFDM-Demodulation            | Tier 1     | [x] erledigt (5.6 offen: A/B-Test)
+ 6  | Frequenz-Deinterleaving      | --         | [=] optimal (Lookup-Table)
+ 7  | FIC-Verarbeitung             | Tier 4     | [=] analysiert, Viterbi=Hauptlast (bereits AVX2)
+ 8  | MSC-Demultiplexing           | Tier 3     | [=] analysiert, kein Bedarf
+                                                    Threading aktiv, Interleave im L1-Cache,
+                                                    Viterbi bereits AVX2 (Stufe 9)
+ 9  | Kanaldecodierung (FEC/Vit.)  | Tier 1     | [x] erledigt
+10a | MP2-Audio (DAB Legacy)       | Tier 4     | [=] analysiert, ext. Lib (kjmp2), DAB Legacy
+10b | MP4/AAC-Audio (DAB+)         | Tier 2     | [x] erledigt (FDK-AAC aktiviert, RS optimal)
+11  | Audio-Ausgabe                | Tier 4     | [=] analysiert, PortAudio, OS/Treiber-limitiert
+ D  | Daten: PAD/DLS/MOT/EPG       | Tier 4     | [=] analysiert, Byte-Parsing, niedrige Last
+
+Legende: [ ] offen  [>] in Arbeit  [x] erledigt  [=] kein Bedarf
+
+
+================================================================================
+STUFE 5: OFDM-DEMODULATION
+================================================================================
+Branch: opt/stage-05-ofdm
+Dateien: frontend/ofdm-decoder.h/.cpp
+         support/fft-handler.h/.cpp
+         frontend/estimator.h/.cpp
+         frontend/phasetable.h/.cpp
+Klasse:  ofdmDecoder (enthaelt fftHandler, phaseTable, interLeaver)
+
+--- Analyse (2026-03-30) ---
+[x] Ist-Zustand dokumentieren (Code lesen, Ablauf verstehen)
+[x] Decoder-Varianten pruefen: decoder_12, decoder_3, decoder_4
+[x] FFT-Setup pruefen (FFTW Plan-Typ: ESTIMATE vs MEASURE vs PATIENT)
+[x] Kanalschaetzung (estimator) analysieren
+[x] Soft-Bit-Erzeugung analysieren (QPSK Demapping)
+[x] CPU-Hotspots identifizieren
+
+BEFUNDE:
+  1. FFT nutzt FFTW_ESTIMATE (fft-handler.cpp:45)
+     -> Schnellste Plan-Erstellung, LANGSAMSTE Ausfuehrung!
+     -> FFTW_MEASURE oder FFTW_PATIENT waeren deutlich schneller
+     -> Wisdom-Persistierung wuerde Startup-Kosten von MEASURE eliminieren
+
+  2. Unnoetige Datenkopien in fft() (fft-handler.cpp:59-89)
+     -> Jeder FFT-Aufruf: memcpy rein + memcpy raus (2x 2048 Complex = 32KB)
+     -> Bei 76 Symbolen/Frame: 152 unnoetige Kopien pro Frame (~96ms)
+     -> Loesung: In-Place FFT mit fftwf_execute_dft() direkt auf Eingabedaten
+
+  3. Default-Decoder ist DECODER_3 (ofdm-handler.cpp:103)
+     -> Einfachster Decoder, keine Rauschschaetzung/Gewichtung
+     -> decoder_12 (DECODER_1/2) nutzt SigmaSQ-Gewichtung fuer bessere Soft-Bits
+     -> decoder_4 nutzt Bessel-LLR (optimal, aber CPU-intensivster)
+     -> Empfehlung: DECODER_1 als Default testen (bester Kompromiss)
+
+  4. Soft-Bit-Erzeugung komplett skalar (ofdm-decoder.cpp:437-605)
+     -> Carrier-Schleife: 1536 Iterationen, keine SIMD-Nutzung
+     -> Pro Carrier: normalize(), conj(), Multiplikation, toQ1() -- alles skalar
+     -> Potenzial: SSE/AVX koennte 4-8 Carrier parallel verarbeiten
+
+  5. estimator wird JEDES MAL neu instanziiert (ofdm-handler.cpp:699)
+     -> generate_CI() erstellt lokalen estimator mit 2 neuen FFT-Instanzen
+     -> FFTW Plan-Erstellung ist teuer (auch bei ESTIMATE: ~1ms pro Plan)
+     -> Loesung: estimator als Member von ofdmHandler, einmalig erstellen
+
+  6. Clock-Error-Korrektur vorbereitet aber NICHT aktiv
+     -> decoder_3 (Zeile 499): phaseBase berechnet, nie angewandt
+     -> decoder_12 (Zeile 418-488): clockError Parameter ungenutzt
+     -> Aktivierung koennte Empfang bei billigen RTL-SDR Sticks verbessern
+
+  7. Bessel-Tabelle (decoder_4) ist global und fest (besselTable[2048])
+     -> Aufloesung: x*32, Modulo 2048 -> max x=64
+     -> Fuer Signale mit hohem SNR evtl. zu grob
+
+--- Baseline-Metriken ---
+[ ] MER/EVM messen (erfordert Testlauf mit IQ-Datei)
+[ ] SNR-Schaetzung (erfordert Testlauf)
+[ ] CPU-Zeit pro OFDM-Symbol (erfordert Profiling)
+[ ] FFT-Ausfuehrungszeit (erfordert Profiling)
+
+--- Optimierungen (Reihenfolge nach Impact) ---
+[x] OPT-5.1: FFT Plan-Typ auf FFTW_MEASURE aendern + Wisdom-Persistierung
+     Dateien: fft-handler.h, fft-handler.cpp, radio.cpp
+     - fftWisdom Klasse: load/save ~/.qt-dab-fftw-wisdom
+     - FFTW_ESTIMATE -> FFTW_MEASURE
+     - Wisdom wird beim ersten fftHandler geladen, bei Programmende gespeichert
+[x] OPT-5.2: FFT Datenkopien optimieren (memcpy statt Elementschleifen)
+     Datei: fft-handler.cpp
+     - Forward-FFT: elementweise Kopie -> memcpy (SIMD-optimiert)
+     - Inverse-FFT: conj()-Schleifen bleiben (noetig fuer Konjugation)
+     - fft(Complex*): beide Schleifen -> memcpy
+     Hinweis: In-Place mit fftwf_execute_dft() nicht moeglich wegen
+     Alignment-Anforderung (fftVector ist fftwf_malloc-aligned)
+[x] OPT-5.3: estimator als persistentes Member (nicht pro Aufruf neu)
+     Dateien: ofdm-handler.h, ofdm-handler.cpp
+     - estimator als Member theEstimator (einmalig im Konstruktor erstellt)
+     - generate_CI() nutzt jetzt theEstimator statt lokaler Instanz
+     - Spart 2x FFT-Plan-Erstellung + Allokation pro generate_CI()-Aufruf
+[=] OPT-5.4: ENTFAELLT -- nur HackRF im Einsatz, kein Clock-Drift-Problem
+[x] OPT-5.5: Algebraische Optimierung der Carrier-Schleife (decoder_3)
+     Dateien: ofdm-decoder.h, ofdm-decoder.cpp
+     - Toter Code entfernt: fftBin_at_1 (berechnet, nie benutzt)
+     - Unbenutzte Variable entfernt: binIndex, phaseBase
+     - R1 = current * conj(prevS) direkt (normalize + jan_abs heben sich auf)
+     - conjVector nur noch bei blkno==2 aktualisiert (Display)
+       -> Spart normalize() fuer 73 von 75 Bloecken pro Frame
+     - scaler vor Schleife berechnet (war redundant in Schleife)
+     Hinweis: Echte SIMD-Vektorisierung durch Freq-Interleaver
+     Scatter/Gather limitiert (nicht-sequentielle Speicherzugriffe)
+[?] OPT-5.6: Default-Decoder evaluieren (DECODER_1 vs DECODER_3)
+     Erfordert A/B-Test mit realer HackRF-Aufnahme
+     DECODER_1: SNR-adaptive Sigma-Gewichtung, bessere Soft-Bits, mehr CPU
+     DECODER_3: Einfache Differenz-Demod, Default, geringste CPU
+     -> Test: FIC-BER und Audio-Qualitaet vergleichen bei gleichem Signal
+     -> Kann ueber GUI umgeschaltet werden (decoders Setting)
+
+--- Ergebnisse Stufe 5 (2026-03-30) ---
+Geaenderte Dateien:
+  - support/fft-handler.h        (fftWisdom Klasse hinzugefuegt)
+  - support/fft-handler.cpp      (FFTW_MEASURE + Wisdom + memcpy)
+  - frontend/ofdm-handler.h      (estimator als Member)
+  - frontend/ofdm-handler.cpp    (theEstimator persistent, include bereinigt)
+  - frontend/ofdm-decoder.h      (decoder_3 Signatur erweitert)
+  - frontend/ofdm-decoder.cpp    (decoder_3 algebraisch vereinfacht)
+  - main/radio.cpp               (fftWisdom::saveWisdom bei Programmende)
+
+Erwartete Verbesserungen:
+  - FFT 2-5x schneller durch FFTW_MEASURE (abhaengig von CPU/Groesse)
+  - ~97% weniger conjVector-Berechnungen (nur noch bei Display-Update)
+  - Keine redundanten FFT-Plan-Erstellungen im estimator
+  - Weniger Speicherkopien in FFT (memcpy statt Elementschleifen)
+
+Offen: A/B-Test mit realer IQ-Aufnahme erforderlich (OPT-5.6)
+
+
+================================================================================
+STUFE 9: KANALDECODIERUNG (FEC / VITERBI)
+================================================================================
+Branch: v2.0-dev (direkt)
+Dateien: CMakeLists.txt
+         support/viterbi/viterbi.h/.cpp (neu eingebunden)
+         support/viterbi/viterbi-includes/x86/ (AVX2/SSE Templates)
+
+--- Analyse (2026-03-30) ---
+[x] Ist-Zustand pruefen
+
+BEFUNDE:
+  1. KRITISCH: Viterbi lief im reinen SCALAR-Modus!
+     -> CMake: VITERBI_SSE=OFF, VITERBI_NEON=OFF
+     -> Es wurde viterbi-spiral/ mit spiral-no-sse.c kompiliert
+     -> __ARCH_X86__ war NICHT definiert -> kein Runtime-Dispatch
+     -> Obwohl AVX2/SSE Templates in viterbi/ vorhanden waren
+
+  2. Zwei Viterbi-Implementierungen im Repo:
+     a) viterbi-spiral/ -- aeltere Impl. (Phil Karn), CMake-gesteuert
+     b) viterbi/         -- neuere Impl. (DAB-Radio/William Yang),
+        Runtime-Dispatch fuer AVX2/SSE/Scalar via cpuSupport-Flag
+
+--- Optimierung ---
+[x] OPT-9.1: Viterbi von Scalar auf AVX2/SSE umgestellt
+     - CMakeLists.txt: viterbi-spiral/ durch viterbi/ ersetzt
+     - __ARCH_X86__ definiert (aktiviert Runtime-Dispatch)
+     - Compiler-Flags: -mavx2 -msse4.1 fuer viterbi.cpp
+     - Runtime-Dispatch: AVX2 wenn verfuegbar, sonst SSE, sonst Scalar
+     - Build erfolgreich, Funktionstest bestanden
+
+--- Ergebnisse Stufe 9 (2026-03-30) ---
+Geaenderte Dateien:
+  - CMakeLists.txt (Viterbi-Quellen + Include-Pfade + Compiler-Flags)
+
+Erwartete Verbesserungen:
+  - Viterbi 8-16x schneller durch AVX2 (16-way Vektorisierung)
+  - Fallback auf SSE (8-way) oder Scalar bei aelterer Hardware
+  - Runtime-Detection via __builtin_cpu_supports() in radio.cpp
+
+
+================================================================================
+STUFE 10b: MP4/AAC-AUDIO (DAB+)
+================================================================================
+--- Analyse (2026-03-30) ---
+Reed-Solomon: Galois-Feld mit Lookup-Tables (alpha_to/index_of), L1-Cache-freundlich.
+  Berlekamp-Massey + Chien-Search, Standard-Algorithmus. Kein Optimierungsbedarf.
+Bit-Packing: ~384 Bytes/Frame, vernachlaessigbar.
+AAC-Decoder: FAAD2 war aktiv, FDK-AAC verfuegbar aber nicht installiert/aktiviert.
+
+--- Optimierung ---
+[x] OPT-10b.1: FDK-AAC statt FAAD2 aktiviert
+     - Paket mingw-w64-ucrt-x86_64-fdk-aac installiert
+     - CMakeLists.txt: FDK_AAC=ON, Include-Pfad korrigiert
+     - libfdk-aac-2.dll nach C:/dab-build/ kopiert
+     - Build + Funktionstest erfolgreich
+
+Vorteile FDK-AAC gegenueber FAAD2:
+  - Bessere HE-AAC v2 Unterstuetzung (SBR + PS)
+  - Geringere CPU-Last
+  - Bessere Audio-Qualitaet bei niedrigen Bitraten
+  - Aktiv gewartet (Fraunhofer)
+
+
+================================================================================
+STUFE 2: SAMPLE-AUFBEREITUNG / IQ-KORREKTUR
+================================================================================
+--- Analyse (2026-03-30) ---
+Sequentielle Abhaengigkeiten (DC-Tracking, IQ-Equalizer, Phase) verhindern
+echte SIMD-Vektorisierung. Stattdessen Code-Optimierungen:
+
+--- Optimierung ---
+[x] OPT-2.1: Hot-Loop Optimierungen in getSamples()
+     Datei: sample-reader.cpp
+     - Redundante Complex(real(v),imag(v)) Konstruktion entfernt -> v direkt
+     - BUG GEFIXT: sLevel nutzte v_out[i] statt v_out[index+i]
+       (falsche Werte wenn index > 0, z.B. bei ofdmBuffer read mit offset T_u)
+     - dcRemoval atomic load vor Schleife (nicht pro Sample)
+     - IQ-Display-Update aus Hot-Loop herausgezogen (war static int in Schleife)
+     - Alpha nutzt vordefinierte ALPHA Konstante statt 1.0f/SAMPLERATE
+
+Hinweis: Equalizer und DC-Tracking haben pro-Sample Zustandsabhaengigkeiten,
+  SIMD-Vektorisierung daher nicht moeglich ohne Algorithmus-Umbau.
+
+
+================================================================================
+NOTIZEN
+================================================================================
+- Schnittstellen zwischen Modulen NICHT aendern!
+- Pro Modul: eigener Branch, A/B-Vergleich mit gleicher IQ-Datei
+- DABFLOAT = float (nicht double!) fuer 2x SIMD-Durchsatz
+- ofdmHandler::run() ist Single-Thread Hauptschleife
+- 7 redundante FFT-Instanzen im Frontend (Konsolidierung in Stufe 4)

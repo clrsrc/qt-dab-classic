@@ -48,6 +48,7 @@
 #include	"dab-params.h"
 #include	"ITU_Region_1.h"
 #include	"coordinates.h"
+#include	"fft-handler.h"
 #include	"mapport.h"
 #include	"tech-window.h"
 #include	"db-element.h"
@@ -1510,6 +1511,7 @@ void	RadioInterface::TerminateProcess () {
 	   delete journalineHandler;
 	   journalineHandler = nullptr;
 	}
+	fftWisdom::saveWisdom ();
 	theLogger. log (logger::LOG_RADIO_STOPS);
 	theQSettings	-> sync ();
 	usleep (1000);		// pending signals

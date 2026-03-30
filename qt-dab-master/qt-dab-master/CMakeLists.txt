@@ -993,7 +993,7 @@ add_definitions (-D__THREADED_BACKEND__)	# uncomment for use for an RPI
 	   if (NOT LIBFDK_AAC_FOUND)
 	      message(FATAL_ERROR, "Please install libfdk-aac")
 	   endif ()
-	   include_directories (../helpers/specials/fdk-aac)
+	   include_directories (${FDK_AAC_INCLUDE_DIR}/fdk-aac)
 	   set($(objectName)_HDRS
 	        ${${objectName}_HDRS}
 	        ./sources//backend/audio/fdk-aac.h
@@ -1030,51 +1030,24 @@ add_definitions (-D__THREADED_BACKEND__)	# uncomment for use for an RPI
 	   add_definitions(-D__WITH_FAAD__)
 	endif (FDK_AAC)
 
-#	the viterbi decoder
-#
-	if (VITERBI_NEON)
-	   set(VITERBI_SSE false)
-	   set (${objectName}_HDRS
-	        ${${objectName}_HDRS}
-	        ./sources/support/viterbi-spiral/spiral-neon.h
-	   )
-	   set (${objectName}_SRCS
-	        ${${objectName}_SRCS}
-	        ./sources/support/viterbi-spiral/spiral-neon.c
-	   )
-	   
-	   add_definitions (-DNEON_AVAILABLE)
-	elseif(VITERBI_SSE)
-	   include_directories (
-	      ./sources/support/viterbi-spiral
-	      ./sources/support/viterbi-spiral/includes
-	   )
-	   set ($(objectName)_HDRS
-	        ${${objectName}_HDRS}
-	        ./sources.support/viterbi-spiral/viterbi.h
-	        ./sources/support/viterbi-spiral/spiral-sse.h
-	   )
-	   set (${objectName}_SRCS
-	        ${${objectName}_SRCS}
-	        ./sources/support/viterbi-spiral/viterbi.cpp
-	        ./sources/support/viterbi-spiral/spiral-sse.c
-	   )
-	   add_definitions (-DSSE_AVAILABLE)
-	else (VITERBI_SSE)
-	   include_directories (
-	      ./sources/support/viterbi-spiral
-	   )
-	   set ($(objectName)_HDRS
-	        ${${objectName}_HDRS}
-	        ./sources/support/viterbi-spiral/viterbi.h
-	        ./sources/support/viterbi-spiral/spiral-no-sse.h
-	   )
-	   set (${objectName}_SRCS
-	        ${${objectName}_SRCS}
-	        ./sources/support/viterbi-spiral/viterbi.cpp
-	        ./sources/support/viterbi-spiral/spiral-no-sse.c
-	   )
-	endif (VITERBI_NEON)
+#	the viterbi decoder -- using DAB-Radio implementation with
+#	runtime AVX2/SSE/Scalar dispatch
+	include_directories (
+	   ./sources/support/viterbi
+	)
+	set (${objectName}_HDRS
+	     ${${objectName}_HDRS}
+	     ./sources/support/viterbi/viterbi.h
+	)
+	set (${objectName}_SRCS
+	     ${${objectName}_SRCS}
+	     ./sources/support/viterbi/viterbi.cpp
+	)
+	set_source_files_properties (
+	     ./sources/support/viterbi/viterbi.cpp
+	     PROPERTIES COMPILE_FLAGS "-mavx2 -msse4.1"
+	)
+	add_definitions (-D__ARCH_X86__)
 
 	if (TCP_STREAMER)
 	   add_definitions (-DTCP_STREAMER)

@@ -82,7 +82,8 @@ private:
 	DABFLOAT		decoder_3  (const std::vector<Complex> &,
                                             std::vector<int16_t> &,
                                             DABFLOAT        snr,
-	                                    float	   clockError);
+	                                    float	   clockError,
+	                                    bool	   updateDisplay);
 	DABFLOAT		decoder_4  (const std::vector<Complex> &,
                                             std::vector<int16_t> &,
                                             DABFLOAT        snr);

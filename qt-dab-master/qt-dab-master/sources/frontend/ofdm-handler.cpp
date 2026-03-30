@@ -31,7 +31,6 @@
 #include	"freqsyncer.h"
 #include	"ringbuffer.h"
 #include	"correlator.h"
-#include	"estimator.h"
 #include	"logger.h"
 #include	"settingNames.h"
 #include	"settings-handler.h"
@@ -72,7 +71,8 @@
 	                                                p -> frameBuffer,
 	                                                theLogger,
 	                                                cpuSupport),
-	                                    theTable (p -> dabMode) {
+	                                    theTable (p -> dabMode),
+	                                    theEstimator (mr, p, &theTable) {
 	this	-> p			= p;
 	this	-> theLogger		= theLogger;
 	this	-> cpuSupport		= cpuSupport;
@@ -696,7 +696,6 @@ bool	ofdmHandler::serviceRuns	(uint32_t SId, uint16_t subChId) {
 
 void	ofdmHandler::generate_CI (const std::vector<Complex> &rawBuffer,
 	                          int startIndex) {
-estimator	myEstimator  (radioInterface_p, p, &theTable);
 std::vector<Complex> inVector (T_u);
 std::vector<Complex> CI_Vector (T_u);
 
@@ -707,7 +706,7 @@ std::vector<Complex> CI_Vector (T_u);
 	   inVector [i] = rawBuffer [i];
 	for (int i = startIndex; i < T_u; i ++)
 	   inVector [i] = rawBuffer [i];
-	myEstimator. estimate (inVector, CI_Vector);
+	theEstimator. estimate (inVector, CI_Vector);
 	channelBuffer_p -> putDataIntoBuffer (CI_Vector. data (),
 	                                                  CI_Vector. size ());
 	emit showChannel (CI_Vector. size ());

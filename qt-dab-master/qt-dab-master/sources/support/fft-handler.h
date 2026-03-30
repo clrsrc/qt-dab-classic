@@ -25,8 +25,18 @@
 
 #include	<complex>
 #include	<vector>
+#include	<string>
 #include	<fftw3.h>
 #include	"dab-constants.h"
+
+class	fftWisdom {
+public:
+	static void	loadWisdom	();
+	static void	saveWisdom	();
+private:
+	static bool	wisdomLoaded;
+	static std::string getWisdomPath ();
+};
 
 class	fftHandler {
 public:

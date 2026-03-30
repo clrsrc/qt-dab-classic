@@ -42,6 +42,7 @@
 #include	"device-handler.h"
 #include	"ringbuffer.h"
 #include	"eti-generator.h"
+#include	"estimator.h"
 
 class	RadioInterface;
 class	dabParams;
@@ -135,6 +136,7 @@ private:
 	ofdmDecoder		theOfdmDecoder;
 	mscHandler		theMscHandler;
 	phaseTable		theTable;
+	estimator		theEstimator;
 
 
 	uint8_t			selectedTII;

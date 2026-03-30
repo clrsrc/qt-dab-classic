@@ -259,7 +259,7 @@ DABFLOAT sum	= 0;
 	  default:
 	  case DECODER_3:
 	      sum	= decoder_3 (fft_buffer, softbits,
-	                                              snr, clockError);
+	                                    snr, clockError, blkno == 2);
 	      break;
 	  case DECODER_4:
 	      sum	= decoder_4 (fft_buffer, softbits, snr);
@@ -493,31 +493,26 @@ DABFLOAT levelFact	= (decType == 1) ? 100.0 : 60.0;
 DABFLOAT ofdmDecoder::decoder_3 (const std::vector<Complex> &fft_buffer,
 	                        std::vector<int16_t> &softbits,
 	                        DABFLOAT	snr,
-	                        float		clockError) {
+	                        float		clockError,
+	                        bool		updateDisplay) {
 DABFLOAT	sum = 0;
+DABFLOAT	scaler	= 140.0f / meanValue;
 
-	float phaseBase	= 2 * M_PI * clockError / 2048000.0 * params. get_T_s ();
 	for (int i = 0; i < carriers; i ++) {
-//	here we really start
-	   int16_t	carriers_2	= carriers / 2;
 	   int16_t	index		= myMapper.  mapIn (i);
-	   int16_t	binIndex	= index;
-	   if (index < 0) {
+	   if (index < 0)
 	      index += T_u;
-	      binIndex	+= carriers_2;
-	   }
-	   else
-	      binIndex	+= carriers_2 - 1;
 
 	   Complex current	= fft_buffer [index];
 	   Complex prevS	= phaseReference [index];
-	   Complex fftBin	= current * normalize (conj (prevS));
-	   conjVector [index]	= fftBin;
-	   Complex fftBin_at_1	= toQ1 (fftBin);
-
 //
-	   Complex R1	= fftBin * (DABFLOAT)(jan_abs (prevS));
-	   DABFLOAT scaler	=  140.0 / meanValue;
+//	R1 = current * normalize(conj(prevS)) * jan_abs(prevS)
+//	Since normalize divides by |prevS| and we multiply by |prevS|,
+//	these cancel out: R1 = current * conj(prevS)
+	   Complex R1	= current * conj (prevS);
+
+	   if (updateDisplay)
+	      conjVector [index] = R1 / jan_abs (R1);
 
 	   DABFLOAT leftBit	= - real (R1) * scaler;
 	   limit_symmetrically (leftBit, MAX_VITERBI);

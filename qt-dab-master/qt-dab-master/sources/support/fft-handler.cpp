@@ -24,10 +24,43 @@
 //
 //
 #include	"fft-handler.h"
+#include	<cstdlib>
+#include	<QDir>
+
+//	FFTW Wisdom management -- load once, save on exit
+bool		fftWisdom::wisdomLoaded = false;
+
+std::string	fftWisdom::getWisdomPath () {
+	QString path = QDir::homePath () + "/.qt-dab-fftw-wisdom";
+	return path. toStdString ();
+}
+
+void	fftWisdom::loadWisdom () {
+	if (wisdomLoaded)
+	   return;
+	wisdomLoaded = true;
+	std::string path = getWisdomPath ();
+#ifdef	__WITH_DOUBLES__
+	fftw_import_wisdom_from_filename (path. c_str ());
+#else
+	fftwf_import_wisdom_from_filename (path. c_str ());
+#endif
+}
+
+void	fftWisdom::saveWisdom () {
+	std::string path = getWisdomPath ();
+#ifdef	__WITH_DOUBLES__
+	fftw_export_wisdom_to_filename (path. c_str ());
+#else
+	fftwf_export_wisdom_to_filename (path. c_str ());
+#endif
+}
 
 	fftHandler::fftHandler	(int size, bool dir) {
 	this	-> size		= size;
 	this	-> dir		= dir;
+
+	fftWisdom::loadWisdom ();
 
 #ifdef	__WITH_DOUBLES__
 	fftVector		= (Complex *)
@@ -35,14 +68,14 @@
 	plan			= fftw_plan_dft_1d (size,
 	                           reinterpret_cast <fftw_complex *>(fftVector),
                                    reinterpret_cast <fftw_complex *>(fftVector),
-                                   FFTW_FORWARD, FFTW_ESTIMATE);
+                                   FFTW_FORWARD, FFTW_MEASURE);
 #else
 	fftVector		= (Complex *)
 	                          fftwf_malloc (sizeof (Complex) * size);
 	plan			= fftwf_plan_dft_1d (size,
 	                           reinterpret_cast <fftwf_complex *>(fftVector),
                                    reinterpret_cast <fftwf_complex *>(fftVector),
-                                   FFTW_FORWARD, FFTW_ESTIMATE);
+                                   FFTW_FORWARD, FFTW_MEASURE);
 #endif
 }
 
@@ -57,34 +90,34 @@
 }
 
 void	fftHandler::fft		(std::vector<Complex> &v) {
-	if (dir)
+	if (dir) {
 	   for (int i = 0; i < size; i ++)
 	      fftVector [i] = conj (v [i]);
-	else
-	   for (int i = 0; i < size; i ++)
-	      fftVector [i] = v [i];
+	}
+	else {
+	   memcpy (fftVector, v. data (), size * sizeof (Complex));
+	}
 #ifdef	__WITH_DOUBLES__
 	fftw_execute (plan);
 #else
 	fftwf_execute (plan);
 #endif
-	if (dir)
+	if (dir) {
 	   for (int i = 0;  i < size; i ++)
 	      v [i] = conj (fftVector [i]);
-	else
-	   for (int i = 0; i < size; i ++)
-	      v [i] = fftVector [i];
+	}
+	else {
+	   memcpy (v. data (), fftVector, size * sizeof (Complex));
+	}
 }
 
 void	fftHandler::fft		(Complex  *v) {
-	for (int i = 0; i < size; i ++)
-	   fftVector [i] = v [i];
+	memcpy (fftVector, v, size * sizeof (Complex));
 #ifdef	__WITH_DOUBLES__
 	fftw_execute (plan);
 #else
 	fftwf_execute (plan);
 #endif
-	for (int i = 0;  i < size; i ++)
-	   v [i] = fftVector [i];
+	memcpy (v, fftVector, size * sizeof (Complex));
 }
 
