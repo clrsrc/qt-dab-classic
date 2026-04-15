@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+build-v1/
 cmake-build-*/
 *.o
 *.obj
@@ -9,6 +10,26 @@ cmake-build-*/
 *.dylib
 *.a
 *.lib
+
+# Portable deployment (gebaut per deploy.sh, Release-Artefakt)
+Qt-DAB-portable/
+Qt-DAB-classic-*.zip
+SPI_Bundesmux_*.zip
+
+# Laufzeit-Daten (persoenlich / lokal)
+Qt-DAB-files/
+Qt-DAB-recordings/
+Qt-DAB-timers.json
+
+# Feedback-/Recherche-Ablage (nicht oeffentlich)
+Feedback/
+EPG_Audit_Bericht.md
+EPG_Problembericht_DLF.md
+QA-Testreport.pdf
+Optimal.jpg
+
+# IDE / Tool-Metadaten
+.claude/
 
 # Qt generated
 moc_*

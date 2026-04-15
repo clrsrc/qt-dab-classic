@@ -445,6 +445,8 @@ private:
 	QTimer			startTimer;
 	bool			stillWaiting;
 	QString			path_for_files;
+	bool			isSynced	= false;
+	bool			isMotActive	= false;
 #ifdef	_SEND_DATAGRAM_
 	QUdpSocket		dataOut_socket;
 	QString			ipAddress;
@@ -488,6 +490,7 @@ signals:
 	void			select_ensemble_fontColor	();
 	void			call_scanButton		();
 	void			dlsText			(const QString &, int);
+	void			slideChanged		(const QPixmap &);
 
 public slots:
 //	signals from the configuration window
@@ -644,7 +647,6 @@ public slots:
 	void			handleAlarmFlag		(bool active);
 
 //	Local signals
-
 	void			no_signal_found		();
 	void			closeEvent		(QCloseEvent *event);
 

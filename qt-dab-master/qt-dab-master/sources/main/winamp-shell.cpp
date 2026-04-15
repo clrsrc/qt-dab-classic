@@ -28,6 +28,8 @@
 #include	<QMouseEvent>
 #include	<QDateTime>
 #include	<QApplication>
+#include	<QDir>
+#include	<QFileInfo>
 #ifdef Q_OS_WIN
 #include	<dwmapi.h>
 #endif
@@ -191,10 +193,6 @@
 	         this, &WinampShell::updateTimeDisplay);
 	displayRefreshTimer.start ();
 
-	// connect sync indicator
-	connect (theRadio, &RadioInterface::set_synced,
-	         this, &WinampShell::updateSyncState);
-
 	// try import old scheduler
 	QString schedFile = theSettings->value ("schedFile", "").toString ();
 	if (!schedFile.isEmpty ())
@@ -288,6 +286,30 @@ QVBoxLayout *mainLayout = new QVBoxLayout (this);
 	serviceNameLabel->setCursor (Qt::SizeAllCursor);
 	mainLayout->addWidget (serviceNameLabel);
 
+	// === Logo + Slideshow (side by side) ===
+	QHBoxLayout *mediaBar = new QHBoxLayout ();
+	mediaBar->setContentsMargins (2, 2, 2, 2);
+	mediaBar->setSpacing (4);
+
+	logoLabel = new QLabel (this);
+	logoLabel->setObjectName ("logoLabel");
+	logoLabel->setAlignment (Qt::AlignCenter);
+	logoLabel->setFixedSize (80, 80);
+	logoLabel->hide ();
+	mediaBar->addWidget (logoLabel);
+
+	slideLabel = new QLabel (this);
+	slideLabel->setObjectName ("slideLabel");
+	slideLabel->setAlignment (Qt::AlignCenter);
+	slideLabel->setFixedHeight (80);
+	slideLabel->hide ();
+	mediaBar->addWidget (slideLabel, 1);
+
+	mediaWidget = new QWidget (this);
+	mediaWidget->setLayout (mediaBar);
+	mediaWidget->hide ();
+	mainLayout->addWidget (mediaWidget);
+
 	// === Ticker (DLS) ===
 	tickerLabel = new QLabel ("", this);
 	tickerLabel->setObjectName ("tickerLabel");
@@ -310,7 +332,9 @@ QVBoxLayout *mainLayout = new QVBoxLayout (this);
 	volumeSlider = new QSlider (Qt::Horizontal, this);
 	volumeSlider->setObjectName ("volumeSlider");
 	volumeSlider->setRange (0, 100);
-	volumeSlider->setValue (70);
+	int savedVol = theSettings->value (SOUND_HANDLING + QString ("/")
+	               + QT_AUDIO_VOLUME, 50).toInt ();
+	volumeSlider->setValue (savedVol);
 	volLayout->addWidget (volumeSlider);
 
 	channelSelector = new QComboBox (this);
@@ -386,7 +410,13 @@ QVBoxLayout *mainLayout = new QVBoxLayout (this);
 
 	syncIndicator = new QLabel ("SYNC", statusBar);
 	syncIndicator->setObjectName ("syncIndicator");
+	syncIndicator->setStyleSheet ("QLabel { color: #666666; }");
 	statusLayout->addWidget (syncIndicator);
+
+	motIndicator = new QLabel ("MOT", statusBar);
+	motIndicator->setObjectName ("motIndicator");
+	motIndicator->setStyleSheet ("QLabel { color: #666666; }");
+	statusLayout->addWidget (motIndicator);
 
 	statusLayout->addStretch ();
 
@@ -421,12 +451,22 @@ void	WinampShell::connectRadio () {
 	// volume
 	connect (volumeSlider, &QSlider::valueChanged,
 	         this, &WinampShell::updateVolume);
+	updateVolume (volumeSlider->value ());
 
 	// signals from RadioInterface
 	connect (theRadio, &RadioInterface::dlsText,
 	         this, &WinampShell::updateDynamicLabel);
-	connect (theRadio, &RadioInterface::set_synced,
-	         this, &WinampShell::updateSyncState);
+
+	// live MOT slides (album art, programme images)
+	connect (theRadio, &RadioInterface::slideChanged,
+	         this, [this] (const QPixmap &p) {
+	            if (p.isNull ())
+	               return;
+	            slideLabel->setPixmap (p.scaled (180, 80,
+	               Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	            slideLabel->show ();
+	            mediaWidget->show ();
+	         });
 }
 
 bool	WinampShell::eventFilter (QObject *obj, QEvent *event) {
@@ -538,9 +578,73 @@ void	WinampShell::handleRecToggle () {
 	   theRecordingManager->startManualRecording ();
 }
 
+void	WinampShell::loadServiceLogo () {
+	if (!theRadio->channel.currentService.isValid) {
+	   fprintf (stderr, "LOGO: service not valid\n");
+	   return;
+	}
+	uint32_t eid = theRadio->channel.Eid;
+	uint32_t sid = theRadio->channel.currentService.SId;
+	QString basePath = theRadio->path_for_files +
+	                   QString::number (eid, 16).toUpper () + "/";
+	basePath = QDir::toNativeSeparators (basePath);
+
+	// search for logo: first in current ensemble, then all ensembles
+	QString sidHex = QString::number (sid, 16).toLower ();
+	QString searchPath = basePath;
+	QDir dir (basePath);
+	QStringList allMatches = dir.entryList (
+	   QStringList () << (sidHex + "*.png"),
+	   QDir::Files);
+
+	// fallback: search all ensemble folders
+	if (allMatches.isEmpty ()) {
+	   QDir parentDir (QDir::toNativeSeparators (theRadio->path_for_files));
+	   for (const auto &sub : parentDir.entryList (QDir::Dirs | QDir::NoDotAndDotDot)) {
+	      QString altPath = QDir::toNativeSeparators (
+	         theRadio->path_for_files + sub + "/");
+	      QDir altDir (altPath);
+	      allMatches = altDir.entryList (
+	         QStringList () << (sidHex + "*.png"),
+	         QDir::Files);
+	      if (!allMatches.isEmpty ()) {
+	         searchPath = altPath;
+	         break;
+	      }
+	   }
+	}
+	if (allMatches.isEmpty ())
+	   return;
+
+	// prefer largest image: sort by file size descending
+	QString bestFile;
+	qint64 bestSize = 0;
+	for (const auto &f : allMatches) {
+	   QFileInfo fi (searchPath + f);
+	   if (fi.size () > bestSize) {
+	      bestSize = fi.size ();
+	      bestFile = f;
+	   }
+	}
+
+	QPixmap logo (searchPath + bestFile);
+	if (!logo.isNull ()) {
+	   logoLabel->setPixmap (logo.scaled (80, 80,
+	      Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	   logoLabel->show ();
+	   mediaWidget->show ();
+	}
+}
+
 void	WinampShell::updateServiceName (const QString &name) {
 	serviceNameLabel->setText (name);
 	titleLabel->setText ("Qt-DAB - " + name);
+	logoLabel->clear ();
+	logoLabel->hide ();
+	slideLabel->clear ();
+	slideLabel->hide ();
+	mediaWidget->hide ();
+	loadServiceLogo ();
 }
 
 void	WinampShell::updateDynamicLabel (const QString &text, int) {
@@ -561,8 +665,16 @@ void	WinampShell::updateTimeDisplay () {
 	// poll service info from RadioInterface
 	if (theRadio->channel.currentService.isValid) {
 	   QString svcName = theRadio->channel.currentService.serviceName;
-	   if (serviceNameLabel->text () != svcName)
+	   if (serviceNameLabel->text () != svcName) {
 	      serviceNameLabel->setText (svcName);
+	      titleLabel->setText ("Qt-DAB - " + svcName);
+	      logoLabel->clear ();
+	      logoLabel->hide ();
+	      slideLabel->clear ();
+	      slideLabel->hide ();
+	      mediaWidget->hide ();
+	      loadServiceLogo ();
+	   }
 	}
 
 	// update channel/freq info
@@ -580,10 +692,22 @@ void	WinampShell::updateTimeDisplay () {
 	QString stereoText = theRadio->stereoLabel->text ();
 	if (!stereoText.isEmpty () && stereoText != "stereo")
 	   stereoIndicator->setText (stereoText);
+
+	// update SYNC indicator
+	syncIndicator->setStyleSheet (theRadio->isSynced ?
+	   "QLabel { color: #00FF00; }" :
+	   "QLabel { color: #666666; }");
+
+	// update MOT indicator
+	motIndicator->setStyleSheet (theRadio->isMotActive ?
+	   "QLabel { color: #00FF00; }" :
+	   "QLabel { color: #666666; }");
 }
 
 void	WinampShell::updateVolume (int value) {
 	theRadio->setVolume (value);
+	theSettings->setValue (SOUND_HANDLING + QString ("/")
+	                       + QT_AUDIO_VOLUME, value);
 }
 
 void	WinampShell::handlePlaylistToggle () {

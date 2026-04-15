@@ -55,6 +55,7 @@ private slots:
 	void	handleTimeRangeChanged (int index);
 	void	handleSwitchClicked	();
 	void	handleRecordClicked	();
+	void	handleRefresh		();
 
 private:
 	void	setupUi		();

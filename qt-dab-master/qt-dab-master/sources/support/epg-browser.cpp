@@ -86,6 +86,13 @@ QVBoxLayout *mainLayout = new QVBoxLayout (this);
 	         this, &EpgBrowser::handleTimeRangeChanged);
 	filterBar->addWidget (timeRangeCombo);
 	filterBar->addStretch ();
+
+	QPushButton *refreshButton = new QPushButton (tr ("Aktualisieren"), this);
+	refreshButton->setToolTip (tr ("EPG-Daten neu laden"));
+	connect (refreshButton, &QPushButton::clicked,
+	         this, &EpgBrowser::handleRefresh);
+	filterBar->addWidget (refreshButton);
+
 	mainLayout->addLayout (filterBar);
 
 	// program table
@@ -134,6 +141,10 @@ void	EpgBrowser::clear () {
 
 void	EpgBrowser::handlePrevDay () {
 	dateOffset--;
+	loadAndDisplay (dateOffset);
+}
+
+void	EpgBrowser::handleRefresh () {
 	loadAndDisplay (dateOffset);
 }
 

@@ -54,15 +54,26 @@ void	EwfMonitor::setEnabled (bool e) {
 	   hideAlarmDialog ();
 	   alarmActive = false;
 	}
+	updateIndicator ();
 }
 
 void	EwfMonitor::setIndicatorLabel (QLabel *label) {
 	indicatorLabel = label;
-	if (indicatorLabel != nullptr) {
-	   indicatorLabel->setText ("EWF");
+	updateIndicator ();
+}
+
+void	EwfMonitor::updateIndicator () {
+	if (indicatorLabel == nullptr)
+	   return;
+	indicatorLabel->setText ("EWF");
+	if (alarmActive)
+	   return;	// blinkTimer handles alarm state
+	if (enabled)
+	   indicatorLabel->setStyleSheet (
+	      "QLabel { color: #00FF00; font-weight: bold; }");
+	else
 	   indicatorLabel->setStyleSheet (
 	      "QLabel { color: #666666; font-weight: bold; }");
-	}
 }
 
 void	EwfMonitor::handleAlarm (bool active) {
@@ -109,9 +120,7 @@ void	EwfMonitor::startBlinking () {
 
 void	EwfMonitor::stopBlinking () {
 	blinkTimerObj.stop ();
-	if (indicatorLabel != nullptr)
-	   indicatorLabel->setStyleSheet (
-	      "QLabel { color: #666666; font-weight: bold; }");
+	updateIndicator ();
 }
 
 void	EwfMonitor::showAlarmDialog () {

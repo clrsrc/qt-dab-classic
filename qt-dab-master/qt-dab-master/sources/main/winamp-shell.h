@@ -75,6 +75,7 @@ private slots:
 private:
 	void	setupUi		();
 	void	connectRadio	();
+	void	loadServiceLogo	();
 
 	RadioInterface		*theRadio;
 	QSettings		*theSettings;
@@ -89,6 +90,9 @@ private:
 	QLabel			*stereoIndicator;
 
 	QLabel			*serviceNameLabel;
+	QWidget			*mediaWidget;
+	QLabel			*logoLabel;
+	QLabel			*slideLabel;
 	QLabel			*tickerLabel;
 
 	WinampTransportBar	*transportBar;
@@ -99,6 +103,7 @@ private:
 	QWidget			*statusBar;
 	QLabel			*ewfIndicator;
 	QLabel			*syncIndicator;
+	QLabel			*motIndicator;
 	QLabel			*timeDisplay;
 
 	QTimer			displayRefreshTimer;

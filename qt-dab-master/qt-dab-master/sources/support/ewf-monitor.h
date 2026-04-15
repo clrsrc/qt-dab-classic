@@ -51,6 +51,7 @@ private:
 	void	hideAlarmDialog	();
 	void	startBlinking	();
 	void	stopBlinking	();
+	void	updateIndicator	();
 
 	QSettings	*theSettings;
 	QWidget		*parentWidget;

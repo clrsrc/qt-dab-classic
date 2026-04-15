@@ -230,6 +230,14 @@ Hinweis: Equalizer und DC-Tracking haben pro-Sample Zustandsabhaengigkeiten,
 
 
 ================================================================================
+TODO: WINAMP GUI
+================================================================================
+[ ] EWF-Test: Alarm simulieren (Doppelklick auf EWF oder Test-Button)
+    - handleAlarm(true) aufrufen, Dialog + Blinken + Beep pruefen
+    - Nach "Verstanden" muss EWF wieder gruen werden
+    - Testen ohne echten Alarm (kein Sender sendet aktuell EWF)
+
+================================================================================
 NOTIZEN
 ================================================================================
 - Schnittstellen zwischen Modulen NICHT aendern!

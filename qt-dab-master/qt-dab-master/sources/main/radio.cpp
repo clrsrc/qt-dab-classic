@@ -807,13 +807,20 @@ void	RadioInterface::addToEnsemble (const QString &serviceName,
 
 	if (!theSCANHandler. active () &&
 	               theOfdmHandler -> is_SPI (static_cast<uint32_t>(SId))) {
+	   fprintf (stderr, "SPI: detected service '%s' SId=%X\n",
+	            serviceName.toUtf8 ().data (), SId);
 	   packetdata pd;
 	   int index = theOfdmHandler -> getServiceComp (serviceName);
-	   if (index < 0)	// cannot happen
+	   if (index < 0) {
+	      fprintf (stderr, "SPI: getServiceComp returned -1\n");
 	      return;
+	   }
 	   theOfdmHandler -> packetData (index, pd);
-	   if (!pd. defined)	// cannot happen
+	   if (!pd. defined) {
+	      fprintf (stderr, "SPI: packetData not defined\n");
 	      return;
+	   }
+	   fprintf (stderr, "SPI: starting epg service (appType=%d)\n", pd.appType);
 	   start_epgService (pd);
 //	   channel. SPI_services. push_back (ss);
 	}
@@ -1140,6 +1147,8 @@ void	RadioInterface::showMOTlabel	(QByteArray  &motData,
 	                                 uint32_t	SId) {
 const char *type;
 
+	fprintf (stderr, "MOT-IMG: name='%s' type=%d dirs=%d SId=%X size=%d\n",
+	         pictureName.toUtf8 ().data (), contentType, dirs, SId, motData.size ());
 	if (!running. load () || (pictureName == QString ("")))
 	   return;
 
@@ -1203,8 +1212,10 @@ const char *type;
 	   return;
 
 	QPixmap p;
-	if (p. loadFromData (motData, type))
+	if (p. loadFromData (motData, type)) {
 	   displaySlide (p);
+	   emit slideChanged (p);
+	}
 }
 //
 //	SPI files are stored in a directory, with as name the EId
@@ -1751,7 +1762,7 @@ void	RadioInterface::show_ficBER	(float ber) {
 //	called from the PAD handler
 void	RadioInterface::show_mothandling (bool b) {
 static bool old_mot = false;
-	
+
 	if (!running. load () || (old_mot == b))
 	   return;
 	if (b)
@@ -1759,11 +1770,13 @@ static bool old_mot = false;
 	else
 	   motLabel	-> setStyleSheet ("QLabel {color : red}");
 	old_mot = b;
+	isMotActive = b;
 }
 	
 //	just switch a color, called from the dabprocessor
 void	RadioInterface::set_synced	(bool b) {
 	theNewDisplay. setSyncLabel (b);
+	isSynced = b;
 }
 //
 //	called from the PAD handler
