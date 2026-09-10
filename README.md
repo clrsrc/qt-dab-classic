@@ -60,10 +60,19 @@ erweitert.
   Umschalt-Aktionen (Senderwechsel würde die Aufnahme zerstören)
 - REC-Button wird während der Aufnahme **rot** dargestellt
 
-### EWF (Emergency Warning Functionality)
-- Aktivierung des Alarm-Flags aus der FIB (im Upstream verworfen)
-- Persistenter Alarm bis „Verstanden", akustisches Signal per Beep
-- Status-Anzeige in der Hauptleiste
+### EWF / EWS (Emergency Warning)
+- DAB EWS nach **ETSI TS 104 089**: FIG 0/15 wird vollständig ausgewertet
+  (Heartbeat, Pre-trigger, Trigger, Sustain, End, Stage, Incident-ID,
+  Location-Codes nach Annex E/F)
+- Alarm-Announcement nach EN 300 401 (FIG 0/19, Cluster 0xFF) wird ebenfalls
+  erkannt
+- Bei Alarm automatische Umschaltung auf den Warndienst des Ensembles
+  (z. B. „ASA DE" im Bundesmux) und Rückkehr zum vorherigen Programm nach
+  Alarmende; Setting `ewfAutoSwitch`, keine Umschaltung während einer Aufnahme
+- Persistenter Alarm-Dialog mit Dienst, Stufe und Vorfall bis „Verstanden",
+  akustisches Signal per Beep; Anzeige in der Classic-GUI und in der
+  Statusleiste der Compact UI
+- Verifiziert am Mitschnitt des bundesweiten Warntags 2026 (Bundesmux 5C)
 
 ### RX-Empfangsoptimierungen
 - IQ-Equalizer aktiv, mit Division-by-Zero-Guard, NaN-Guards,
