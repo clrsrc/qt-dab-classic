@@ -284,11 +284,9 @@ std::vector<uint8_t> data;		// for the local addition
 	for (int16_t i = 0; i < CI_Index; i ++) {
 	   uint8_t appType	= CI_table [i] & 037;
 	   int16_t length	= lengthTable [CI_table [i] >> 5];
-	   fprintf (stderr, "CI[%d] appType=%d len=%d base=%d\n", i, appType, length, base);
 
 	   if (appType == 1) {	// length spec
 	      dataGroupLength = ((b [base] & 077) << 8) | b [base - 1];
-	      fprintf (stderr, "  appType1: dataGroupLength=%d\n", dataGroupLength);
 	      base -= 4;
 	      last_appType = 1;
 	      continue;
@@ -301,11 +299,9 @@ std::vector<uint8_t> data;		// for the local addition
 
 	   switch (appType) {
 	      default:
-	         fprintf (stderr, "  unknown appType %d, returning\n", appType);
 	         return; // sorry, we do not handle this
 
 	      case 1:	//
-	         fprintf (stderr, "  appType 1 in switch (should not reach here)\n");
 	         return;
 	      case 2:	// Dynamic label segment, start of X-PAD data group
 	      case 3:	// Dynamic label segment, continuation of X-PAD data group
@@ -314,13 +310,10 @@ std::vector<uint8_t> data;		// for the local addition
 	         break;
 
 	      case 12:	 // MOT, start of X-PAD data group
-	         fprintf (stderr, "  MOT start: data.size=%zu dgLen=%d\n", data.size(), dataGroupLength);
 	         new_MSC_element (data);
 	         break;
 
  	      case 13:	 // MOT, continuation of X-PAD data group
-	         fprintf (stderr, "  MOT cont: data.size=%zu mscBuf=%zu/%d mscGroup=%d\n",
-	                  data.size(), msc_dataGroupBuffer.size(), dataGroupLength, (int)mscGroupElement);
 	         add_MSC_element (data);
 	         break;
 	   }

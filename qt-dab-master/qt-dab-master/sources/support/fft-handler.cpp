@@ -25,7 +25,13 @@
 //
 #include	"fft-handler.h"
 #include	<cstdlib>
+#include	<mutex>
 #include	<QDir>
+
+//	The FFTW planner (and wisdom import/export) is NOT thread-safe.
+//	With FFTW_MEASURE the planning window is large, so guard all
+//	planner interaction with a single process-wide lock.
+static std::mutex	fftwPlannerLock;
 
 //	FFTW Wisdom management -- load once, save on exit
 bool		fftWisdom::wisdomLoaded = false;
@@ -48,6 +54,7 @@ void	fftWisdom::loadWisdom () {
 }
 
 void	fftWisdom::saveWisdom () {
+	std::lock_guard<std::mutex> guard (fftwPlannerLock);
 	std::string path = getWisdomPath ();
 #ifdef	__WITH_DOUBLES__
 	fftw_export_wisdom_to_filename (path. c_str ());
@@ -60,6 +67,8 @@ void	fftWisdom::saveWisdom () {
 	this	-> size		= size;
 	this	-> dir		= dir;
 
+//	Serialize wisdom loading and plan creation across all threads.
+	std::lock_guard<std::mutex> guard (fftwPlannerLock);
 	fftWisdom::loadWisdom ();
 
 #ifdef	__WITH_DOUBLES__
@@ -80,6 +89,7 @@ void	fftWisdom::saveWisdom () {
 }
 
 	fftHandler::~fftHandler	() {
+	std::lock_guard<std::mutex> guard (fftwPlannerLock);
 #ifdef	__WITH_DOUBLES__
 	fftw_destroy_plan (plan);
 	fftw_free (fftVector);

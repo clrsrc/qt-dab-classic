@@ -436,15 +436,9 @@ DABFLOAT levelFact	= (decType == 1) ? 100.0 : 60.0;
 
 	for (int i = 0; i < carriers; i ++) {
 //	here we really start
-	   int16_t	carriers_2	= carriers / 2;
 	   int16_t	index		= myMapper.  mapIn (i);
-	   int16_t	binIndex	= index;
-	   if (index < 0) {
+	   if (index < 0)
 	      index += T_u;
-	      binIndex	+= carriers_2;
-	   }
-	   else
-	      binIndex	+= carriers_2 - 1;
 
 	   Complex current	= fft_buffer [index];
 	   Complex prevS	= phaseReference [index];
