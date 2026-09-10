@@ -116,6 +116,7 @@
 #define	RECORDING_PATH		"recordingPath"
 #define	EWF_HANDLING		"EWF_HANDLING"
 #define	EWF_ENABLED		"ewfEnabled"
+#define	EWF_AUTOSWITCH		"ewfAutoSwitch"
 #define	GUI_MODE		"guiMode"
 #define	GUI_MODE_CLASSIC	"classic"
 #define	GUI_MODE_WINAMP		"winamp"

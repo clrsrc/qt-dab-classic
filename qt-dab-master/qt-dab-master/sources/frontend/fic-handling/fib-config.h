@@ -67,6 +67,7 @@ public:
 
 	int		subChId_for_SId		(const int, const uint32_t);
 	int		subChId_in_SCId		(const int);
+	uint32_t	SIdOnSubChannel		(const int subChId);
 	void		audioData		(const int, audiodata &);
 	void		packetData		(const int, packetdata &);
 

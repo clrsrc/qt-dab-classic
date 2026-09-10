@@ -40,7 +40,7 @@
 	                           QWidget (parent),
 	                           theRadio (radio),
 	                           theSettings (settings) {
-	setWindowTitle ("Qt-DAB Winamp Edition");
+	setWindowTitle ("Qt-DAB — Classic Compact UI");
 	setObjectName ("winampMain");
 	setFixedWidth (275);
 	setWindowFlags (Qt::Window | Qt::FramelessWindowHint);
@@ -82,6 +82,28 @@
 	         });
 	theEwfMonitor = new EwfMonitor (theSettings, this, this);
 	theEwfMonitor->setIndicatorLabel (ewfIndicator);
+	connect (theRadio, &RadioInterface::ewfAlarmChanged,
+	         this, [this] (bool active, int subChId,
+	                       const QString &serviceName, int stage, int iid) {
+	            static const char *stageNames [] = {
+	               "Stufe 1 Start", "Stufe 1 Aktualisierung",
+	               "Stufe 1 Wiederholung", "Stufe 1 Kritisch",
+	               "Stufe 2 Start", "Stufe 2 Aktualisierung",
+	               "Stufe 2 Wiederholung", "TEST"};
+	            if (active) {
+	               QString who = serviceName. isEmpty () ?
+	                     tr ("Unterkanal %1"). arg (subChId) : serviceName;
+	               theEwfMonitor->setAlarmText (
+	                  tr ("Eine Notfallwarnung (DAB EWS) wird empfangen.\n\n"
+	                      "Warnmeldung: %1\nStufe: %2, Vorfall %3\n\n"
+	                      "Bitte beachten Sie die Durchsage und "
+	                      "offizielle Informationen.")
+	                     .arg (who). arg (stageNames [stage & 7]). arg (iid));
+	            }
+	            theEwfMonitor->handleAlarm (active);
+	         });
+	connect (theEwfMonitor, &EwfMonitor::alarmDeactivated,
+	         theRadio, &RadioInterface::ewsUserDismiss);
 
 	// create dock manager
 	theDockManager = new DockManager (this, theSettings, this);
@@ -171,6 +193,7 @@
 	   "QListWidget::item:selected { background: #002a10; color: #00ff50; } "
 	   "QListWidget::item:hover { background: #0e1a0e; }");
 	serviceListWidget->setMinimumHeight (150);
+	serviceListWidget->setSortingEnabled (true);
 	connect (serviceListWidget, &QListWidget::itemClicked,
 	         this, [this] (QListWidgetItem *item) {
 	            serviceClicked (item->text ());
@@ -222,7 +245,7 @@ QVBoxLayout *mainLayout = new QVBoxLayout (this);
 	QHBoxLayout *titleLayout = new QHBoxLayout (titleBar);
 	titleLayout->setContentsMargins (4, 0, 2, 0);
 	titleLayout->setSpacing (2);
-	titleLabel = new QLabel ("Qt-DAB Winamp", titleBar);
+	titleLabel = new QLabel ("Qt-DAB Classic", titleBar);
 	titleLabel->setObjectName ("titleLabel");
 	titleLayout->addWidget (titleLabel);
 	titleLayout->addStretch ();

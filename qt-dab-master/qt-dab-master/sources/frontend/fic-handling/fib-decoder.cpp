@@ -27,6 +27,7 @@
  *	Somehe
  */
 #include	"fib-decoder.h"
+#include	<string>
 #include	<cstring>
 #include	<vector>
 #include	"radio.h"
@@ -71,12 +72,32 @@
 	         myRadioInterface, &RadioInterface::tell_programType);
 	connect (this, &fibDecoder::alarmFlagChanged,
 	         myRadioInterface, &RadioInterface::handleAlarmFlag);
+	connect (this, &fibDecoder::ewfAlarm,
+	         myRadioInterface, &RadioInterface::handleEwfAlarm);
+	connect (this, &fibDecoder::ewsAlert,
+	         myRadioInterface, &RadioInterface::handleEwsAlert);
+	connect (this, &fibDecoder::ewsAlive,
+	         myRadioInterface, &RadioInterface::handleEwsAlive);
 //
 //	Note that they may change "roles",
 	currentConfig	= new fibConfig	(&theEnsemble, myRadioInterface);
 	nextConfig	= new fibConfig (&theEnsemble, myRadioInterface);
 	mjd		= 0;
 	prevAlarmFlag	= 0;
+	ewfAlarmActive	= false;
+	ewfAlarmSubChId	= -1;
+	lastFig19Key	= 0xFFFFFFFF;
+	fig19Repeats	= 0;
+	theEws. active		= false;
+	theEws. phase		= 0;
+	theEws. subChId		= 0;
+	theEws. stage		= 0;
+	theEws. iid		= 0;
+	theEws. setComplete	= false;
+	ewsHeartbeatSeen	= false;
+	ewsPreTriggerKey	= 0xFFFFFFFF;
+	ewsOtherEnsembleKey	= 0xFFFFFFFF;
+	lastEwsAliveMs		= 0;
 }
 	
 	fibDecoder::~fibDecoder () {
@@ -812,38 +833,226 @@ fibConfig	*localBase	= CN_bit == 0 ? currentConfig : nextConfig;
 	}
 }
 //
-//	
+//	Emergency Warning System, ETSI TS 104 089, annex E.
+//	Heartbeat form: empty type 0 field (length 1), sent once per
+//	second while no alert is active. Alert forms carry the Id field
+//	(phase, SubChId), for Pre-trigger/Trigger the status field and
+//	location codes (one to four FIG 0/15 instances form an alert set),
+//	for Sustain/End only the Id field. The P/D flag is a sleep-mode
+//	synchronization aid and is ignored here; C/N is the SIV flag.
 void	fibDecoder::FIG0Extension15 (uint8_t *d) {
-//int16_t Length          = getBits_5 (d, 3);     // in Bytes
+int16_t Length          = getBits_5 (d, 3);     // in Bytes
 const uint8_t   CN_bit  = getBits_1 (d, 8 + 0);
 const uint8_t   OE_bit  = getBits_1 (d, 8 + 1);
 const uint8_t   PD_bit  = getBits_1 (d, 8 + 2);
-int16_t used    = 2;                    // in Bytes
-int16_t bitOffset               = used * 8;
-uint8_t secondsCount		= 0;
-
-	if (CN_bit == 1)	// Next config, not implemented yet
-	   return;
-	if (PD_bit == 1)	// discard
-	   return;
-	if (OE_bit == 1)	// other ensemble, not implemented
-	   return;
+int	bitOffset	= 16;
+int	endBit		= (Length + 1) * 8;
+static const char *phaseNames [] = {"Pre-trigger", "Trigger",
+	                                    "Sustain", "End"};
 //
-//	Handling the Id field
-	uint8_t phase		= getBits_2 (d, bitOffset);
-	uint8_t subChId		= getBits_6 (d, bitOffset + 2);
-	bitOffset		+= 8;
-	if (phase == 00) {
-	   secondsCount		= getBits_6 (d, bitOffset + 2);
-	   bitOffset		+= 8;
+//	Diagnostics: log every distinct FIG 0/15 instance (raw bytes) once.
+//	The P/D flag toggles every 30 s, so it is masked out of the key.
+	{
+	   char hex [3 * 32 + 1];
+	   int n = 0;
+	   for (int i = 0; (i <= Length) && (i < 32); i ++)
+	      n += snprintf (hex + n, sizeof (hex) - n, "%02X ",
+	                     i == 1 ? (getBits_8 (d, 8) & 0xDF) : getBits_8 (d, 8 * i));
+	   std::string cur (hex);
+	   if (seenFig15. find (cur) == seenFig15. end ()) {
+	      if (seenFig15. size () > 200)
+	         seenFig15. clear ();
+	      seenFig15. insert (cur);
+	      fprintf (stderr, "EWF: FIG 0/15 CN %d OE %d len %d: %s\n",
+	               CN_bit, OE_bit, Length, hex);
+	   }
 	}
-	(void)secondsCount;
-	(void)phase;
-	(void)subChId;
-//	Handling the Statusfield
-	bitOffset += 8;
-//	Handling the location codes
-//	to be researched
+//
+//	heartbeat form. It is never sent while an alert is signalled,
+//	so an alert still marked active here has ended unnoticed
+//	(e.g. the signal was lost during the End phase).
+	if (Length <= 1) {
+	   if (!ewsHeartbeatSeen) {
+	      ewsHeartbeatSeen = true;
+	      fprintf (stderr, "EWS: ensemble participates in an EWS (heartbeat)\n");
+	      emit ewsPresent ();
+	   }
+	   if (theEws. active) {
+	      theEws. active = false;
+	      theEws. phase  = 3;
+	      fprintf (stderr, "EWS: heartbeat while alert active - alert on subCh %d ended\n",
+	               theEws. subChId);
+	      emit ewsAlert (3, theEws. subChId, theEws. stage, theEws. iid, "");
+	   }
+	   return;
+	}
+//
+//	alert in another ensemble: only report it, retuning is not done
+	if (OE_bit != 0) {
+	   uint16_t EId	= getBits (d, bitOffset, 16);
+	   bitOffset	+= 16;
+	   uint8_t status = bitOffset + 8 <= endBit ? getBits_8 (d, bitOffset) : 0;
+	   uint32_t key = ((uint32_t)EId << 8) | (status & 0x7F);
+	   if (key != ewsOtherEnsembleKey) {
+	      ewsOtherEnsembleKey = key;
+	      fprintf (stderr, "EWS: alert signalled in other ensemble 0x%04X, stage %d IId %d\n",
+	               EId, (status >> 4) & 7, status & 0xF);
+	   }
+	   return;
+	}
+
+	uint8_t phase	= getBits_2 (d, bitOffset);
+	uint8_t subChId	= getBits_6 (d, bitOffset + 2);
+	bitOffset	+= 8;
+	uint8_t sec	= 0;
+	if (phase == 0) {			// Pre-trigger: Rfa + Sec
+	   sec		= getBits_6 (d, bitOffset + 2);
+	   bitOffset	+= 8;
+	}
+//
+//	Sustain and End: Id field only
+	if (phase == 2) {
+	   if (theEws. active && (theEws. subChId == subChId)) {
+	      if (theEws. phase != 2) {
+	         theEws. phase = 2;
+	         fprintf (stderr, "EWS: alert on subCh %d in Sustain phase\n", subChId);
+	      }
+	      ewsAliveThrottled (subChId);
+	   }
+	   else if (!theEws. active) {
+//	   we missed the Trigger phase (e.g. tuned in late): treat as start
+	      theEws. active	= true;
+	      theEws. phase	= 2;
+	      theEws. subChId	= subChId;
+	      theEws. stage	= 0;
+	      theEws. iid	= 0;
+	      theEws. locations. clear ();
+	      theEws. setComplete = false;
+	      fprintf (stderr, "EWS: Sustain phase without Trigger seen, subCh %d\n", subChId);
+	      emit ewsAlert (2, subChId, 0, 0, "");
+	   }
+	   return;
+	}
+	if (phase == 3) {
+	   if (theEws. active) {
+	      theEws. active = false;
+	      theEws. phase  = 3;
+	      fprintf (stderr, "EWS: End phase, alert on subCh %d ended\n", subChId);
+	      emit ewsAlert (3, subChId, theEws. stage, theEws. iid, "");
+	   }
+	   ewsPreTriggerKey = 0xFFFFFFFF;
+	   return;
+	}
+//
+//	Pre-trigger and Trigger: status field and location codes
+	if (bitOffset + 8 > endBit)
+	   return;
+	uint8_t status	= getBits_8 (d, bitOffset);
+	bitOffset	+= 8;
+	uint8_t last	= (status >> 7) & 1;
+	uint8_t stage	= (status >> 4) & 7;
+	uint8_t iid	= status & 0xF;
+	(void)last;
+
+	QStringList codes;
+	uint8_t NFF	= 0;
+	while (bitOffset + 16 <= endBit)
+	   codes. append (readLocationCode (d, bitOffset, endBit, NFF));
+//
+//	an alert set starts with C/N = 0; the instance with NFF = 0
+//	completes the area description
+	uint32_t key = ((uint32_t)phase << 24) | ((uint32_t)subChId << 16) |
+	               ((uint32_t)stage << 8) | iid;
+	bool newAlert = false;
+	if (phase == 1) {
+	   uint32_t curKey = theEws. active ?
+	         (((uint32_t)1 << 24) | ((uint32_t)theEws. subChId << 16) |
+	          ((uint32_t)theEws. stage << 8) | theEws. iid) : 0xFFFFFFFF;
+	   newAlert = (curKey != key);
+	   if (newAlert) {
+	      theEws. active	= true;
+	      theEws. phase	= 1;
+	      theEws. subChId	= subChId;
+	      theEws. stage	= stage;
+	      theEws. iid	= iid;
+	      theEws. locations. clear ();
+	      theEws. setComplete = false;
+	   }
+	   if (CN_bit == 0)
+	      theEws. locations. clear ();
+	   for (auto &c : codes)
+	      if (!theEws. locations. contains (c))
+	         theEws. locations. append (c);
+	   if ((NFF == 0) && !theEws. setComplete) {
+	      theEws. setComplete = true;
+	      fprintf (stderr, "EWS: alert area complete, %d location code(s): %s\n",
+	               (int)theEws. locations. size (),
+	               theEws. locations. join (" "). toLatin1 (). data ());
+	   }
+	   if (newAlert) {
+	      fprintf (stderr, "EWS: TRIGGER subCh %d stage %d IId %d, %d location code(s) in this instance\n",
+	               subChId, stage, iid, (int)codes. size ());
+	      emit ewsAlert (1, subChId, stage, iid, codes. join (" "));
+	   }
+	   ewsAliveThrottled (subChId);
+	}
+	else {					// Pre-trigger: informational only
+	   if (key != ewsPreTriggerKey) {
+	      ewsPreTriggerKey = key;
+	      fprintf (stderr, "EWS: %s subCh %d stage %d IId %d, trigger at second %d, area %s\n",
+	               phaseNames [phase], subChId, stage, iid, sec,
+	               codes. join (" "). toLatin1 (). data ());
+	      emit ewsAlert (0, subChId, stage, iid, codes. join (" "));
+	   }
+	}
+}
+//
+//	One location code (TS 104 089 annex E/F):
+//	NFF (2) Zone (6) | SCF (1) Num digits (3) Digit 1 (4) |
+//	Other digits (4 x Num digits) | Padding (4 if Num digits odd) |
+//	Sub-codes (16 if SCF). Rendered as e.g. "Z1:5C+F300".
+QString	fibDecoder::readLocationCode (uint8_t *d, int &bitOffset,
+	                              int endBit, uint8_t &NFF) {
+	NFF		= getBits_2 (d, bitOffset);
+	uint8_t zone	= getBits_6 (d, bitOffset + 2);
+	uint8_t SCF	= getBits_1 (d, bitOffset + 8);
+	uint8_t nDigits	= getBits_3 (d, bitOffset + 9);
+	uint8_t digit1	= getBits_4 (d, bitOffset + 12);
+	bitOffset	+= 16;
+	QString code	= QString ("Z%1:%2"). arg (zone). arg (digit1, 0, 16). toUpper ();
+	for (int i = 0; (i < nDigits) && (bitOffset + 4 <= endBit); i ++) {
+	   code += QString ("%1"). arg (getBits_4 (d, bitOffset), 0, 16). toUpper ();
+	   bitOffset += 4;
+	}
+	if ((nDigits & 1) != 0)
+	   bitOffset += 4;			// padding
+	if (SCF != 0) {
+	   if (bitOffset + 16 <= endBit)
+	      code += QString ("+%1"). arg (getBits (d, bitOffset, 16), 4, 16, QChar ('0')). toUpper ();
+	   bitOffset += 16;
+	}
+	return code;
+}
+
+void	fibDecoder::ewsAliveThrottled (int subChId) {
+	int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>
+	           (std::chrono::steady_clock::now (). time_since_epoch ()). count ();
+	if (now - lastEwsAliveMs >= 1000) {
+	   lastEwsAliveMs = now;
+	   emit ewsAlive (subChId);
+	}
+}
+
+QString	fibDecoder::serviceNameOnSubChannel (int subChId) {
+uint32_t SId	= currentConfig -> SIdOnSubChannel (subChId);
+static uint32_t lastReported = 0xFFFFFFFF;
+	QString name	= SId == 0 ? QString ("") : theEnsemble. SIdToserv (SId);
+	if (SId != lastReported) {
+	   lastReported = SId;
+	   fprintf (stderr, "EWS: subCh %d carries SId 0x%X, service label '%s'\n",
+	            subChId, SId, name. toLatin1 (). data ());
+	}
+	return name;
 }
 //
 //	program type 8.1.5
@@ -897,6 +1106,9 @@ fibConfig *localBase	= CN_bit == 0 ? currentConfig : nextConfig;
 	         aC. asuFlags = asuFlags;
 	         aC. clusterId = clusterId;
 	         localBase -> add_to_announcement_table (aC);
+	         fprintf (stderr,
+	                  "EWF: FIG 0/18 SId 0x%04X ASu 0x%04X cluster 0x%02X\n",
+	                  SId, asuFlags, clusterId);
 	      }
 	   }
 	   bitOffset	+= nrClusters * 8;
@@ -924,13 +1136,44 @@ int16_t	bitOffset	= used * 8;
 	   bitOffset		+= 16;
 	   uint8_t newFlag	= getBits (d, bitOffset, 1);
 	   bitOffset		+= 1;
-	   uint8_t Rfa		= getBits (d, bitOffset, 1);
-	   (void)Rfa;
+	   uint8_t regionFlag	= getBits (d, bitOffset, 1);
 	   bitOffset		+= 1;
-//	   uint8_t subChId	= getBits (d, bitOffset, 6);
+	   uint8_t subChId	= getBits (d, bitOffset, 6);
 	   bitOffset		+= 6;
-//	   fprintf (stderr, "%d %d %d -> %d\n",
-//	                 clusterId, AswFlags, newFlag, subChId);
+//	Region flag set: one more byte (2 bit Rfa + 6 bit RegionId)
+	   if (regionFlag != 0)
+	      bitOffset		+= 8;
+//
+//	EWF: alarm announcements (EN 300 401 8.1.6.2). Cluster 0xFF is
+//	reserved for alarm announcements and implicitly covers all
+//	services; ASw flag bit 0 is the alarm type. Neither is ever
+//	in the FIG 0/18 table, so handle it here, before the regular
+//	cluster lookup.
+	   uint32_t key = ((uint32_t)clusterId << 24) |
+	                  ((uint32_t)AswFlags << 8) |
+	                  ((uint32_t)newFlag << 7) | subChId;
+	   if (key != lastFig19Key) {
+	      if (lastFig19Key != 0xFFFFFFFF)
+	         fprintf (stderr, "EWF: FIG 0/19 previous entry repeated %u times\n",
+	                  fig19Repeats);
+	      fprintf (stderr,
+	               "EWF: FIG 0/19 cluster 0x%02X ASw 0x%04X new %d region %d subCh %d\n",
+	               clusterId, AswFlags, newFlag, regionFlag, subChId);
+	      lastFig19Key = key;
+	      fig19Repeats = 0;
+	   }
+	   else
+	      fig19Repeats ++;
+	   bool isAlarmEntry = (clusterId == 0xFF) || ((AswFlags & 0x0001) != 0);
+	   if (isAlarmEntry) {
+	      bool active = (AswFlags & 0x0001) != 0;
+	      if ((active != ewfAlarmActive) ||
+	          (active && (subChId != ewfAlarmSubChId))) {
+	         ewfAlarmActive  = active;
+	         ewfAlarmSubChId = active ? subChId : -1;
+	         emit ewfAlarm (active, ewfAlarmSubChId);
+	      }
+	   }
 	   currentConfig -> check_announcements (clusterId, AswFlags, newFlag);
 	}
 }

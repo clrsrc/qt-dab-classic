@@ -454,6 +454,20 @@ private:
 #endif
 	bool			sourceDumping;
 	bool			audioDumping;
+//	EWS alert handling (TS 104 089 clause 7.6)
+	void			ewsStart		(int subChId, int stage,
+	                                                 int iid, const QString &source);
+	void			ewsStop			(const QString &why);
+	QTimer			ewsTimer;
+	bool			ewsActive;
+	bool			ewsSwitched;
+	int			ewsSubChId;
+	int			ewsStage;
+	int			ewsIId;
+	QString			ewsServiceName;
+	QString			ewsPreviousService;
+	int			ewsDismissedSubChId;
+	int			ewsDismissedIId;
 
 	QTimer			displayTimer;
 	QTimer			channelTimer;
@@ -491,6 +505,11 @@ signals:
 	void			call_scanButton		();
 	void			dlsText			(const QString &, int);
 	void			slideChanged		(const QPixmap &);
+//	EWS alert (FIG 0/15 or FIG 0/19) - consumed by the shell / EwfMonitor.
+//	stage: TS 104 089 stage code (7 = Test), iid: incident identifier
+	void			ewfAlarmChanged		(bool active, int subChId,
+	                                                 const QString &serviceName,
+	                                                 int stage, int iid);
 
 public slots:
 //	signals from the configuration window
@@ -645,6 +664,13 @@ public slots:
 
 //	signals from fib-decoder (EWF)
 	void			handleAlarmFlag		(bool active);
+	void			handleEwfAlarm		(bool active, int subChId);
+	void			handleEwsAlert		(int phase, int subChId,
+	                                                 int stage, int iid,
+	                                                 const QString &locations);
+	void			handleEwsAlive		(int subChId);
+	void			ewsWatchdog		();
+	void			ewsUserDismiss		();
 
 //	Local signals
 	void			no_signal_found		();

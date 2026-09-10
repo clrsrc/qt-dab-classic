@@ -85,6 +85,7 @@ public:
 //	servicing our subordinates
 //	for the ficHandler:
 	int		getServiceComp		(const QString &);
+	QString		serviceNameOnSubChannel	(int subChId);
 	int		getServiceComp		(uint32_t, int);
 //	int		getServiceComp_SCIds	(uint32_t SId, int SCIds);
 	bool		isPrimary		(const QString &);

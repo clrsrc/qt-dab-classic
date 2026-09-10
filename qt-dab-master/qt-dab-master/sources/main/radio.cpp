@@ -493,7 +493,19 @@ QString h;
 	theNewDisplay. ficError_display	-> setPalette (p);
 	p. setColor (QPalette::Highlight, Qt::green);
 //
-	audioDumping		= false;
+	audioDumping	= false;
+//	EWS
+	ewsActive		= false;
+	ewsSwitched		= false;
+	ewsSubChId		= -1;
+	ewsStage		= 0;
+	ewsIId			= 0;
+	ewsDismissedSubChId	= -1;
+	ewsDismissedIId		= -1;
+	ewsTimer. setSingleShot (true);
+	ewsTimer. setInterval (8000);
+	connect (&ewsTimer, &QTimer::timeout,
+	         this, &RadioInterface::ewsWatchdog);
 	sourceDumping		= false;
       
 	previous_idle_time	= 0;
@@ -940,9 +952,11 @@ QStringList s	= thePrinter. print (theOfdmHandler -> contentPrint ());
 	      if (reply == QMessageBox::Yes)
 	         the_uploader. loadUp (channel. ensembleName,
 	                               channel. Eid,
-	                               channel. channelName, 
+	                               channel. channelName,
 	                               theContentTable -> upload ());
-	   } catch (...) {}
+	   } catch (...) {
+//	best-effort upload; a failure must not interrupt the user
+	   }
 	}
 }
 
@@ -1791,6 +1805,8 @@ void	RadioInterface::showLabel	(const QString &s, int charset) {
 	   dynamicLabel	-> setStyleSheet (labelStyle);
 	   dynamicLabel	-> setText (s);
 	   emit dlsText (s, charset);
+	   if (s != "")
+	      fprintf (stderr, "DLS: %s\n", s. toUtf8 (). data ());
 	}
 
 	if ((s == "") || (dlTextFile == nullptr) ||
@@ -2971,7 +2987,9 @@ void	RadioInterface::stopScan_single () {
 	                               "result table",
 	                               theScanTable -> upload ());
 	      }
-	   } catch (...) {}
+	   } catch (...) {
+//	best-effort upload; a failure must not interrupt the user
+	   }
 	}
 
 	FILE *scanDumper_p	= theSCANHandler. askFileName ();
@@ -3535,15 +3553,157 @@ void	RadioInterface::scheduler_timeOut	(const QString &s) {
 	scheduleSelect (s);
 }
 
+//	FIG 0/0 "Al" bit: the ensemble supports alarm announcements.
+//	This is a capability flag, not an alarm - it is set permanently
+//	on ensembles that carry EWF, so only report it.
 void	RadioInterface::handleAlarmFlag (bool active) {
-	(void)active;
-	// EWF alarm handling is delegated to EwfMonitor
-	// when running in WinampShell mode.
-	// In classic mode, just log it for now.
+	fprintf (stderr, "EWF: ensemble alarm support (FIG 0/0 Al) %s\n",
+	         active ? "present" : "absent");
+}
+
+//	FIG 0/19 alarm announcement (cluster 0xFF / ASw bit 0), the
+//	classic DAB alarm mechanism. Handled like a Level 1 EWS alert.
+void	RadioInterface::handleEwfAlarm (bool active, int subChId) {
 	if (active)
-	   fprintf (stderr, "EWF: Alarm flag activated!\n");
+	   ewsStart (subChId, 0, 0, "FIG 0/19 alarm announcement");
 	else
-	   fprintf (stderr, "EWF: Alarm flag deactivated.\n");
+	   ewsStop ("FIG 0/19 alarm announcement ended");
+}
+
+//	FIG 0/15 (ETSI TS 104 089) alert phases. Pre-trigger is not
+//	evaluated by consumer receivers, Trigger/Sustain start or keep
+//	the alert, End terminates it.
+void	RadioInterface::handleEwsAlert (int phase, int subChId,
+	                                int stage, int iid,
+	                                const QString &locations) {
+static const char *phaseNames [] = {"Pre-trigger", "Trigger",
+	                                    "Sustain", "End"};
+	QString name = theOfdmHandler -> serviceNameOnSubChannel (subChId). trimmed ();
+	fprintf (stderr, "EWS: %s phase %s subCh %d (%s) stage %d IId %d area [%s]\n",
+	         QDateTime::currentDateTime ().
+	              toString ("hh:mm:ss.zzz"). toLatin1 (). data (),
+	         phaseNames [phase & 3], subChId,
+	         name == "" ? "unknown service" : name. toLatin1 (). data (),
+	         stage, iid, locations. toLatin1 (). data ());
+	if (phase == 0)
+	   return;
+	if ((phase == 1) || (phase == 2))
+	   ewsStart (subChId, stage, iid, "FIG 0/15");
+	else {
+	   ewsStop ("End phase signalled");
+	   ewsDismissedSubChId	= -1;
+	   ewsDismissedIId	= -1;
+	}
+}
+
+void	RadioInterface::handleEwsAlive (int subChId) {
+	if (ewsActive && (subChId == ewsSubChId))
+	   ewsTimer. start ();
+}
+
+void	RadioInterface::ewsWatchdog () {
+	ewsStop ("alert signalling no longer received");
+}
+
+//	called when the user dismisses the alert (EwfMonitor "Verstanden"):
+//	the same alert must not restart (TS 104 089 clause 7.6.4)
+void	RadioInterface::ewsUserDismiss () {
+	if (!ewsActive)
+	   return;
+	ewsDismissedSubChId	= ewsSubChId;
+	ewsDismissedIId		= ewsIId;
+	ewsStop ("dismissed by user");
+}
+
+static const char *ewsStageNames [] = {
+	"Level 1 Start", "Level 1 Update", "Level 1 Repeat", "Level 1 Critical",
+	"Level 2 Start", "Level 2 Update", "Level 2 Repeat", "Test"};
+
+void	RadioInterface::ewsStart (int subChId, int stage, int iid,
+	                          const QString &source) {
+	if (!running. load ())
+	   return;
+	ewsTimer. start ();
+	if (ewsActive && (ewsSubChId == subChId))
+	   return;
+	if ((subChId == ewsDismissedSubChId) && (iid == ewsDismissedIId))
+	   return;		// user terminated this alert already
+
+//	service labels are compared unpadded in the ensemble tables,
+//	so keep the raw label for switching and a trimmed one for display
+	QString rawName	= theOfdmHandler -> serviceNameOnSubChannel (subChId);
+	QString name	= rawName. trimmed ();
+	bool isTest	= stage == 7;
+	ewsActive	= true;
+	ewsSubChId	= subChId;
+	ewsStage	= stage & 7;
+	ewsIId		= iid;
+	ewsServiceName	= name;
+	fprintf (stderr, "EWS: ALARM START %s via %s, subCh %d service '%s', %s, IId %d\n",
+	         QDateTime::currentDateTime ().
+	              toString ("yyyy-MM-dd hh:mm:ss.zzz"). toLatin1 (). data (),
+	         source. toLatin1 (). data (), subChId,
+	         name. toLatin1 (). data (), ewsStageNames [ewsStage], iid);
+//
+//	classic GUI indication
+	serviceLabel	-> setStyleSheet ("QLabel {color : red}");
+	dynamicLabel	-> setStyleSheet ("QLabel {color : red; font-weight: bold}");
+	dynamicLabel	-> setText (QString ("NOTFALLWARNUNG%1: %2").
+	                             arg (isTest ? " (TEST)" : "").
+	                             arg (name == "" ? QString ("Unterkanal %1"). arg (subChId) : name));
+	emit ewfAlarmChanged (true, subChId, name, ewsStage, iid);
+//
+//	play the alert audio (clause 7.6.2): switch to the alert service,
+//	unless it is a test alert, a recording is running or the alert
+//	service is already playing
+	bool autoSwitch	= theQSettings -> value (EWF_AUTOSWITCH, true). toBool ();
+	QString rawCurrent = channel. currentService. isValid ?
+	                     channel. currentService. serviceName : "";
+	QString current	= rawCurrent. trimmed ();
+	if (!autoSwitch || isTest || (name == "")) {
+	   fprintf (stderr, "EWS: no service switch (%s)\n",
+	            !autoSwitch ? "auto switch disabled" :
+	            isTest ? "test alert" : "alert service unknown");
+	   return;
+	}
+	if (audioDumping) {
+	   fprintf (stderr, "EWS: no service switch, recording active\n");
+	   return;
+	}
+	if (current == name) {
+	   fprintf (stderr, "EWS: alert service is already playing\n");
+	   return;
+	}
+	if (!ewsSwitched)
+	   ewsPreviousService	= rawCurrent;
+	ewsSwitched		= true;
+	fprintf (stderr, "EWS: switching from '%s' to alert service '%s'\n",
+	         current. toLatin1 (). data (), name. toLatin1 (). data ());
+	localSelect_SS (rawName, channel. channelName);
+}
+
+void	RadioInterface::ewsStop (const QString &why) {
+	if (!ewsActive)
+	   return;
+	ewsTimer. stop ();
+	ewsActive	= false;
+	fprintf (stderr, "EWS: ALARM END %s (%s)\n",
+	         QDateTime::currentDateTime ().
+	              toString ("yyyy-MM-dd hh:mm:ss.zzz"). toLatin1 (). data (),
+	         why. toLatin1 (). data ());
+	if (running. load ()) {
+	   serviceLabel	-> setStyleSheet (labelStyle);
+	   dynamicLabel	-> setStyleSheet (labelStyle);
+	}
+	emit ewfAlarmChanged (false, ewsSubChId, ewsServiceName, ewsStage, ewsIId);
+	if (ewsSwitched) {
+	   ewsSwitched = false;
+	   if (running. load () && (ewsPreviousService. trimmed () != "") && !audioDumping) {
+	      fprintf (stderr, "EWS: returning to '%s'\n",
+	               ewsPreviousService. trimmed (). toLatin1 (). data ());
+	      localSelect_SS (ewsPreviousService, channel. channelName);
+	   }
+	}
 }
 
 void	RadioInterface::scheduledFICDumping () {
@@ -3754,7 +3914,10 @@ bool	RadioInterface::autoStart_http () {
 	       	                        theConfigHandler -> get_close_mapSelector (),	
 	                                "",
 	                                theQSettings);
-	} catch (int e) {}
+	} catch (int e) {
+	   (void)e;
+	   mapViewer = nullptr;	// construction failed; handled via null check
+	}
 	return mapViewer != nullptr;
 }
 //
@@ -3799,7 +3962,10 @@ void	RadioInterface::handle_httpButton	() {
 	       	                            theConfigHandler -> get_close_mapSelector (),
 	                                    saveName,
 	                                    theQSettings);
-	   } catch (int e) {}
+	   } catch (int e) {
+	      (void)e;
+	      mapViewer = nullptr;	// construction failed; handled via null check
+	   }
 	   if (mapViewer != nullptr)
 	      httpButton -> setText ("http-on");
 	}

@@ -193,6 +193,14 @@ int	fibConfig::subChId_for_SId	(const int compnr, const uint32_t SId) {
 	return -1;
 }
 
+//	EWS: the service whose (audio) component is carried in a subchannel
+uint32_t fibConfig::SIdOnSubChannel	(const int subChId) {
+	for (int i = 0; i < (int)(SC_C_table. size ()); i ++)
+	   if (subChannelOf (i) == subChId)
+	      return SC_C_table [i]. SId;
+	return 0;
+}
+
 int	fibConfig::subChId_in_SCId	(const int SCId) {
 	for (auto & scId : SC_P_table) {
 	   if (scId. SCId == SCId)

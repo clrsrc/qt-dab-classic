@@ -22,6 +22,10 @@
  */
 #
 #pragma once
+#include	<string>
+#include	<QStringList>
+#include	<set>
+#include	<chrono>
 //
 #include	<cstdint>
 #include	<cstdio>
@@ -68,6 +72,8 @@ public:
 	QList<contentType> contentPrint		();
 	bool		is_SPI			(const uint32_t);
 	std::vector<basicService> getServices	();
+//	EWS: name of the (primary) service carried in a subchannel
+	QString		serviceNameOnSubChannel	(int subChId);
 protected:
 	void		processFIB		(uint8_t *, uint16_t);
 private:
@@ -168,6 +174,30 @@ private:
 	                                         uint16_t flags,
 	                                         uint8_t SubChId);
 	uint8_t		prevAlarmFlag;
+//	EWF: alarm announcement state from FIG 0/19 (cluster 0xFF / ASw bit 0)
+	bool		ewfAlarmActive;
+	int		ewfAlarmSubChId;
+	uint32_t	lastFig19Key;
+	uint32_t	fig19Repeats;
+	std::set<std::string>	seenFig15;
+//	EWS (ETSI TS 104 089) alert state from FIG 0/15
+	struct ewsAlertState {
+	   bool		active;		// Trigger or Sustain phase seen
+	   uint8_t	phase;
+	   uint8_t	subChId;
+	   uint8_t	stage;
+	   uint8_t	iid;
+	   QStringList	locations;	// of the current alert set
+	   bool		setComplete;
+	};
+	ewsAlertState	theEws;
+	bool		ewsHeartbeatSeen;
+	uint32_t	ewsPreTriggerKey;
+	uint32_t	ewsOtherEnsembleKey;
+	int64_t		lastEwsAliveMs;
+	QString		readLocationCode	(uint8_t *d, int &bitOffset,
+	                                         int endBit, uint8_t &NFF);
+	void		ewsAliveThrottled	(int subChId);
 
 signals:
 	void		addToEnsemble		(const QString &, int, int);
@@ -181,6 +211,13 @@ signals:
 	void		setFreqList		();
 	void		tell_programType	(int, int);
 	void		alarmFlagChanged	(bool active);
+	void		ewfAlarm		(bool active, int subChId);
+//	EWS (FIG 0/15): phase 0 Pre-trigger, 1 Trigger, 2 Sustain, 3 End
+	void		ewsAlert		(int phase, int subChId,
+	                                         int stage, int iid,
+	                                         const QString &locations);
+	void		ewsAlive		(int subChId);
+	void		ewsPresent		();
 };
 
 
