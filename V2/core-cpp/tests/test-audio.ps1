@@ -49,7 +49,8 @@ $types = $ev | ForEach-Object { $_.type }
 $counts = $types | Group-Object | Sort-Object Count -Descending | ForEach-Object { "$($_.Name)=$($_.Count)" }
 Write-Host ("Fall 1: Laufzeit {0:N1} s (20 s Dateizeit, Faktor {1:N1}x), {2} Ereignisse: {3}" -f $sw.Elapsed.TotalSeconds, (20 / $sw.Elapsed.TotalSeconds), $ev.Count, ($counts -join ' '))
 
-$started = $ev | Where-Object { $_.type -eq 'service_started' } | Select-Object -First 1
+# (der SPI/EPG-Hintergrunddienst kann vor dem Primary-Dienst starten)
+$started = $ev | Where-Object { $_.type -eq 'service_started' -and $_.slot -eq 'primary' } | Select-Object -First 1
 if (-not $started) { $fail += 'kein service_started' }
 else {
     if ($started.sid -ne 53776) { $fail += "service_started fuer SId $($started.sid), erwartet 53776 (Dlf)" }

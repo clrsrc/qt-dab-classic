@@ -13,6 +13,7 @@
 #include "backend/backend-callbacks.h"
 #include "backend/audio/aac-decoder.h"
 #include "pad/mot-object.h"
+#include "backend/data/epg/epg-compiler.h"
 #include "audio/audio-sink.h"
 #include "audio/portaudio-sink.h"
 #include "audio/audio-pipeline.h"
@@ -22,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cctype>
 #include <cstdlib>
 #include <vector>
 
@@ -45,7 +47,19 @@ struct RunningService {
     Backend* backend = nullptr;                    // gehoert dem mscHandler
     bool started = false;
     std::string lastDls;
+    std::unique_ptr<epgCompiler> epg;              // Paketdienste: Binaer-EPG -> XML
+    bool autoEpg = false;                          // vom Kern gestarteter SPI-Dienst
+    // Das SPI-Karussell liefert jedes Objekt mit jeder neuen Verzeichnis-
+    // Version erneut (Bundesmux: alle ~25 min); unveraenderte Objekte
+    // (Name + FNV-1a-Hash des Inhalts) werden nicht noch einmal gemeldet.
+    std::map<std::string, uint64_t> motSeen;
 };
+
+static uint64_t fnv1a(const std::vector<uint8_t>& d) {
+    uint64_t h = 1469598103934665603ULL;
+    for (uint8_t b : d) { h ^= b; h *= 1099511628211ULL; }
+    return h;
+}
 
 std::string DabCore::version() {
 #ifdef DABCORE_VERSION
@@ -100,7 +114,9 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
         {"primary", nullptr}, {"background", nullptr},
         {"volume_percent", 70}, {"muted", false}, {"timeshift", nullptr},
         {"recording", false}, {"ews_enabled", true}, {"ews_autoswitch", true},
+        {"epg_enabled", options.epg},
     };
+    epgEnabled_.store(options.epg);
 #ifdef __ARCH_X86__
     __builtin_cpu_init();
     int has_avx2 = __builtin_cpu_supports("avx2") != 0 ? AVX_SUPPORT : 0;
@@ -238,7 +254,7 @@ void DabCore::wireCallbacks() {
         sink_(events::announcement(static_cast<uint16_t>(flags), subCh, flags != 0));
     };
     cb.nrServices = [](int) {};
-    cb.ltoEcc = [](int, int) {};
+    cb.ltoEcc = [this](int lto, int) { lto_.store(lto); };
     cb.freqListChanged = [] {};
     cb.clockTime = [this](uint32_t mjd, int h, int m, int s, int ltoMinutes,
                           int, int, int, int, int) {
@@ -309,6 +325,147 @@ void DabCore::emitService(const std::string& rawName, uint32_t sid, int subChId,
     }
     sink_(events::serviceAdded(s));
     maybeAutoSelect(s, replaced);
+    if (!s.isAudio) maybeStartEpg(s);
+}
+
+// v1 radio.cpp addToEnsemble: ein Paketdienst mit Appl-Type 7 (SPI, FIG 0/13)
+// laeuft immer im Hintergrund (Logos, EPG) – auch ohne gehoerten Dienst.
+void DabCore::maybeStartEpg(const ServiceInfo& s) {
+    if (!epgEnabled_.load() || scanning_.load() || !ofdm_) return;
+    if (!ofdm_->fic().is_SPI(s.sid)) return;
+    if (msc_->serviceRuns(s.sid, s.subCh)) return;
+    sink_(events::log("info", "SPI/EPG-Dienst erkannt: " + s.name + " (SId " + std::to_string(s.sid) + ")"));
+    selectService(s.sid, s.scids, Slot::Background);
+    std::lock_guard<std::mutex> lk(serviceM_);
+    if (auto* rs = findLocked(Slot::Background, s.sid)) rs->autoEpg = true;
+}
+
+void DabCore::setEpg(bool enabled) {
+    epgEnabled_.store(enabled);
+    { std::lock_guard<std::mutex> lk(stateM_); state_["epg_enabled"] = enabled; }
+    if (!enabled) {
+        // nur die vom Kern gestarteten SPI-Dienste beenden
+        std::lock_guard<std::mutex> lk(serviceM_);
+        std::vector<RunningService*> victims;
+        for (auto& rs : services_) if (rs->autoEpg) victims.push_back(rs.get());
+        for (auto* v : victims) stopOneLocked(v);
+        updateServiceState();
+        return;
+    }
+    std::vector<ServiceInfo> data;
+    {
+        std::lock_guard<std::mutex> lk(stateM_);
+        for (auto& e : state_["services"]) {
+            if (e.value("is_audio", true)) continue;
+            ServiceInfo si;
+            si.sid = e.value("sid", 0u); si.scids = e.value("scids", 0); si.name = e.value("name", "");
+            si.isAudio = false; si.subCh = e.value("sub_ch", 0);
+            data.push_back(si);
+        }
+    }
+    for (auto& si : data) maybeStartEpg(si);
+}
+
+uint16_t DabCore::currentEid() const {
+    std::lock_guard<std::mutex> lk(stateM_);
+    return state_["ensemble"].is_object() ? static_cast<uint16_t>(state_["ensemble"].value("eid", 0)) : 0;
+}
+
+bool DabCore::ensembleHasSid(uint32_t sid) const {
+    std::lock_guard<std::mutex> lk(stateM_);
+    for (auto& e : state_["services"])
+        if (e.value("sid", 0u) == sid) return true;
+    return false;
+}
+
+static std::string baseName(const std::string& name) {
+    size_t p = name.find_last_of("/\\");
+    return p == std::string::npos ? name : name.substr(p + 1);
+}
+
+static bool parseHex(const std::string& s, uint32_t& v) {
+    if (s.empty()) return false;
+    for (char c : s) if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+    v = static_cast<uint32_t>(std::strtoul(s.c_str(), nullptr, 16));
+    return true;
+}
+
+// "d210_Dlf_320x240.png", "10c4_ASA DE_320x240.png": Hex-SId (4 oder 8
+// Zeichen) bis zum ersten '_'. Der SPI-Dienst des Bundesmux traegt auch
+// Logos fremder Ensembles (Antenne DE, Bearer e0:11f7:...), deshalb ohne
+// Abgleich mit der Dienstliste.
+uint32_t DabCore::sidFromLogoName(const std::string& name) const {
+    std::string b = baseName(name);
+    size_t us = b.find('_');
+    if (us == std::string::npos || (us != 4 && us != 8)) return 0;
+    uint32_t sid = 0;
+    if (!parseHex(b.substr(0, us), sid)) return 0;
+    return sid;
+}
+
+// v1 extractName: Datum als 8 Ziffern (Jahr 2000..2030) an Position 0..3,
+// danach die erste 4-stellige Hex-Zahl, die eine SId des Ensembles ist
+// ("w20260914dd230c0.EHB" -> 20260914, 0xD230).
+bool DabCore::epgNameParts(const std::string& name, uint32_t& date, uint32_t& sid) const {
+    std::string real = baseName(name);
+    size_t dotat = real.rfind('.');
+    if (dotat == std::string::npos) return false;
+    size_t eos = 0;
+    for (size_t i = 0; i < 4 && i + 8 <= real.size(); ++i) {
+        std::string y4 = real.substr(i, 4);
+        if (!std::all_of(y4.begin(), y4.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) continue;
+        int y = std::atoi(y4.c_str());
+        if (y < 2000 || y > 2030) continue;
+        std::string d8 = real.substr(i, 8);
+        if (!std::all_of(d8.begin(), d8.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) return false;
+        date = static_cast<uint32_t>(std::atol(d8.c_str()));
+        eos = i + 8;
+        break;
+    }
+    if (eos == 0) return false;
+    for (size_t i = eos; dotat >= 3 && i < dotat - 3; ++i) {
+        uint32_t cand = 0;
+        if (!parseHex(real.substr(i, 4), cand)) continue;
+        if (ensembleHasSid(cand)) { sid = cand; return true; }
+    }
+    return false;
+}
+
+// v1 handle_motObject / process_epgData / showMOTlabel (SPI-Zweig)
+void DabCore::onMotObject(RunningService* rs, const std::vector<uint8_t>& data, const std::string& name,
+                          int contentType, uint32_t objSid) {
+    (void)objSid;
+    const uint16_t eid = currentEid();
+    const int base = (contentType >> 8) & 0x3F;
+    {
+        const uint64_t h = fnv1a(data) ^ (static_cast<uint64_t>(contentType) << 56);
+        auto it = rs->motSeen.find(name);
+        if (it != rs->motSeen.end() && it->second == h) return;   // unveraendert
+        rs->motSeen[name] = h;
+    }
+    if (base == MOTBaseTypeApplication) {           // EPG-Binaerobjekt (0x0701)
+        if (scanning_.load()) return;
+        if (!rs->epg) rs->epg = std::make_unique<epgCompiler>();
+        std::string xml;
+        int docType = rs->epg->process_epg(xml, data, lto_.load());
+        if (docType == noType) return;
+        if (docType == serviceInformationType) {
+            sink_(events::epgObject(eid, 0, 0, name, xml));
+            return;
+        }
+        uint32_t date = 0, sid = 0;
+        if (!epgNameParts(name, date, sid)) {
+            sink_(events::log("debug", "EPG-Objekt ohne Datum/SId im Namen: " + name));
+            return;
+        }
+        sink_(events::epgObject(eid, sid, date, name, xml));
+        return;
+    }
+    if (base == MOTBaseTypeImage || base == MOTBaseTypeText ||
+        base == MOTBaseTypeGeneralData || base == MOTBaseTypeTransport) {
+        if (name.empty()) return;
+        sink_(events::motObject(eid, sidFromLogoName(name), static_cast<uint16_t>(contentType), name, data));
+    }
 }
 
 // Headless-Auswahl (--service / --all-audio): laeuft im OFDM-Thread.
@@ -435,6 +592,7 @@ bool DabCore::handle(const json& c) {
     }
     if (type == "start_frame_dump") { startFrameDump(c.value("path", "")); return true; }
     if (type == "stop_frame_dump") { stopFrameDump(); return true; }
+    if (type == "set_epg") { setEpg(c.value("enabled", true)); return true; }
     if (type == "set_ews") {
         std::lock_guard<std::mutex> lk(stateM_);
         state_["ews_enabled"] = c.value("enabled", true);
@@ -508,11 +666,13 @@ void DabCore::wireBackend(RunningService* rs) {
                                     int contentType, bool dirElement, uint32_t objSid) {
         (void)dirElement;
         // X-PAD-Slides eines Audiodienstes -> mot_slide; alles aus
-        // Paketdiensten (SPI/EPG, Logos) -> mot_object mit dem SId des Objekts.
-        if (rs->isAudio && ((contentType >> 8) & 0x3F) == MOTBaseTypeImage)
-            sink_(events::motSlide(slot, rs->sid, motMimeType(contentType), name, data));
-        else
-            sink_(events::motObject(objSid, static_cast<uint16_t>(contentType), name, data));
+        // Paketdiensten (SPI: Logos, EPG) -> onMotObject.
+        if (rs->isAudio) {
+            if (((contentType >> 8) & 0x3F) == MOTBaseTypeImage)
+                sink_(events::motSlide(slot, rs->sid, motMimeType(contentType), name, data));
+            return;
+        }
+        onMotObject(rs, data, name, contentType, objSid);
     };
     if (rs->isAudio) {
         cb.pcm = [rs](const complex16* pcm, int n, int rate, bool ps, bool sbr, bool stereo) {
@@ -600,7 +760,9 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
                                   " (SId " + std::to_string(sid) + ", SubCh " + std::to_string(rs->subCh) +
                                   ", CU " + std::to_string(d.startAddr) + "+" + std::to_string(d.length) +
                                   ", " + std::to_string(d.bitRate) + " kbit/s, " +
-                                  (d.shortForm ? "UEP " : "EEP ") + std::to_string(d.protLevel) + ")"));
+                                  (d.shortForm ? "UEP " : "EEP ") + std::to_string(d.protLevel) +
+                                  (rs->isAudio ? "" : ", DSCTy " + std::to_string(static_cast<const packetdata&>(d).DSCTy) +
+                                                      ", Appl-Type " + std::to_string(static_cast<const packetdata&>(d).appType)) + ")"));
     }
     if (!rs->isAudio) {
         rs->started = true;

@@ -68,8 +68,12 @@ json serviceStats(Slot slot, uint32_t sid, uint16_t frameErrors, uint16_t rsErro
 json dls(Slot slot, uint32_t sid, const std::string& text);
 json dlPlus(Slot slot, uint32_t sid, bool itemToggle, bool itemRunning, const std::vector<std::pair<uint8_t, std::string>>& tags);
 json motSlide(Slot slot, uint32_t sid, const std::string& mime, const std::string& name, const std::vector<uint8_t>& data);
-json motObject(uint32_t sid, uint16_t contentType, const std::string& name, const std::vector<uint8_t>& data);
-json epgObject(uint32_t sid, uint32_t dateYyyymmdd, const std::string& xml);
+// MOT-Objekt eines Paketdienstes (SPI-Logo, Text, ...): sid = Dienst, dem
+// das Objekt gilt (aus dem Namen "d210_Dlf_32x32.png"), sonst 0; eid = Ensemble.
+json motObject(uint16_t eid, uint32_t sid, uint16_t contentType, const std::string& name, const std::vector<uint8_t>& data);
+// EPG-Sendeplan (sid/date aus dem MOT-Namen) oder Service-Information
+// (sid = 0, date = 0; v1: list.xml) als XML-Text des epg-compilers.
+json epgObject(uint16_t eid, uint32_t sid, uint32_t dateYyyymmdd, const std::string& name, const std::string& xml);
 json announcement(uint16_t kind, uint8_t subCh, bool active);
 
 json audioFormat(uint32_t rate, uint8_t channels);

@@ -55,6 +55,9 @@ struct CoreOptions {
     std::string autoWav;        // WAV-Dump des Primary-Dienstes ab Start
     // Verweilzeit je Kanal im Scan (v1 switchDelay, Default 6 s)
     int scanDwellMs = 6000;
+    // SPI/EPG-Paketdienst des Ensembles automatisch als Background-Slot
+    // starten (Logos, EPG); Kommando set_epg{enabled} schaltet zur Laufzeit.
+    bool epg = true;
 };
 
 struct RunningService;
@@ -123,6 +126,21 @@ private:
     void stopOneLocked(RunningService* rs);
     RunningService* findLocked(Slot slot, int64_t sid);
     void wireBackend(RunningService* rs);
+    // MOT-Objekt eines Paketdienstes einordnen (v1 handle_motObject):
+    // Bild -> mot_object (Logo), Application -> epg-compiler -> epg_object,
+    // sonst mot_object. Laeuft im Backend-Thread des Dienstes.
+    void onMotObject(RunningService* rs, const std::vector<uint8_t>& data, const std::string& name,
+                     int contentType, uint32_t objSid);
+    // SPI-Dienst (FIG 0/13 Appl-Type 7) automatisch als Background starten
+    void maybeStartEpg(const ServiceInfo& s);
+    void setEpg(bool enabled);
+    uint16_t currentEid() const;
+    // SId eines Ensemble-Dienstes aus dem Objektnamen (4/8 Hex-Zeichen vor '_'), sonst 0
+    uint32_t sidFromLogoName(const std::string& name) const;
+    // v1 radio.cpp extractName: Datum (8 Ziffern, Jahr 2000..2030) und
+    // 4-stellige SId eines Ensemble-Dienstes aus dem MOT-Namen
+    bool epgNameParts(const std::string& name, uint32_t& date, uint32_t& sid) const;
+    bool ensembleHasSid(uint32_t sid) const;
     void updateServiceState();
     bool startRecording(Slot slot, int64_t sid, const std::string& path, const json& format);
     void stopRecording(Slot slot, int64_t sid);
@@ -171,6 +189,9 @@ private:
     std::map<std::string, ServiceInfo> autoCandidates_;   // Teilstring-Treffer je --service
     std::chrono::steady_clock::time_point autoCandidateSince_{};
     bool autoWavStarted_ = false;
+    // EPG/SPI-Hintergrunddienst
+    std::atomic<bool> epgEnabled_{true};
+    std::atomic<int> lto_{0};                // FIG 0/9 LTO (Stunden), fuer den epg-compiler
 
     // Drosselung latest-wins-Ereignisse
     std::chrono::steady_clock::time_point lastSnr_{}, lastFicQuality_{}, lastFreqOffset_{};

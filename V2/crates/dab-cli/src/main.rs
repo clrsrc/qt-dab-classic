@@ -2,8 +2,9 @@
 //!
 //! ```text
 //! dab-cli replay <datei.uff|.iq> [--service NAME|0xSID] [--wav out.wav] [--events out.jsonl] [--duration S] [--loop] [--fast]
+//!                [--epg-dir PFAD]
 //! dab-cli live   --channel 5C [--service Dlf] [--device hackrf|rtlsdr] [--events out.jsonl] [--duration S]
-//!                [--gain LNA,VGA,AMP] [--no-agc] [--iq-dump out.uff]
+//!                [--gain LNA,VGA,AMP] [--no-agc] [--iq-dump out.uff] [--epg-dir PFAD]
 //! dab-cli scan   [--device hackrf|rtlsdr] [--gain LNA,VGA,AMP] [--events out.jsonl]   # Band III, Tabelle
 //! dab-cli spike  [--seconds 10]        # IPC-Durchsatz mit dem Kernstub messen
 //! ```
@@ -55,6 +56,10 @@ enum Sub {
         /// Ohne Echtzeit-Pacing (so schnell wie moeglich)
         #[arg(long)]
         fast: bool,
+        /// EPG-XML (<eid>/<yyyymmdd>_<SID>_SI.xml, list.xml) und MOT-Objekte
+        /// (<eid>/<name>) zur Abnahme in diesen Ordner schreiben
+        #[arg(long)]
+        epg_dir: Option<PathBuf>,
     },
     /// Live-Empfang
     Live {
@@ -77,6 +82,9 @@ enum Sub {
         /// IQ-Dump der Quelle als .uff mitschreiben
         #[arg(long)]
         iq_dump: Option<PathBuf>,
+        /// EPG-XML und MOT-Objekte zur Abnahme in diesen Ordner schreiben
+        #[arg(long)]
+        epg_dir: Option<PathBuf>,
     },
     /// Band-III-Scan
     Scan {
@@ -114,7 +122,7 @@ fn main() -> Result<()> {
     log::info!("Kern gestartet, PID {}", backend.pid());
 
     let result = match cli.cmd {
-        Sub::Replay { file, service, wav, events, duration: _, r#loop, fast } => {
+        Sub::Replay { file, service, wav, events, duration: _, r#loop, fast, epg_dir } => {
             let file = file.canonicalize().unwrap_or(file);
             run_session(
                 &backend,
@@ -124,10 +132,10 @@ fn main() -> Result<()> {
                 wav,
                 events,
                 None,   // Dateizeit-Limit setzt der Kern um (--duration oben)
-                LiveOptions::default(),
+                LiveOptions { epg_dir, ..LiveOptions::default() },
             )
         }
-        Sub::Live { channel, service, device, events, duration, gain, no_agc, iq_dump } => run_session(
+        Sub::Live { channel, service, device, events, duration, gain, no_agc, iq_dump, epg_dir } => run_session(
             &backend,
             device_source(&device)?,
             Some(channel),
@@ -135,7 +143,7 @@ fn main() -> Result<()> {
             None,
             events,
             duration,
-            LiveOptions { gain: gain.as_deref().map(parse_gain).transpose()?, agc: !no_agc, iq_dump },
+            LiveOptions { gain: gain.as_deref().map(parse_gain).transpose()?, agc: !no_agc, iq_dump, epg_dir },
         ),
         Sub::Scan { device, gain, events } => run_scan(&backend, device_source(&device)?, gain.as_deref().map(parse_gain).transpose()?, events),
         Sub::Spike { seconds } => run_spike(&backend, seconds),
@@ -171,6 +179,55 @@ struct LiveOptions {
     gain: Option<Gain>,
     agc: bool,
     iq_dump: Option<PathBuf>,
+    epg_dir: Option<PathBuf>,
+}
+
+/// Base64 (Standard-Alphabet, mit/ohne Padding) -> Bytes; ungueltige Zeichen werden uebersprungen.
+/// Eigene Minimalfassung, damit dab-cli keine weitere Abhaengigkeit braucht.
+fn base64_decode(s: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let mut acc: u32 = 0;
+    let mut bits = 0;
+    for c in s.bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => continue,
+        };
+        acc = (acc << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    out
+}
+
+/// Abnahme-Hilfe (nicht die spaetere App-Logik): schreibt `epg_object` als
+/// `<eid>/<yyyymmdd>_<SID>_SI.xml` (Service-Information als `<eid>/list.xml`)
+/// und `mot_object` als `<eid>/<name>`.
+fn write_epg_file(dir: &std::path::Path, ev: &Event) -> Result<()> {
+    let (sub, name, bytes): (u16, String, Vec<u8>) = match ev {
+        Event::EpgObject { eid, sid, date_yyyymmdd, xml, .. } => {
+            let name = if *sid == 0 { "list.xml".to_string() } else { format!("{date_yyyymmdd}_{sid:04X}_SI.xml") };
+            (*eid, name, xml.as_bytes().to_vec())
+        }
+        Event::MotObject { eid, name, data_b64, .. } => {
+            let clean: String = name.chars().map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c }).collect();
+            (*eid, clean, base64_decode(data_b64))
+        }
+        _ => return Ok(()),
+    };
+    let d = dir.join(format!("{sub:04X}"));
+    std::fs::create_dir_all(&d).with_context(|| format!("{}", d.display()))?;
+    let p = d.join(name);
+    std::fs::write(&p, bytes).with_context(|| format!("{}", p.display()))?;
+    Ok(())
 }
 
 /// Wartet auf `Ready`, oeffnet die Quelle, waehlt ggf. Kanal und Dienst und
@@ -251,6 +308,9 @@ fn run_session(
         };
         sink.write(start.elapsed(), &ev)?;
         print_event(start.elapsed(), &ev);
+        if let Some(d) = &live.epg_dir {
+            write_epg_file(d, &ev)?;
+        }
 
         match &ev {
             Event::ServiceAdded { service } => {
@@ -522,7 +582,8 @@ fn print_event(t: Duration, ev: &Event) {
         Event::Dls { sid, text, .. } => println!("{ts}  DLS  [{sid:04X}] {text}"),
         Event::DlPlus { sid, item_toggle, item_running, tags, .. } => println!("{ts}  DL+  [{sid:04X}] IT={} IR={} {tags:?}", *item_toggle as u8, *item_running as u8),
         Event::MotSlide { sid, mime, name, data_b64, .. } => println!("{ts}  SLIDE [{sid:04X}] {name} {mime} {} B", data_b64.len() * 3 / 4),
-        Event::MotObject { sid, content_type, name, data_b64 } => println!("{ts}  MOT   [{sid:04X}] {name} ct=0x{content_type:04X} {} B", data_b64.len() * 3 / 4),
+        Event::MotObject { sid, content_type, name, data_b64, .. } => println!("{ts}  MOT   [{sid:04X}] {name} ct=0x{content_type:04X} {} B", data_b64.len() * 3 / 4),
+        Event::EpgObject { sid, date_yyyymmdd, name, xml, .. } => println!("{ts}  EPG   [{sid:04X}] {date_yyyymmdd} {name} {} B XML", xml.len()),
         Event::AudioFormat { rate, channels } => println!("{ts}  AUDIO {rate} Hz, {channels} Kanaele"),
         Event::EwsAlert { phase, sub_ch, stage, iid, locations, is_test } => println!("{ts}  EWS  {phase:?} subCh={sub_ch} stage={stage} iid={iid} test={is_test} {} Orte", locations.len()),
         Event::EwsAlive { sub_ch: Some(sub_ch) } => println!("{ts}  EWS  alive subCh={sub_ch}"),

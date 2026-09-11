@@ -183,6 +183,11 @@ pub enum Command {
     SetEws { enabled: bool, autoswitch: bool },
     EwsDismiss,
 
+    // SPI/EPG: den Paketdienst des Ensembles (FIG 0/13 Appl-Type 7) automatisch
+    // als Background-Slot laufen lassen (Logos, EPG). Standard an; `false`
+    // beendet den vom Kern gestarteten Dienst.
+    SetEpg { enabled: bool },
+
     // Diagnose
     SetScopes { spectrum: bool, iq: bool, rate_hz: u8 },
     SetTii { enabled: bool, threshold: i16, dx_mode: bool },
@@ -235,10 +240,17 @@ pub enum Event {
     DlPlus { slot: ServiceSlot, sid: u32, item_toggle: bool, item_running: bool, tags: Vec<(u8, String)> },
     /// Slideshow-Bild (X-PAD); `data_b64` = Rohbytes (JPEG/PNG) Base64.
     MotSlide { slot: ServiceSlot, sid: u32, mime: String, name: String, data_b64: String },
-    /// Sonstiges MOT-Objekt (SPI-Logos, EPG-Rohdaten).
-    MotObject { sid: u32, content_type: u16, name: String, data_b64: String },
-    /// EPG (SPI) als XML-Text, wie vom epg-compiler erzeugt.
-    EpgObject { sid: u32, date_yyyymmdd: u32, xml: String },
+    /// MOT-Objekt aus dem SPI-Paketdienst (Logos als PNG/JPEG, Text-Objekte).
+    /// `sid` = Dienst, dem das Objekt gilt (aus dem Namen "d210_Dlf_32x32.png"
+    /// gegen die Dienstliste des Ensembles), sonst 0; `eid` = Ensemble;
+    /// `name` = MOT-Dateiname (Cache: `data/logos/<eid>/<name>`).
+    MotObject { eid: u16, sid: u32, content_type: u16, name: String, data_b64: String },
+    /// EPG (SPI) als XML-Text, wie vom epg-compiler erzeugt (Format wie v1
+    /// `<EId>/<yyyyMMdd>_<SId>_SI.xml`). Sendeplan: `sid`/`date_yyyymmdd`
+    /// aus dem MOT-Namen ("w20260914dd230c0.EHB"), Wurzel `<epg>`.
+    /// Service-Information (Logo-Zuordnung, v1 `list.xml`): `sid` = 0,
+    /// `date_yyyymmdd` = 0, Wurzel `<serviceInformation>`.
+    EpgObject { eid: u16, sid: u32, date_yyyymmdd: u32, name: String, xml: String },
     Announcement { kind: u16, sub_ch: u8, active: bool },
 
     // Audio
@@ -382,6 +394,18 @@ mod tests {
         // stop_service ohne sid bleibt kompakt
         let c = Command::StopService { slot: ServiceSlot::Background, sid: None };
         assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"type":"stop_service","slot":"background"}"#);
+    }
+
+    #[test]
+    fn epg_events() {
+        // C++-Seite: events::epgObject / events::motObject
+        let js = r#"{"type":"epg_object","eid":4284,"sid":53776,"date_yyyymmdd":20260914,"name":"w20260914dd210c0.EHB","xml":"<epg system=\"DAB\">\n</epg>\n"}"#;
+        let ev: Event = serde_json::from_str(js).unwrap();
+        assert_eq!(ev, Event::EpgObject { eid: 0x10BC, sid: 0xD210, date_yyyymmdd: 20260914, name: "w20260914dd210c0.EHB".into(), xml: "<epg system=\"DAB\">\n</epg>\n".into() });
+        let js = r#"{"type":"mot_object","eid":4284,"sid":53776,"content_type":515,"name":"d210_Dlf_32x32.png","data_b64":"iVBORw0KGgo="}"#;
+        let ev: Event = serde_json::from_str(js).unwrap();
+        assert_eq!(ev, Event::MotObject { eid: 0x10BC, sid: 0xD210, content_type: 0x0203, name: "d210_Dlf_32x32.png".into(), data_b64: "iVBORw0KGgo=".into() });
+        assert_eq!(serde_json::to_string(&Command::SetEpg { enabled: false }).unwrap(), r#"{"type":"set_epg","enabled":false}"#);
     }
 
     #[test]

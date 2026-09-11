@@ -5,7 +5,7 @@
 //            [--file DATEI [--loop] | --device hackrf|rtlsdr [--channel 5C]
 //                     [--gain LNA,VGA,AMP] [--no-agc] [--ppm N] [--scan]]
 //            [--service NAME|0xSID ...] [--all-audio] [--wav DATEI]
-//            [--iq-dump DATEI]
+//            [--iq-dump DATEI] [--no-epg]
 //
 // Ohne --file/--device: Kommandos von stdin (JSON-Zeilen), Ereignisse auf
 // stdout. Mit --file: Headless-Replay; Ereignisse auf stdout (oder --events),
@@ -27,6 +27,7 @@
 //             Tuner-Gain in 0,1 dB); --no-agc schaltet die SNR-Nachfuehrung ab
 // --scan      Band-III-Scan (single) statt Empfang; Tabelle auf stderr, dann Ende
 // --iq-dump   Samples der Quelle als .uff (8 Bit) mitschreiben
+// --no-epg    SPI/EPG-Paketdienst nicht automatisch im Hintergrund starten
 
 #include "dabcore/core.h"
 #include "dabcore/ipc.h"
@@ -68,6 +69,7 @@ struct Args {
     double duration = 0;
     bool fast = false;
     bool loop = false;
+    bool epg = true;
     bool help = false;
 };
 
@@ -93,6 +95,7 @@ Args parse(int argc, char** argv) {
         else if (s == "--wav") val(a.wav);
         else if (s == "--fast") a.fast = true;
         else if (s == "--loop") a.loop = true;
+        else if (s == "--no-epg") a.epg = false;
         else if (s == "--duration") { std::string d; val(d); a.duration = std::atof(d.c_str()); }
         else if (s == "-h" || s == "--help") a.help = true;
         else std::fprintf(stderr, "dabcored: unbekannte Option %s\n", s.c_str());
@@ -181,6 +184,7 @@ int main(int argc, char** argv) {
     opt.autoServices = args.services;
     opt.autoAllAudio = args.allAudio;
     opt.autoWav = args.wav;
+    opt.epg = args.epg;
     dabcore::DabCore core(sink, opt);
     core.setFileEndedHandler([&] { finish("file_ended"); });
 

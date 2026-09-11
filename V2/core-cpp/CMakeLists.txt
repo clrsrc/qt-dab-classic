@@ -55,6 +55,7 @@ target_include_directories(dabcore
             ${DABCORE_SRC}/backend/audio
             ${DABCORE_SRC}/backend/reed-solomon
             ${DABCORE_SRC}/backend/data
+            ${DABCORE_SRC}/backend/data/epg
             ${DABCORE_SRC}/pad
             ${DABCORE_SRC}/audio)
 target_compile_definitions(dabcore PUBLIC
@@ -123,4 +124,10 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-iqdump.ps1)
+    # SPI/EPG: automatischer Hintergrunddienst am 8-min-Ausschnitt des
+    # Warntag-Mitschnitts -> mot_object (PNG-Logos) und epg_object (XML)
+    add_test(NAME dabcored_epg
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-epg.ps1)
 endif()

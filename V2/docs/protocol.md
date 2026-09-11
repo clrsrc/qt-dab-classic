@@ -44,6 +44,7 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 | `timeshift_skip` | `delta_s` |
 | `set_ews` | `enabled`, `autoswitch` |
 | `ews_dismiss` | |
+| `set_epg` | `enabled` (Standard an). Der Kern startet den SPI/EPG-Paketdienst des Ensembles (FIG 0/13 Appl-Type 7, DSCTy 60, im Bundesmux „EPG Deutschland“) selbst als Background-Slot, sobald die FIC ihn meldet – auch ohne Primary-Dienst (z. B. nach dem Scan); Kanalwechsel/`close_device` beenden ihn, `enabled: false` beendet nur die vom Kern gestarteten Dienste. `service_started{slot: background, codec: {codec: data}}` wie bei `select_service`; `state.epg_enabled` |
 | `set_scopes` | `spectrum`, `iq`, `rate_hz` |
 | `set_tii` | `enabled`, `threshold`, `dx_mode` |
 | `get_state` | → `state_snapshot` |
@@ -78,8 +79,8 @@ und die App bei Überlast verwerfen darf.
 | `dls` | `slot`, `sid`, `text` – nur bei geändertem Text |
 | `dl_plus` | `slot`, `sid`, `item_toggle`, `item_running`, `tags: [[content_type, text], ...]` – je DL+-Kommando (TS 102 980), alle Content-Types 0..63, Text = Ausschnitt des letzten vollständigen Labels |
 | `mot_slide` | `slot`, `sid`, `mime`, `name`, `data_b64` (X-PAD-Slideshow eines Audiodienstes) |
-| `mot_object` | `sid`, `content_type`, `name`, `data_b64` |
-| `epg_object` | `sid`, `date_yyyymmdd`, `xml` |
+| `mot_object` | `eid`, `sid`, `content_type`, `name`, `data_b64` – Objekt aus dem SPI-Paketdienst (Logos PNG `0x0203`/JPEG `0x0201`, selten Text). `sid` = Dienst, dem das Logo gilt: die Hex-SId vor dem ersten `_` des Namens (`d210_Dlf_320x240.png`, `10c4_ASA DE_320x240.png`), wenn sie ein Dienst des Ensembles ist, sonst 0. Jedes Objekt kommt einmal; Wiederholungen des Karussells (neue MOT-Verzeichnisversion, Bundesmux alle ~25 min) meldet der Kern nur bei geändertem Inhalt. Cache (App): `data/logos/<eid>/<name>`, größtes PNG je SId; die Zuordnung Logo→Dienst steht außerdem in der Service-Information (`epg_object` mit `sid` 0) |
+| `epg_object` | `eid`, `sid`, `date_yyyymmdd`, `name`, `xml` – XML-Text des portierten epg-compilers (TS 102 371 → Format wie v1 `Qt-DAB-files/<EId>/<yyyyMMdd>_<SId>_SI.xml`, Wurzel `<epg system="DAB">`, Zeiten `yyyy-M-dTHH:mm`, Dauer `PTnnHnnM`). Sendeplan: `sid`/`date_yyyymmdd` aus dem MOT-Namen (`w20260914dd230c0.EHB` → 20260914 / 0xD230, wie v1 `extractName`), Cache (App): `data/epg/<eid>/<yyyymmdd>_<SID>_SI.xml`. Service-Information (Logo-Zuordnung, Wurzel `<serviceInformation>`, v1 `list.xml`): `sid` = 0, `date_yyyymmdd` = 0. Im Bundesmux senden nur die Deutschlandradio-Dienste (Dlf, Dlf Kultur, Dlf Nova) EPG, je Tag eine Datei, heute bis +5 Tage; ein Karussell-Umlauf dauert einige Minuten |
 | `announcement` | `kind`, `sub_ch`, `active` |
 | `audio_format` | `rate`, `channels` (nach `service_started` und bei Wechsel; PCM ist immer als L/R-Paare unterwegs, `channels` = 2) |
 | `audio_level` **LW** | `left`, `right` |
@@ -99,7 +100,7 @@ und die App bei Überlast verwerfen darf.
 | `spectrum` **LW** | `bins_b64` (dB 0..255 je Bin) |
 | `iq_samples` **LW** | `iq_b64` |
 | `log` | `level: error\|warn\|info\|debug`, `text` |
-| `state_snapshot` | `state: {...}` (siehe `CoreState`) |
+| `state_snapshot` | `state: {...}` (siehe `CoreState`; zusätzlich `epg_enabled`) |
 | `exiting` | `reason` |
 
 ## Beispiel
