@@ -74,7 +74,8 @@ json audioDevices(const std::vector<std::string>& names, int current);
 
 json ewsPresent();
 json ewsAlert(EwsPhase phase, uint8_t subCh, uint8_t stage, uint16_t iid, const std::vector<std::string>& locations, bool isTest);
-json ewsAlive(uint8_t subCh);
+// subCh < 0: Heartbeat ohne aktiven Alarm (sub_ch = null)
+json ewsAlive(int subCh);
 json ewfAlarm(bool active, uint8_t subCh);
 json ewsSwitched(uint32_t toSid, int64_t fromSid /* <0 = keiner */);
 

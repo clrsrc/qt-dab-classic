@@ -44,6 +44,20 @@ cargo build --release
 cargo test
 .\target\release\dab-cli.exe spike --seconds 5
 .\target\release\dab-cli.exe replay ..\Warntag-2026\cuts\warnung-110030-2min.uff --service Dlf --events out.jsonl
+.\target\release\dab-cli.exe replay ..\Warntag-2026\test\final-l32-g40-60s.uff --fast --events out.jsonl   # ohne Echtzeit-Pacing
+```
+
+Kernprozess direkt (Headless, ohne Rust): `--fast` spielt ohne Pacing,
+`--duration S` endet nach S Sekunden *Dateizeit*, am Dateiende folgt
+`file_ended` und `exiting`:
+
+```powershell
+.\core-cpp\build\dabcored.exe --no-audio --file ..\Warntag-2026\test\final-l32-g40-60s.uff --fast --duration 20 --events out.jsonl
+```
+
+Stand Spike 2: Datei → Sync → OFDM → FIC (Ensemble, Dienste, Uhrzeit, TII,
+EWS FIG 0/15 und 0/19) ist Qt-frei in `libdabcore` portiert; der MSC-Pfad
+(Audio, PAD, MOT, EPG) folgt in M0.
 ```
 
 Oberfläche (Entwicklung mit Hot-Reload):

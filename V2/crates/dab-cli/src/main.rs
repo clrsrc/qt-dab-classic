@@ -1,7 +1,7 @@
 //! DAB Classic – `dab-cli`: Headless-Treiber.
 //!
 //! ```text
-//! dab-cli replay <datei.uff|.iq> [--service NAME|0xSID] [--wav out.wav] [--events out.jsonl] [--duration S]
+//! dab-cli replay <datei.uff|.iq> [--service NAME|0xSID] [--wav out.wav] [--events out.jsonl] [--duration S] [--loop] [--fast]
 //! dab-cli live   --channel 5C [--service Dlf] [--device hackrf|rtlsdr] [--events out.jsonl]
 //! dab-cli spike  [--seconds 10]        # IPC-Durchsatz mit dem Kernstub messen
 //! ```
@@ -50,6 +50,9 @@ enum Sub {
         /// Datei in Schleife abspielen
         #[arg(long)]
         r#loop: bool,
+        /// Ohne Echtzeit-Pacing (so schnell wie moeglich)
+        #[arg(long)]
+        fast: bool,
     },
     /// Live-Empfang
     Live {
@@ -91,11 +94,11 @@ fn main() -> Result<()> {
     log::info!("Kern gestartet, PID {}", backend.pid());
 
     let result = match cli.cmd {
-        Sub::Replay { file, service, wav, events, duration, r#loop } => {
+        Sub::Replay { file, service, wav, events, duration, r#loop, fast } => {
             let file = file.canonicalize().unwrap_or(file);
             run_session(
                 &backend,
-                SourceKind::File { path: file, r#loop },
+                SourceKind::File { path: file, r#loop, fast },
                 None,
                 service,
                 wav,
@@ -236,7 +239,7 @@ fn run_spike(backend: &IpcBackend, seconds: f64) -> Result<()> {
     let mut sink = EventSink::open(None)?;
     wait_ready(&rx, &mut sink)?;
     // Der Kernstub (Spike 1) sendet nach OpenDevice{File} synthetische Ereignisse.
-    tx.send(Command::OpenDevice { source: SourceKind::File { path: PathBuf::from("spike"), r#loop: true } })?;
+    tx.send(Command::OpenDevice { source: SourceKind::File { path: PathBuf::from("spike"), r#loop: true, fast: false } })?;
     tx.send(Command::SetScopes { spectrum: true, iq: false, rate_hz: 10 })?;
     let start = Instant::now();
     let mut counts: HashMap<&'static str, u64> = HashMap::new();
@@ -380,7 +383,8 @@ fn print_event(t: Duration, ev: &Event) {
         Event::DlPlus { item_toggle, item_running, tags, .. } => println!("{ts}  DL+  IT={} IR={} {tags:?}", *item_toggle as u8, *item_running as u8),
         Event::MotSlide { mime, name, data_b64, .. } => println!("{ts}  SLIDE {name} {mime} {} B", data_b64.len() * 3 / 4),
         Event::EwsAlert { phase, sub_ch, stage, iid, locations, is_test } => println!("{ts}  EWS  {phase:?} subCh={sub_ch} stage={stage} iid={iid} test={is_test} {} Orte", locations.len()),
-        Event::EwsAlive { sub_ch } => println!("{ts}  EWS  alive subCh={sub_ch}"),
+        Event::EwsAlive { sub_ch: Some(sub_ch) } => println!("{ts}  EWS  alive subCh={sub_ch}"),
+        Event::EwsAlive { sub_ch: None } => println!("{ts}  EWS  heartbeat"),
         Event::EwsPresent => println!("{ts}  EWS  vorhanden"),
         Event::EwfAlarm { active, sub_ch } => println!("{ts}  EWF  alarm={active} subCh={sub_ch}"),
         Event::EwsSwitched { to_sid, from_sid } => println!("{ts}  EWS  umgeschaltet {from_sid:?} -> {to_sid:04X}"),

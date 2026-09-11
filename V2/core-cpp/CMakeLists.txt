@@ -36,9 +36,19 @@ file(GLOB_RECURSE DABCORE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/libdabcore/src/*.c)
 
 add_library(dabcore STATIC ${DABCORE_SOURCES})
+# Die portierten Qt-DAB-Quellen verwenden flache Includes ("dab-constants.h");
+# deshalb alle Teilverzeichnisse von src/ in den privaten Include-Pfad.
+set(DABCORE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/libdabcore/src)
 target_include_directories(dabcore
     PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/libdabcore/include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libdabcore/src)
+    PRIVATE ${DABCORE_SRC}
+            ${DABCORE_SRC}/device
+            ${DABCORE_SRC}/frontend
+            ${DABCORE_SRC}/fic
+            ${DABCORE_SRC}/dsp
+            ${DABCORE_SRC}/dsp/viterbi
+            ${DABCORE_SRC}/dsp/protection
+            ${DABCORE_SRC}/support)
 target_compile_definitions(dabcore PUBLIC
     __FFTW3__
     __ARCH_X86__           # Viterbi AVX2/SSE Runtime-Dispatch
@@ -75,4 +85,9 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-ready.ps1)
+    # Replay am 60-s-Referenzmitschnitt (SKIP, wenn die Datei fehlt)
+    add_test(NAME dabcored_replay
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-replay.ps1)
 endif()

@@ -96,7 +96,11 @@ json ewsAlert(EwsPhase phase, uint8_t subCh, uint8_t stage, uint16_t iid, const 
     auto j = ev("ews_alert"); j["phase"] = ewsPhaseName(phase); j["sub_ch"] = subCh; j["stage"] = stage;
     j["iid"] = iid; j["locations"] = loc; j["is_test"] = test; return j;
 }
-json ewsAlive(uint8_t subCh) { auto j = ev("ews_alive"); j["sub_ch"] = subCh; return j; }
+json ewsAlive(int subCh) {
+    auto j = ev("ews_alive");
+    if (subCh < 0) j["sub_ch"] = nullptr; else j["sub_ch"] = static_cast<uint8_t>(subCh);
+    return j;
+}
 json ewfAlarm(bool active, uint8_t subCh) { auto j = ev("ewf_alarm"); j["active"] = active; j["sub_ch"] = subCh; return j; }
 json ewsSwitched(uint32_t to, int64_t from) {
     auto j = ev("ews_switched"); j["to_sid"] = to;

@@ -1,20 +1,31 @@
 // DAB Classic – dabcored: Kernprozess.
 //
-//   dabcored [--no-audio] [--events DATEI] [--file DATEI [--service NAME] [--wav DATEI] [--duration S]]
+//   dabcored [--no-audio] [--events DATEI] [--fast] [--duration S]
+//            [--file DATEI [--loop] [--service NAME] [--wav DATEI]]
 //
 // Ohne --file: Kommandos von stdin (JSON-Zeilen), Ereignisse auf stdout.
 // Mit --file: Headless-Replay; Ereignisse auf stdout (oder --events), stdin
 // wird trotzdem gelesen, damit die App eingreifen kann. Der Prozess endet
-// bei EOF auf stdin oder beim Kommando {"type":"shutdown"}.
+// bei EOF auf stdin, beim Kommando {"type":"shutdown"} oder – ohne --loop –
+// am Dateiende (Ereignis file_ended, dann exiting).
+//
+// --fast      Datei ohne Echtzeit-Pacing abspielen (gilt auch fuer Dateien,
+//             die spaeter per open_device geoeffnet werden)
+// --duration  Wiedergabe nach S Sekunden *Dateizeit* beenden (nicht Echtzeit;
+//             mit --fast also entsprechend frueher)
 
 #include "dabcore/core.h"
 #include "dabcore/ipc.h"
 
+#include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -30,6 +41,8 @@ struct Args {
     std::string service;
     std::string wav;
     double duration = 0;
+    bool fast = false;
+    bool loop = false;
     bool help = false;
 };
 
@@ -43,6 +56,8 @@ Args parse(int argc, char** argv) {
         else if (s == "--file") val(a.file);
         else if (s == "--service") val(a.service);
         else if (s == "--wav") val(a.wav);
+        else if (s == "--fast") a.fast = true;
+        else if (s == "--loop") a.loop = true;
         else if (s == "--duration") { std::string d; val(d); a.duration = std::atof(d.c_str()); }
         else if (s == "-h" || s == "--help") a.help = true;
         else std::fprintf(stderr, "dabcored: unbekannte Option %s\n", s.c_str());
@@ -55,7 +70,8 @@ Args parse(int argc, char** argv) {
 int main(int argc, char** argv) {
     Args args = parse(argc, argv);
     if (args.help) {
-        std::puts("dabcored [--no-audio] [--events DATEI] [--file DATEI [--service NAME] [--wav DATEI] [--duration S]]");
+        std::puts("dabcored [--no-audio] [--events DATEI] [--fast] [--duration S] "
+                  "[--file DATEI [--loop] [--service NAME] [--wav DATEI]]");
         return 0;
     }
 #ifdef _WIN32
@@ -79,23 +95,69 @@ int main(int argc, char** argv) {
     dabcore::ipc::EventWriter writer(*out);
     dabcore::CoreOptions opt;
     opt.audio = args.audio;
+    opt.fastReplay = args.fast;
+    opt.replayDurationS = args.duration;
     dabcore::DabCore core(writer.sink(), opt);
+
+    // Beenden: entweder stdin-EOF/shutdown (Kommandothread) oder Dateiende.
+    std::mutex m;
+    std::condition_variable cv;
+    bool done = false;
+    std::string exitReason;
+    auto finish = [&](const std::string& reason) {
+        std::lock_guard<std::mutex> lk(m);
+        if (!done) { done = true; exitReason = reason; }
+        cv.notify_all();
+    };
+    core.setFileEndedHandler([&] { finish("file_ended"); });
 
     if (!args.file.empty()) {
         core.handle({{"type", "open_device"},
-                     {"source", {{"kind", "file"}, {"path", args.file}, {"loop", false}}}});
-        // --service/--wav/--duration werden mit dem Empfangspfad (M0) wirksam.
+                     {"source", {{"kind", "file"}, {"path", args.file}, {"loop", args.loop}, {"fast", args.fast}}}});
+        // --service/--wav werden mit dem MSC-Pfad (M0) wirksam.
         if (!args.service.empty())
-            writer.push(dabcore::events::log("info", "--service " + args.service + " (M0)"));
+            writer.push(dabcore::events::log("info", "--service " + args.service + " (MSC folgt)"));
     }
 
-    dabcore::ipc::CommandReader reader(std::cin, writer.sink());
-    dabcore::json cmd;
-    bool shutdownRequested = false;
-    while (reader.next(cmd)) {
-        if (!core.handle(cmd)) { shutdownRequested = true; break; }
+    // Kommandothread: liest stdin, bis EOF oder shutdown.
+    std::mutex coreM;
+    std::thread reader([&] {
+        dabcore::ipc::CommandReader r(std::cin, writer.sink());
+        dabcore::json cmd;
+        while (r.next(cmd)) {
+            std::lock_guard<std::mutex> lk(coreM);
+            if (!core.handle(cmd)) { finish("shutdown"); return; }
+        }
+        if (std::getenv("DABCORE_TRACE")) std::fprintf(stderr, "dabcored: stdin EOF\n");
+        finish("stdin");
+    });
+
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, [&] { return done; });
     }
-    if (!shutdownRequested) writer.push(dabcore::events::exiting("stdin geschlossen"));
+    const bool trace = std::getenv("DABCORE_TRACE") != nullptr;
+    if (trace) std::fprintf(stderr, "dabcored: Ende wegen %s\n", exitReason.c_str());
+    {
+        std::lock_guard<std::mutex> lk(coreM);
+        if (trace) std::fprintf(stderr, "dabcored: coreM gehalten, close_device\n");
+        if (exitReason == "file_ended") {
+            core.handle({{"type", "close_device"}});
+            writer.push(dabcore::events::exiting("Dateiende"));
+        } else if (exitReason == "stdin") {
+            core.handle({{"type", "close_device"}});
+            writer.push(dabcore::events::exiting("stdin geschlossen"));
+        }
+    }
+    if (trace) std::fprintf(stderr, "dabcored: close_device fertig, writer.close\n");
     writer.close();
-    return 0;
+    out->flush();
+    if (trace) std::fprintf(stderr, "dabcored: writer geschlossen\n");
+    if (exitReason == "shutdown" || exitReason == "stdin") {
+        reader.join();
+        return 0;
+    }
+    // Der Kommandothread haengt noch in getline(stdin); Prozess direkt beenden.
+    std::fflush(stdout);
+    std::_Exit(0);
 }

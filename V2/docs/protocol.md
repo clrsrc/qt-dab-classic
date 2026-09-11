@@ -20,7 +20,7 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 
 | type | Felder |
 |---|---|
-| `open_device` | `source: {kind: hack_rf, serial?} \| {kind: rtl_sdr, index} \| {kind: file, path, loop}` |
+| `open_device` | `source: {kind: hack_rf, serial?} \| {kind: rtl_sdr, index} \| {kind: file, path, loop, fast?}` (`fast`: Datei ohne Echtzeit-Pacing; Standard = `--fast` von dabcored) |
 | `close_device` | |
 | `set_channel` | `channel` ("5C") |
 | `set_gain` | `gain: {lna, vga, amp}` |
@@ -68,7 +68,7 @@ und die App bei Überlast verwerfen darf.
 | `fic_quality` **LW** | `ok`, `total` |
 | `frequency_offset` **LW** | `hz` |
 | `ensemble_found` | `eid`, `name`, `channel` |
-| `service_added` | `service: {sid, scids, name, is_audio, is_primary, sub_ch, bitrate_kbps, pty}` |
+| `service_added` | `service: {sid, scids, name, is_audio, is_primary, sub_ch, bitrate_kbps, pty}` – kann für dasselbe `sid`/`scids` erneut kommen (z. B. sobald der Programmtyp aus FIG 0/17 bekannt ist); die App ersetzt den Eintrag |
 | `ensemble_reconfigured` | |
 | `clock_time` | `unix_utc`, `lto_minutes` |
 | `service_started` | `slot`, `sid`, `scids`, `codec: {codec: he_aac, sbr, ps, sample_rate} \| {codec: mp2, sample_rate}`, `stereo` |
@@ -86,7 +86,7 @@ und die App bei Überlast verwerfen darf.
 | `audio_devices` | `names[]`, `current?` |
 | `ews_present` | |
 | `ews_alert` | `phase: pre_trigger\|trigger\|sustain\|end`, `sub_ch`, `stage`, `iid`, `locations[]`, `is_test` |
-| `ews_alive` | `sub_ch` |
+| `ews_alive` | `sub_ch?` (Unterkanal des aktiven Alarms, höchstens 1/s Ensemble-Zeit; `null` = Heartbeat ohne Alarm, 1/s) |
 | `ewf_alarm` | `active`, `sub_ch` |
 | `ews_switched` | `to_sid`, `from_sid?` |
 | `recording_state` | `slot`, `active`, `path?`, `bytes`, `seconds` |

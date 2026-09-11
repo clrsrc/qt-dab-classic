@@ -28,7 +28,13 @@ pub enum SourceKind {
     /// RTL-SDR (librtlsdr zur Laufzeit geladen).
     RtlSdr { index: u32 },
     /// Datei-Wiedergabe: `.uff` (Qt-DAB XML-Format) oder rohe int8-IQ (`.iq`/`.raw`).
-    File { path: PathBuf, r#loop: bool },
+    /// `fast`: ohne Echtzeit-Pacing (Tests); Standard ist das `--fast` von dabcored.
+    File {
+        path: PathBuf,
+        r#loop: bool,
+        #[serde(default)]
+        fast: bool,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,7 +237,9 @@ pub enum Event {
     // EWS / EWF
     EwsPresent,
     EwsAlert { phase: EwsPhase, sub_ch: u8, stage: u8, iid: u16, locations: Vec<String>, is_test: bool },
-    EwsAlive { sub_ch: u8 },
+    /// Lebenszeichen der EWS-Signalisierung: `sub_ch` = Unterkanal des
+    /// aktiven Alarms (hoechstens 1/s), `None` = Heartbeat ohne Alarm (1/s).
+    EwsAlive { sub_ch: Option<u8> },
     EwfAlarm { active: bool, sub_ch: u8 },
     EwsSwitched { to_sid: u32, from_sid: Option<u32> },
 
@@ -321,7 +329,7 @@ mod tests {
     #[test]
     fn command_roundtrip() {
         let cmd = Command::OpenDevice {
-            source: SourceKind::File { path: PathBuf::from("x.uff"), r#loop: true },
+            source: SourceKind::File { path: PathBuf::from("x.uff"), r#loop: true, fast: false },
         };
         let s = serde_json::to_string(&cmd).unwrap();
         assert!(s.contains("\"type\":\"open_device\""));
