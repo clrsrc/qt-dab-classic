@@ -1,0 +1,72 @@
+// DAB Classic v3: portiert aus Qt-DAB sources/backend/backend-driver.cpp
+// (Jan van Katwijk, GPLv2+), siehe backend-driver.h.
+#
+/*
+ *    Copyright (C) 2014 .. 2025
+ *    Jan van Katwijk (J.vanKatwijk@gmail.com)
+ *    Lazy Chair Computing
+ *
+ *    This file is part of the Qt-DAB program
+ *
+ *    Qt-DAB is free software; you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation; either version 2 of the License, or
+ *    (at your option) any later version.
+ *
+ *    Qt-DAB is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with Qt-DAB; if not, write to the Free Software
+ *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+#include	"backend-driver.h"
+#include        "mp4processor.h"
+#include	"data-processor.h"
+//
+//	Driver program for the selected backend. Embodying that in a
+//	separate class makes the "Backend" class simpler.
+
+	backendDriver::backendDriver (const descriptorType	*d,
+	                              BackendCallbacks	*cb,
+	                              AacDecoderKind	aacKind) {
+	if (d -> type == AUDIO_SERVICE) {
+	   if (((const audiodata *)d) -> ASCTy == DAB_PLUS) {
+	      emitBe (cb -> log, "info", "MP4 service " + std::to_string (d -> bitRate) + " kbit/s");
+              theProcessor. reset (new mp4Processor (d	-> SId,
+	                                             d	-> bitRate,
+	                                             cb,
+	                                             aacKind));
+	   }
+	   else {
+	      // MP2 (DAB alt) wird in v3 nicht unterstuetzt (Entscheidung 19)
+	      emitBe (cb -> log, "warn", "MP2-Dienst wird nicht dekodiert");
+	      theProcessor. reset (new frameProcessor ());
+	   }
+	}
+	else
+	if (d -> type == PACKET_SERVICE) {
+	   theProcessor. reset (new dataProcessor ((const packetdata *)d, cb));
+	}
+	else
+	   theProcessor. reset (new frameProcessor ());	// should not happen
+	running. store (true);;
+}
+
+    backendDriver::~backendDriver() {
+	running. store (false);
+	theProcessor. reset ();
+}
+
+//
+void	backendDriver::addtoFrame (const std::vector<uint8_t> &theData) {
+	if (running. load ())
+	   theProcessor	-> addtoFrame (theData);
+}
+//
+void	backendDriver::stop	() {
+	running. store (false);
+	theProcessor -> stop ();
+}

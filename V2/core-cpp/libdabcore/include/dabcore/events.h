@@ -58,11 +58,13 @@ json ensembleReconfigured();
 json clockTime(int64_t unixUtc, int16_t ltoMinutes);
 
 json serviceStarted(Slot slot, uint32_t sid, uint8_t scids, bool heAac, bool sbr, bool ps, uint32_t sampleRate, bool stereo);
-json serviceStopped(Slot slot);
-json serviceStats(Slot slot, uint16_t frameErrors, uint16_t rsErrors, uint16_t aacErrors, uint16_t rsCorrections);
-json dls(Slot slot, const std::string& text);
-json dlPlus(Slot slot, bool itemToggle, bool itemRunning, const std::vector<std::pair<uint8_t, std::string>>& tags);
-json motSlide(Slot slot, const std::string& mime, const std::string& name, const std::vector<uint8_t>& data);
+// Paketdienst (MOT/EPG): codec {codec: data}
+json serviceStartedData(Slot slot, uint32_t sid, uint8_t scids);
+json serviceStopped(Slot slot, uint32_t sid);
+json serviceStats(Slot slot, uint32_t sid, uint16_t frameErrors, uint16_t rsErrors, uint16_t aacErrors, uint16_t rsCorrections);
+json dls(Slot slot, uint32_t sid, const std::string& text);
+json dlPlus(Slot slot, uint32_t sid, bool itemToggle, bool itemRunning, const std::vector<std::pair<uint8_t, std::string>>& tags);
+json motSlide(Slot slot, uint32_t sid, const std::string& mime, const std::string& name, const std::vector<uint8_t>& data);
 json motObject(uint32_t sid, uint16_t contentType, const std::string& name, const std::vector<uint8_t>& data);
 json epgObject(uint32_t sid, uint32_t dateYyyymmdd, const std::string& xml);
 json announcement(uint16_t kind, uint8_t subCh, bool active);
@@ -79,7 +81,7 @@ json ewsAlive(int subCh);
 json ewfAlarm(bool active, uint8_t subCh);
 json ewsSwitched(uint32_t toSid, int64_t fromSid /* <0 = keiner */);
 
-json recordingState(Slot slot, bool active, const std::string& path, uint64_t bytes, double seconds);
+json recordingState(Slot slot, uint32_t sid, bool active, const std::string& path, uint64_t bytes, double seconds);
 json timeshiftState(const char* mode, double bufferedS, double offsetS, double capacityS);
 
 json scanProgress(const std::string& channel, uint16_t index, uint16_t total);

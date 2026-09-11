@@ -3,8 +3,15 @@
 #include "device/xml-file-source.h"
 #include "device/raw-file-source.h"
 #include "frontend/ofdm-handler.h"
-#include "frontend/msc-sink.h"
 #include "frontend/receiver-callbacks.h"
+#include "backend/msc-handler.h"
+#include "backend/backend.h"
+#include "backend/backend-callbacks.h"
+#include "backend/audio/aac-decoder.h"
+#include "pad/mot-object.h"
+#include "audio/audio-sink.h"
+#include "audio/portaudio-sink.h"
+#include "audio/audio-pipeline.h"
 #include "support/process-params.h"
 
 #include <algorithm>
@@ -17,6 +24,24 @@
 namespace dabcore {
 
 using namespace std::chrono_literals;
+
+// Ein laufender Dienst: Backend (eigener Thread im mscHandler), seine
+// Callbacks (muessen das Backend ueberleben) und bei Audiodiensten die
+// AudioPipeline. Primary hat den Audio-Sink, Background keinen.
+struct RunningService {
+    Slot slot = Slot::Primary;
+    uint32_t sid = 0;
+    uint8_t scids = 0;
+    uint8_t subCh = 0;
+    bool isAudio = true;
+    std::string name;
+    std::unique_ptr<BackendCallbacks> cb;
+    std::unique_ptr<AudioPipeline> audio;
+    std::unique_ptr<descriptorType> descriptor;   // audiodata / packetdata
+    Backend* backend = nullptr;                    // gehoert dem mscHandler
+    bool started = false;
+    std::string lastDls;
+};
 
 std::string DabCore::version() {
 #ifdef DABCORE_VERSION
@@ -37,7 +62,32 @@ static bool endsWithNoCase(const std::string& s, const char* suffix) {
     return a.size() >= b.size() && a.compare(a.size() - b.size(), b.size(), b) == 0;
 }
 
-DabCore::DabCore(EventSink sink, CoreOptions options) : sink_(std::move(sink)), opt_(options) {
+static std::string lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
+
+// --service NAME|0xSID: 2 = exakter Name oder SId, 1 = Name-Teilstring, 0 = nein
+static int serviceMatch(const ServiceInfo& s, const std::string& wanted) {
+    if (wanted.size() > 2 && (wanted[0] == '0') && (wanted[1] == 'x' || wanted[1] == 'X')) {
+        char* end = nullptr;
+        unsigned long v = std::strtoul(wanted.c_str() + 2, &end, 16);
+        return (end && *end == '\0' && v == s.sid) ? 2 : 0;
+    }
+    std::string a = lower(trimRight(s.name)), b = lower(trimRight(wanted));
+    if (a == b) return 2;
+    return a.find(b) != std::string::npos ? 1 : 0;
+}
+
+static Slot slotFromJson(const json& c, Slot dflt = Slot::Primary) {
+    std::string s = c.value("slot", "");
+    if (s == "background") return Slot::Background;
+    if (s == "primary") return Slot::Primary;
+    return dflt;
+}
+
+DabCore::DabCore(EventSink sink, CoreOptions options)
+    : sink_(std::move(sink)), opt_(options), aacKind_(aacDecoderKindFromName(options.aacDecoder)) {
     state_ = {
         {"source", nullptr}, {"channel", nullptr},
         {"gain", {{"lna", 0}, {"vga", 0}, {"amp", false}}}, {"agc", true},
@@ -54,24 +104,45 @@ DabCore::DabCore(EventSink sink, CoreOptions options) : sink_(std::move(sink)), 
 #endif
     params_ = std::make_unique<processParams>();
     callbacks_ = std::make_unique<ReceiverCallbacks>();
-    mscSink_ = std::make_unique<NullMscSink>();
+    msc_ = std::make_unique<mscHandler>(params_->dabMode, cpuSupport_);
     wireCallbacks();
+    autoPending_ = opt_.autoServices;
 
-    std::vector<std::string> decoders;
-#ifdef __WITH_FAAD__
-    decoders.push_back("faad2");
-#endif
-#ifdef DABCORE_FDK_AAC_RUNTIME
-    decoders.push_back("fdk-aac(runtime)");
-#endif
-    sink_(events::ready(version(), 1, decoders));
+    sink_(events::ready(version(), 1, availableAacDecoders()));
     sink_(events::log("info", std::string("Viterbi: ") +
                               (cpuSupport_ & AVX_SUPPORT ? "avx2" : cpuSupport_ & SSE_SUPPORT ? "sse4.1" : "scalar")));
+
+#ifdef DABCORE_AUDIO_PORTAUDIO
+    if (opt_.audio) {
+        auto pa = std::make_unique<PortAudioSink>(1);
+        if (pa->ok()) {
+            audioSink_ = std::move(pa);
+        } else {
+            sink_(events::log("warn", "PortAudio nicht verfuegbar, Audio-Ausgabe aus"));
+        }
+    }
+#endif
+    if (!audioSink_) audioSink_ = std::make_unique<NullAudioSink>();
+    if (opt_.audio && !opt_.audioDevice.empty()) {
+        auto names = audioSink_->devices();
+        for (size_t i = 0; i < names.size(); ++i)
+            if (lower(names[i]).find(lower(opt_.audioDevice)) != std::string::npos) {
+                audioSink_->selectDevice(static_cast<int>(i));
+                break;
+            }
+    }
+    emitAudioDevices();
 }
 
 DabCore::~DabCore() {
     stopSpike();
     closeDevice();
+    stopFrameDump();
+}
+
+void DabCore::emitAudioDevices() {
+    if (!opt_.audio) return;
+    sink_(events::audioDevices(audioSink_->devices(), audioSink_->currentDevice()));
 }
 
 std::string DabCore::currentChannel() const {
@@ -210,9 +281,9 @@ void DabCore::emitService(const std::string& rawName, uint32_t sid, int subChId,
     } else if (subChId >= 0) {
         s.subCh = static_cast<uint8_t>(subChId);
     }
+    bool replaced = false;
     {
         std::lock_guard<std::mutex> lk(stateM_);
-        bool replaced = false;
         for (auto& e : state_["services"]) {
             if (e["sid"].get<uint32_t>() == sid && e["scids"].get<uint8_t>() == s.scids) {
                 e = s.toJson(); replaced = true;
@@ -221,6 +292,44 @@ void DabCore::emitService(const std::string& rawName, uint32_t sid, int subChId,
         if (!replaced) state_["services"].push_back(s.toJson());
     }
     sink_(events::serviceAdded(s));
+    maybeAutoSelect(s, replaced);
+}
+
+// Headless-Auswahl (--service / --all-audio): laeuft im OFDM-Thread.
+// Exakter Name/SId gewinnt sofort; ein Teilstring-Treffer ("Dlf" passt auch
+// auf "Dlf Kultur") wird erst genommen, wenn die FIC einen Dienst zum zweiten
+// Mal meldet, also alle Dienste einmal gesehen wurden.
+void DabCore::maybeAutoSelect(const ServiceInfo& s, bool seenBefore) {
+    if (autoPending_.empty() && !opt_.autoAllAudio) return;
+    auto slotFor = [this](const std::string& wanted) {
+        return (!opt_.autoServices.empty() && wanted == opt_.autoServices[0]) ? Slot::Primary : Slot::Background;
+    };
+    for (size_t i = 0; i < autoPending_.size(); ++i) {
+        int m = serviceMatch(s, autoPending_[i]);
+        if (m == 2) {
+            std::string wanted = autoPending_[i];
+            autoPending_.erase(autoPending_.begin() + static_cast<long>(i));
+            autoCandidates_.erase(wanted);
+            selectService(s.sid, s.scids, slotFor(wanted));
+            return;
+        }
+        if (m == 1 && !autoCandidates_.count(autoPending_[i])) autoCandidates_[autoPending_[i]] = s;
+    }
+    if (seenBefore && !autoCandidates_.empty()) {
+        for (size_t i = 0; i < autoPending_.size();) {
+            auto it = autoCandidates_.find(autoPending_[i]);
+            if (it == autoCandidates_.end()) { ++i; continue; }
+            std::string wanted = autoPending_[i];
+            ServiceInfo cand = it->second;
+            autoPending_.erase(autoPending_.begin() + static_cast<long>(i));
+            autoCandidates_.erase(it);
+            selectService(cand.sid, cand.scids, slotFor(wanted));
+        }
+    }
+    if (opt_.autoAllAudio && s.isAudio) {
+        if (msc_->serviceRuns(s.sid, s.subCh)) return;
+        selectService(s.sid, s.scids, Slot::Background);
+    }
 }
 
 bool DabCore::handle(const json& c) {
@@ -229,6 +338,7 @@ bool DabCore::handle(const json& c) {
     if (type == "shutdown") {
         stopSpike();
         closeDevice();
+        stopFrameDump();
         sink_(events::exiting("shutdown"));
         return false;
     }
@@ -243,8 +353,47 @@ bool DabCore::handle(const json& c) {
     }
     if (type == "set_gain") { std::lock_guard<std::mutex> lk(stateM_); state_["gain"] = c.value("gain", state_["gain"]); return true; }
     if (type == "set_agc") { std::lock_guard<std::mutex> lk(stateM_); state_["agc"] = c.value("enabled", true); return true; }
-    if (type == "set_volume") { std::lock_guard<std::mutex> lk(stateM_); state_["volume_percent"] = c.value("percent", 70); return true; }
-    if (type == "set_mute") { std::lock_guard<std::mutex> lk(stateM_); state_["muted"] = c.value("muted", false); return true; }
+    if (type == "select_service") {
+        selectService(c.value("sid", 0u), static_cast<uint8_t>(c.value("scids", 0)), slotFromJson(c));
+        return true;
+    }
+    if (type == "stop_service") {
+        stopService(slotFromJson(c), c.contains("sid") && c["sid"].is_number() ? c["sid"].get<int64_t>() : -1);
+        return true;
+    }
+    if (type == "set_volume") {
+        int v = std::clamp(c.value("percent", 70), 0, 100);
+        { std::lock_guard<std::mutex> lk(stateM_); state_["volume_percent"] = v; }
+        std::lock_guard<std::mutex> lk(serviceM_);
+        for (auto& rs : services_) if (rs->audio) rs->audio->setVolume(v);
+        return true;
+    }
+    if (type == "set_mute") {
+        bool m = c.value("muted", false);
+        { std::lock_guard<std::mutex> lk(stateM_); state_["muted"] = m; }
+        std::lock_guard<std::mutex> lk(serviceM_);
+        for (auto& rs : services_) if (rs->audio) rs->audio->setMute(m);
+        return true;
+    }
+    if (type == "set_audio_device") {
+        if (c.contains("index") && c["index"].is_number()) {
+            if (!audioSink_->selectDevice(c["index"].get<int>()))
+                sink_(events::log("warn", "Audiogeraet nicht waehlbar"));
+        }
+        emitAudioDevices();
+        return true;
+    }
+    if (type == "start_recording") {
+        startRecording(slotFromJson(c), c.contains("sid") && c["sid"].is_number() ? c["sid"].get<int64_t>() : -1,
+                       c.value("path", ""), c.value("format", json::object()));
+        return true;
+    }
+    if (type == "stop_recording") {
+        stopRecording(slotFromJson(c), c.contains("sid") && c["sid"].is_number() ? c["sid"].get<int64_t>() : -1);
+        return true;
+    }
+    if (type == "start_frame_dump") { startFrameDump(c.value("path", "")); return true; }
+    if (type == "stop_frame_dump") { stopFrameDump(); return true; }
     if (type == "set_ews") {
         std::lock_guard<std::mutex> lk(stateM_);
         state_["ews_enabled"] = c.value("enabled", true);
@@ -259,8 +408,7 @@ bool DabCore::handle(const json& c) {
         return true;
     }
 
-    // Alles Weitere (select_service, start_scan, Aufnahme, Timeshift, ...) folgt
-    // mit dem MSC-Pfad; bis dahin nur bestaetigen.
+    // Alles Weitere (start_scan, Timeshift, IQ-Dump, ...) folgt in M1/M4.
     sink_(events::log("debug", "Kommando noch ohne Wirkung: " + type));
     return true;
 }
@@ -270,6 +418,227 @@ void DabCore::emitState() {
     json j = {{"type", "state_snapshot"}, {"state", state_}};
     sink_(j);
 }
+
+// --- Dienste ----------------------------------------------------------------
+
+RunningService* DabCore::findLocked(Slot slot, int64_t sid) {
+    for (auto& rs : services_)
+        if (rs->slot == slot && (sid < 0 || rs->sid == static_cast<uint32_t>(sid))) return rs.get();
+    return nullptr;
+}
+
+void DabCore::updateServiceState() {
+    std::lock_guard<std::mutex> lk(stateM_);
+    state_["primary"] = nullptr;
+    state_["background"] = nullptr;
+    bool rec = false;
+    for (auto& rs : services_) {
+        json e = json::array({rs->sid, rs->scids});
+        if (rs->slot == Slot::Primary) state_["primary"] = e;
+        else if (state_["background"].is_null()) state_["background"] = e;
+        if (rs->audio && rs->audio->recording()) rec = true;
+    }
+    state_["recording"] = rec;
+}
+
+// Callbacks des Backends an Ereignisse binden (laufen im Backend-Thread).
+void DabCore::wireBackend(RunningService* rs) {
+    auto& cb = *rs->cb;
+    const Slot slot = rs->slot;
+    const uint32_t sid = rs->sid;
+    const uint8_t scids = rs->scids;
+    cb.log = [this](const char* level, const std::string& t) { sink_(events::log(level, t)); };
+    cb.stats = [this, slot, sid](int fe, int rse, int aac, int rsc) {
+        sink_(events::serviceStats(slot, sid, static_cast<uint16_t>(std::min(fe, 65535)),
+                                   static_cast<uint16_t>(std::min(rse, 65535)),
+                                   static_cast<uint16_t>(std::min(aac, 65535)),
+                                   static_cast<uint16_t>(std::min(rsc, 65535))));
+    };
+    // dls nur bei Aenderung (v1: dl-cache in der GUI); DL+ kommt je Kommando
+    cb.dls = [this, slot, sid, rs](const std::string& t) {
+        if (t == rs->lastDls) return;
+        rs->lastDls = t;
+        sink_(events::dls(slot, sid, t));
+    };
+    cb.dlPlus = [this, slot, sid](bool it, bool ir, const std::vector<std::pair<uint8_t, std::string>>& tags) {
+        sink_(events::dlPlus(slot, sid, it, ir, tags));
+    };
+    cb.motObject = [this, slot, rs](const std::vector<uint8_t>& data, const std::string& name,
+                                    int contentType, bool dirElement, uint32_t objSid) {
+        (void)dirElement;
+        // X-PAD-Slides eines Audiodienstes -> mot_slide; alles aus
+        // Paketdiensten (SPI/EPG, Logos) -> mot_object mit dem SId des Objekts.
+        if (rs->isAudio && ((contentType >> 8) & 0x3F) == MOTBaseTypeImage)
+            sink_(events::motSlide(slot, rs->sid, motMimeType(contentType), name, data));
+        else
+            sink_(events::motObject(objSid, static_cast<uint16_t>(contentType), name, data));
+    };
+    if (rs->isAudio) {
+        cb.pcm = [rs](const complex16* pcm, int n, int rate, bool ps, bool sbr, bool stereo) {
+            if (rs->audio) rs->audio->push(pcm, n, rate, ps, sbr, stereo);
+        };
+        cb.aacFrame = [this, slot](const uint8_t* loas, int len) {
+            if (slot != Slot::Primary) return;
+            std::lock_guard<std::mutex> lk(frameDumpM_);
+            if (frameDump_) std::fwrite(loas, 1, static_cast<size_t>(len), frameDump_);
+        };
+        rs->audio->setFormatHandler([this, rs, slot, sid, scids](int rate, bool ps, bool sbr, bool stereo, bool first) {
+            if (first) {
+                rs->started = true;
+                sink_(events::serviceStarted(slot, sid, scids, true, sbr, ps, static_cast<uint32_t>(rate), stereo));
+            }
+            sink_(events::audioFormat(static_cast<uint32_t>(rate), 2));
+        });
+    }
+}
+
+void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
+    std::lock_guard<std::mutex> lk(serviceM_);
+    if (closing_ || !ofdm_) {
+        sink_(events::log("warn", "select_service ohne geoeffnete Quelle"));
+        return;
+    }
+    auto& fic = ofdm_->fic();
+    int index = fic.getServiceComp_SCIds(sid, scids);
+    if (index < 0) index = fic.getServiceComp(sid, 0);
+    if (index < 0) {
+        sink_(events::log("warn", "Dienst nicht in der FIC: SId " + std::to_string(sid)));
+        return;
+    }
+    // Laeuft der Dienst im Slot schon?
+    if (auto* ex = findLocked(slot, sid)) {
+        if (ex->scids == scids) return;
+    }
+    if (slot == Slot::Primary) {
+        if (auto* p = findLocked(Slot::Primary, -1)) {
+            // Regel wie v1 localSelect_SS: kein Umschalten bei laufender Aufnahme
+            if (p->audio && p->audio->recording()) {
+                sink_(events::log("warn", "Dienstwechsel blockiert: Aufnahme laeuft"));
+                return;
+            }
+            stopOneLocked(p);
+        }
+    }
+
+    auto rs = std::make_unique<RunningService>();
+    rs->slot = slot; rs->sid = sid; rs->scids = scids;
+    rs->cb = std::make_unique<BackendCallbacks>();
+    uint8_t tmid = fic.serviceType(index);
+    if (tmid == 0) {
+        auto ad = std::make_unique<audiodata>();
+        fic.audioData(index, *ad);
+        if (!ad->defined) { sink_(events::log("warn", "Audiodienst noch nicht vollstaendig in der FIC")); return; }
+        if (ad->ASCTy != DAB_PLUS) {
+            sink_(events::log("error", "MP2-Dienst (DAB alt) wird nicht unterstuetzt: " + trimRight(ad->serviceName)));
+            return;
+        }
+        rs->isAudio = true;
+        rs->subCh = static_cast<uint8_t>(ad->subchId);
+        rs->name = trimRight(ad->serviceName);
+        rs->descriptor = std::move(ad);
+        int vol; bool mute;
+        { std::lock_guard<std::mutex> sl(stateM_); vol = state_["volume_percent"].get<int>(); mute = state_["muted"].get<bool>(); }
+        rs->audio = std::make_unique<AudioPipeline>(slot, sid, sink_, slot == Slot::Primary ? audioSink_.get() : nullptr);
+        rs->audio->setVolume(vol);
+        rs->audio->setMute(mute);
+    } else {
+        auto pd = std::make_unique<packetdata>();
+        fic.packetData(index, *pd);
+        if (!pd->defined) { sink_(events::log("warn", "Paketdienst noch nicht vollstaendig in der FIC")); return; }
+        rs->isAudio = false;
+        rs->subCh = static_cast<uint8_t>(pd->subchId);
+        rs->name = trimRight(pd->serviceName);
+        rs->descriptor = std::move(pd);
+    }
+    wireBackend(rs.get());
+    rs->backend = msc_->startBackend(*rs->descriptor, rs->cb.get(),
+                                     slot == Slot::Primary ? FORE_GROUND : BACK_GROUND, aacKind_);
+    {
+        const descriptorType& d = *rs->descriptor;
+        sink_(events::log("info", std::string(slot == Slot::Primary ? "Primary" : "Background") + ": " + rs->name +
+                                  " (SId " + std::to_string(sid) + ", SubCh " + std::to_string(rs->subCh) +
+                                  ", CU " + std::to_string(d.startAddr) + "+" + std::to_string(d.length) +
+                                  ", " + std::to_string(d.bitRate) + " kbit/s, " +
+                                  (d.shortForm ? "UEP " : "EEP ") + std::to_string(d.protLevel) + ")"));
+    }
+    if (!rs->isAudio) {
+        rs->started = true;
+        sink_(events::serviceStartedData(slot, sid, scids));
+    }
+    RunningService* raw = rs.get();
+    services_.push_back(std::move(rs));
+    // Headless --wav: Dump des Primary-Dienstes ab dem ersten PCM-Block
+    if (slot == Slot::Primary && raw->audio && !opt_.autoWav.empty() && !autoWavStarted_) {
+        std::string err;
+        if (raw->audio->startWav(opt_.autoWav, err)) autoWavStarted_ = true;
+        else sink_(events::log("error", err));
+    }
+    updateServiceState();
+}
+
+void DabCore::stopOneLocked(RunningService* rs) {
+    // Reihenfolge: erst Backend (danach keine Callbacks mehr), dann Pipeline
+    if (rs->backend) { msc_->stopBackend(rs->backend); rs->backend = nullptr; }
+    if (rs->audio) rs->audio->stop();
+    sink_(events::serviceStopped(rs->slot, rs->sid));
+    for (size_t i = 0; i < services_.size(); ++i)
+        if (services_[i].get() == rs) { services_.erase(services_.begin() + static_cast<long>(i)); break; }
+}
+
+void DabCore::stopService(Slot slot, int64_t sid) {
+    std::lock_guard<std::mutex> lk(serviceM_);
+    std::vector<RunningService*> victims;
+    for (auto& rs : services_)
+        if (rs->slot == slot && (sid < 0 || rs->sid == static_cast<uint32_t>(sid))) victims.push_back(rs.get());
+    for (auto* v : victims) stopOneLocked(v);
+    updateServiceState();
+}
+
+void DabCore::stopAllServicesLocked() {
+    while (!services_.empty()) stopOneLocked(services_.front().get());
+    updateServiceState();
+}
+
+bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, const json& format) {
+    std::string fmt = format.value("format", "wav");
+    if (fmt != "wav") {
+        sink_(events::log("error", "Aufnahmeformat " + fmt + " folgt spaeter (nur wav)"));
+        return false;
+    }
+    std::lock_guard<std::mutex> lk(serviceM_);
+    auto* rs = findLocked(slot, sid);
+    if (!rs || !rs->audio) {
+        sink_(events::log("warn", "start_recording: kein Audiodienst im Slot"));
+        return false;
+    }
+    std::string err;
+    if (!rs->audio->startWav(path, err)) { sink_(events::log("error", err)); return false; }
+    updateServiceState();
+    return true;
+}
+
+void DabCore::stopRecording(Slot slot, int64_t sid) {
+    std::lock_guard<std::mutex> lk(serviceM_);
+    for (auto& rs : services_)
+        if (rs->slot == slot && (sid < 0 || rs->sid == static_cast<uint32_t>(sid)) && rs->audio)
+            rs->audio->stopWav();
+    updateServiceState();
+}
+
+void DabCore::startFrameDump(const std::string& path) {
+    std::lock_guard<std::mutex> lk(frameDumpM_);
+    if (frameDump_) std::fclose(frameDump_);
+    frameDump_ = std::fopen(path.c_str(), "wb");
+    if (!frameDump_) sink_(events::log("error", "kann " + path + " nicht schreiben"));
+    else sink_(events::log("info", "Frame-Dump (LOAS/AAC) nach " + path));
+}
+
+void DabCore::stopFrameDump() {
+    std::lock_guard<std::mutex> lk(frameDumpM_);
+    if (frameDump_) { std::fclose(frameDump_); frameDump_ = nullptr; }
+}
+
+// --- Quelle -------------------------------------------------------------------
 
 void DabCore::openDevice(const json& source) {
     closeDevice();
@@ -340,7 +709,10 @@ void DabCore::openFile(const std::string& path, bool loop, bool fast) {
     sink_(events::log("info", "Datei: " + path + ", " + std::to_string(fileSource_->lengthSeconds()) + " s" +
                               (fast ? ", ohne Pacing" : "") + (loop ? ", Schleife" : "")));
 
-    ofdm_ = std::make_unique<ofdmHandler>(source_.get(), params_.get(), mscSink_.get(), callbacks_.get(), cpuSupport_);
+    autoPending_ = opt_.autoServices;
+    autoCandidates_.clear();
+    autoWavStarted_ = false;
+    ofdm_ = std::make_unique<ofdmHandler>(source_.get(), params_.get(), msc_.get(), callbacks_.get(), cpuSupport_);
     source_->restart(freq);
     ofdm_->start();
 }
@@ -351,6 +723,14 @@ void DabCore::closeDevice() {
         sink_(events::deviceClosed());
     }
     if (ofdm_ || source_) {
+        // Erst die Dienste (Backends + Pipelines), waehrend der OFDM-Thread
+        // noch laeuft; closing_ verhindert, dass der OFDM-Thread (Auto-
+        // Auswahl) zwischendurch neue Backends anlegt.
+        {
+            std::lock_guard<std::mutex> lk(serviceM_);
+            closing_ = true;
+            stopAllServicesLocked();
+        }
         if (ofdm_) {
             int total = 0, good = 0, bad = 0;
             ofdm_->getFrameQuality(&total, &good, &bad);
@@ -371,6 +751,10 @@ void DabCore::closeDevice() {
         ofdm_.reset();
         fileSource_ = nullptr;
         source_.reset();
+        {
+            std::lock_guard<std::mutex> lk(serviceM_);
+            closing_ = false;
+        }
         sink_(events::deviceClosed());
     }
     std::lock_guard<std::mutex> lk(stateM_);
@@ -407,7 +791,7 @@ void DabCore::startSpike() {
             }
             if (tick % 10 == 0) sink_(events::fileProgress(t, 3600.0));
             if (tick % 20 == 0) sink_(events::ficQuality(100, 100));
-            if (tick % 40 == 0) sink_(events::dls(Slot::Primary, "Spike-DLS " + std::to_string(tick / 40)));
+            if (tick % 40 == 0) sink_(events::dls(Slot::Primary, 0xD210, "Spike-DLS " + std::to_string(tick / 40)));
             if (tick % 20 == 0) sink_(events::ewsAlive(1));
             ++tick;
             std::this_thread::sleep_for(50ms);

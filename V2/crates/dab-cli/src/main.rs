@@ -44,7 +44,7 @@ enum Sub {
         /// Alle Ereignisse als JSON-Zeilen mitschreiben
         #[arg(long)]
         events: Option<PathBuf>,
-        /// Nach S Sekunden beenden (Standard: bis Dateiende)
+        /// Nach S Sekunden *Dateizeit* beenden (Standard: bis Dateiende); mit --fast entsprechend frueher
         #[arg(long)]
         duration: Option<f64>,
         /// Datei in Schleife abspielen
@@ -89,12 +89,17 @@ fn main() -> Result<()> {
     if cli.no_audio {
         cfg.args.push("--no-audio".into());
     }
+    // Replay: --duration ist Dateizeit und wird vom Kern umgesetzt (file_ended).
+    if let Sub::Replay { duration: Some(d), .. } = &cli.cmd {
+        cfg.args.push("--duration".into());
+        cfg.args.push(format!("{d}"));
+    }
     log::info!("Kern: {}", exe.display());
     let mut backend = IpcBackend::spawn(cfg).context("Kern starten")?;
     log::info!("Kern gestartet, PID {}", backend.pid());
 
     let result = match cli.cmd {
-        Sub::Replay { file, service, wav, events, duration, r#loop, fast } => {
+        Sub::Replay { file, service, wav, events, duration: _, r#loop, fast } => {
             let file = file.canonicalize().unwrap_or(file);
             run_session(
                 &backend,
@@ -103,7 +108,7 @@ fn main() -> Result<()> {
                 service,
                 wav,
                 events,
-                duration,
+                None,   // Dateizeit-Limit setzt der Kern um (--duration oben)
             )
         }
         Sub::Live { channel, service, device, events, duration } => run_session(
@@ -155,6 +160,7 @@ fn run_session(
     let start = Instant::now();
     let mut services: HashMap<u32, dab_api::ServiceInfo> = HashMap::new();
     let mut selected = false;
+    let mut candidate: Option<(u32, u8)> = None;
     let mut wav = wav;
     let wanted = service.map(|s| s.trim().to_string());
 
@@ -180,19 +186,32 @@ fn run_session(
 
         match &ev {
             Event::ServiceAdded { service } => {
-                services.insert(service.sid, service.clone());
+                // Exakter Name/SId sofort; ein Teilstring-Treffer ("Dlf" passt
+                // auch auf "Dlf Kultur") erst, wenn die FIC einen Dienst zum
+                // zweiten Mal meldet (alle Dienste einmal gesehen).
+                let seen_before = services.insert(service.sid, service.clone()).is_some();
                 if !selected {
                     if let Some(w) = &wanted {
-                        if service_matches(service, w) {
-                            tx.send(Command::SelectService { sid: service.sid, scids: service.scids, slot: ServiceSlot::Primary })?;
-                            selected = true;
+                        match service_match(service, w) {
+                            2 => {
+                                tx.send(Command::SelectService { sid: service.sid, scids: service.scids, slot: ServiceSlot::Primary })?;
+                                selected = true;
+                            }
+                            1 if candidate.is_none() => candidate = Some((service.sid, service.scids)),
+                            _ => {}
+                        }
+                        if !selected && seen_before {
+                            if let Some((sid, scids)) = candidate.take() {
+                                tx.send(Command::SelectService { sid, scids, slot: ServiceSlot::Primary })?;
+                                selected = true;
+                            }
                         }
                     }
                 }
             }
-            Event::ServiceStarted { .. } => {
+            Event::ServiceStarted { slot: ServiceSlot::Primary, .. } => {
                 if let Some(p) = wav.take() {
-                    tx.send(Command::StartRecording { path: p, format: dab_api::RecFormat::Wav, slot: ServiceSlot::Primary })?;
+                    tx.send(Command::StartRecording { path: p, format: dab_api::RecFormat::Wav, slot: ServiceSlot::Primary, sid: None })?;
                 }
             }
             Event::FileEnded | Event::Exiting { .. } => break,
@@ -207,11 +226,20 @@ fn run_session(
     Ok(())
 }
 
-fn service_matches(s: &dab_api::ServiceInfo, wanted: &str) -> bool {
+/// 2 = exakter Name oder 0xSID, 1 = Name-Teilstring, 0 = kein Treffer.
+fn service_match(s: &dab_api::ServiceInfo, wanted: &str) -> u8 {
     if let Some(hex) = wanted.strip_prefix("0x").or_else(|| wanted.strip_prefix("0X")) {
-        return u32::from_str_radix(hex, 16).map(|sid| sid == s.sid).unwrap_or(false);
+        return if u32::from_str_radix(hex, 16).map(|sid| sid == s.sid).unwrap_or(false) { 2 } else { 0 };
     }
-    s.name.to_lowercase().contains(&wanted.to_lowercase())
+    let a = s.name.trim().to_lowercase();
+    let b = wanted.trim().to_lowercase();
+    if a == b {
+        2
+    } else if a.contains(&b) {
+        1
+    } else {
+        0
+    }
 }
 
 fn run_scan(backend: &IpcBackend, source: SourceKind) -> Result<()> {
@@ -378,10 +406,13 @@ fn print_event(t: Duration, ev: &Event) {
         Event::Synced { synced } => println!("{ts}  SYNC {}", if *synced { "ja" } else { "nein" }),
         Event::EnsembleFound { eid, name, channel } => println!("{ts}  ENSEMBLE {name} ({eid:04X}) auf {channel}"),
         Event::ServiceAdded { service } => println!("{ts}  DIENST {:<20} SId {:04X} SubCh {:2} {} kbit/s", service.name, service.sid, service.sub_ch, service.bitrate_kbps),
-        Event::ServiceStarted { sid, codec, stereo, .. } => println!("{ts}  START {sid:04X} {codec:?} stereo={stereo}"),
-        Event::Dls { text, .. } => println!("{ts}  DLS  {text}"),
-        Event::DlPlus { item_toggle, item_running, tags, .. } => println!("{ts}  DL+  IT={} IR={} {tags:?}", *item_toggle as u8, *item_running as u8),
-        Event::MotSlide { mime, name, data_b64, .. } => println!("{ts}  SLIDE {name} {mime} {} B", data_b64.len() * 3 / 4),
+        Event::ServiceStarted { slot, sid, codec, stereo, .. } => println!("{ts}  START {slot:?} {sid:04X} {codec:?} stereo={stereo}"),
+        Event::ServiceStopped { slot, sid } => println!("{ts}  STOP  {slot:?} {sid:04X}"),
+        Event::Dls { sid, text, .. } => println!("{ts}  DLS  [{sid:04X}] {text}"),
+        Event::DlPlus { sid, item_toggle, item_running, tags, .. } => println!("{ts}  DL+  [{sid:04X}] IT={} IR={} {tags:?}", *item_toggle as u8, *item_running as u8),
+        Event::MotSlide { sid, mime, name, data_b64, .. } => println!("{ts}  SLIDE [{sid:04X}] {name} {mime} {} B", data_b64.len() * 3 / 4),
+        Event::MotObject { sid, content_type, name, data_b64 } => println!("{ts}  MOT   [{sid:04X}] {name} ct=0x{content_type:04X} {} B", data_b64.len() * 3 / 4),
+        Event::AudioFormat { rate, channels } => println!("{ts}  AUDIO {rate} Hz, {channels} Kanaele"),
         Event::EwsAlert { phase, sub_ch, stage, iid, locations, is_test } => println!("{ts}  EWS  {phase:?} subCh={sub_ch} stage={stage} iid={iid} test={is_test} {} Orte", locations.len()),
         Event::EwsAlive { sub_ch: Some(sub_ch) } => println!("{ts}  EWS  alive subCh={sub_ch}"),
         Event::EwsAlive { sub_ch: None } => println!("{ts}  EWS  heartbeat"),

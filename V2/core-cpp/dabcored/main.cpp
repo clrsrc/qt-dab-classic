@@ -1,7 +1,9 @@
 // DAB Classic – dabcored: Kernprozess.
 //
-//   dabcored [--no-audio] [--events DATEI] [--fast] [--duration S]
-//            [--file DATEI [--loop] [--service NAME] [--wav DATEI]]
+//   dabcored [--no-audio] [--audio-device NAME] [--aac auto|faad2|fdk]
+//            [--events DATEI] [--fast] [--duration S]
+//            [--file DATEI [--loop] [--service NAME|0xSID ...] [--all-audio]
+//                          [--wav DATEI]]
 //
 // Ohne --file: Kommandos von stdin (JSON-Zeilen), Ereignisse auf stdout.
 // Mit --file: Headless-Replay; Ereignisse auf stdout (oder --events), stdin
@@ -13,6 +15,11 @@
 //             die spaeter per open_device geoeffnet werden)
 // --duration  Wiedergabe nach S Sekunden *Dateizeit* beenden (nicht Echtzeit;
 //             mit --fast also entsprechend frueher)
+// --service   Dienst waehlen, sobald er in der FIC auftaucht (Name-Teilstring
+//             oder 0xSID); der erste ist Primary (Audio), weitere Background
+// --all-audio alle Audiodienste als Background dekodieren (DL+-Statistik)
+// --wav       WAV-Dump (48 kHz, Stereo, 16 Bit) des Primary-Dienstes ab Start
+// --aac       AAC-Decoder: auto (FDK, wenn libfdk-aac-2.dll vorliegt), faad2, fdk
 
 #include "dabcore/core.h"
 #include "dabcore/ipc.h"
@@ -26,6 +33,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -38,8 +46,11 @@ struct Args {
     bool audio = true;
     std::string eventsFile;
     std::string file;
-    std::string service;
+    std::vector<std::string> services;
+    bool allAudio = false;
     std::string wav;
+    std::string aac = "auto";
+    std::string audioDevice;
     double duration = 0;
     bool fast = false;
     bool loop = false;
@@ -54,7 +65,10 @@ Args parse(int argc, char** argv) {
         if (s == "--no-audio") a.audio = false;
         else if (s == "--events") val(a.eventsFile);
         else if (s == "--file") val(a.file);
-        else if (s == "--service") val(a.service);
+        else if (s == "--service") { std::string v; val(v); if (!v.empty()) a.services.push_back(v); }
+        else if (s == "--all-audio") a.allAudio = true;
+        else if (s == "--aac") val(a.aac);
+        else if (s == "--audio-device") val(a.audioDevice);
         else if (s == "--wav") val(a.wav);
         else if (s == "--fast") a.fast = true;
         else if (s == "--loop") a.loop = true;
@@ -70,8 +84,9 @@ Args parse(int argc, char** argv) {
 int main(int argc, char** argv) {
     Args args = parse(argc, argv);
     if (args.help) {
-        std::puts("dabcored [--no-audio] [--events DATEI] [--fast] [--duration S] "
-                  "[--file DATEI [--loop] [--service NAME] [--wav DATEI]]");
+        std::puts("dabcored [--no-audio] [--audio-device NAME] [--aac auto|faad2|fdk] "
+                  "[--events DATEI] [--fast] [--duration S]\n"
+                  "         [--file DATEI [--loop] [--service NAME|0xSID ...] [--all-audio] [--wav DATEI]]");
         return 0;
     }
 #ifdef _WIN32
@@ -97,6 +112,11 @@ int main(int argc, char** argv) {
     opt.audio = args.audio;
     opt.fastReplay = args.fast;
     opt.replayDurationS = args.duration;
+    opt.aacDecoder = args.aac;
+    opt.audioDevice = args.audioDevice;
+    opt.autoServices = args.services;
+    opt.autoAllAudio = args.allAudio;
+    opt.autoWav = args.wav;
     dabcore::DabCore core(writer.sink(), opt);
 
     // Beenden: entweder stdin-EOF/shutdown (Kommandothread) oder Dateiende.
@@ -114,9 +134,6 @@ int main(int argc, char** argv) {
     if (!args.file.empty()) {
         core.handle({{"type", "open_device"},
                      {"source", {{"kind", "file"}, {"path", args.file}, {"loop", args.loop}, {"fast", args.fast}}}});
-        // --service/--wav werden mit dem MSC-Pfad (M0) wirksam.
-        if (!args.service.empty())
-            writer.push(dabcore::events::log("info", "--service " + args.service + " (MSC folgt)"));
     }
 
     // Kommandothread: liest stdin, bis EOF oder shutdown.

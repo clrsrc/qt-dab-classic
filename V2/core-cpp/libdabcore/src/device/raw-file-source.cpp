@@ -17,9 +17,9 @@ RawFileSource::RawFileSource(const std::string& path, FileSourceOptions options)
 bool RawFileSource::open(std::string& error) {
     file_ = std::fopen(path_.c_str(), "rb");
     if (file_ == nullptr) { error = "kann " + path_ + " nicht oeffnen"; return false; }
-    fseek(file_, 0, SEEK_END);
-    int64_t fileLength = ftell(file_);
-    fseek(file_, 0, SEEK_SET);
+    fileSeek(file_, 0, SEEK_END);
+    int64_t fileLength = fileTell(file_);
+    fileSeek(file_, 0, SEEK_SET);
     totalSamples_ = fileLength / 2;
     sampleRate_ = SAMPLERATE;
     chunkSamples_ = RAW_BUFFERSIZE / 2;
@@ -27,7 +27,7 @@ bool RawFileSource::open(std::string& error) {
 }
 
 void RawFileSource::seekStart() {
-    fseek(file_, 0, SEEK_SET);
+    fileSeek(file_, 0, SEEK_SET);
 }
 
 int32_t RawFileSource::readChunk(std::complex<float>* out, int32_t maxSamples) {

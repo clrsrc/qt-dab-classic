@@ -104,6 +104,8 @@ pub enum LogLevel {
 pub enum Codec {
     HeAac { sbr: bool, ps: bool, sample_rate: u32 },
     Mp2 { sample_rate: u32 },
+    /// Paketdienst (MOT/EPG), kein Audio.
+    Data,
 }
 
 /// Gain-Einstellung; Bedeutung je Geraet (HackRF: lna/vga/amp, RTL-SDR: nur `lna` als Tuner-Gain in 0,1 dB).
@@ -148,9 +150,10 @@ pub enum Command {
     SetAgc { enabled: bool },
     SetPpm { ppm: i32 },
 
-    // Dienste
+    // Dienste. Im Background-Slot koennen mehrere Dienste gleichzeitig laufen
+    // (Entscheidung 24); `sid` waehlt einen davon, `None` = alle im Slot.
     SelectService { sid: u32, scids: u8, slot: ServiceSlot },
-    StopService { slot: ServiceSlot },
+    StopService { slot: ServiceSlot, #[serde(default, skip_serializing_if = "Option::is_none")] sid: Option<u32> },
     StartScan { channels: Vec<String>, mode: ScanMode },
     StopScan,
 
@@ -160,8 +163,8 @@ pub enum Command {
     SetAudioDevice { index: Option<u32> },
 
     // Aufnahme / Dumps
-    StartRecording { path: PathBuf, format: RecFormat, slot: ServiceSlot },
-    StopRecording { slot: ServiceSlot },
+    StartRecording { path: PathBuf, format: RecFormat, slot: ServiceSlot, #[serde(default, skip_serializing_if = "Option::is_none")] sid: Option<u32> },
+    StopRecording { slot: ServiceSlot, #[serde(default, skip_serializing_if = "Option::is_none")] sid: Option<u32> },
     ExportTimeshiftRange { from_s: f64, to_s: f64, path: PathBuf, format: RecFormat },
     StartIqDump { path: PathBuf },
     StopIqDump,
@@ -214,14 +217,19 @@ pub enum Event {
     ClockTime { unix_utc: i64, lto_minutes: i16 },
 
     // Dienst
+    // Dienst-Ereignisse tragen neben dem Slot immer den SId, weil im
+    // Background-Slot mehrere Dienste laufen koennen.
     ServiceStarted { slot: ServiceSlot, sid: u32, scids: u8, codec: Codec, stereo: bool },
-    ServiceStopped { slot: ServiceSlot },
-    ServiceStats { slot: ServiceSlot, frame_errors: u16, rs_errors: u16, aac_errors: u16, rs_corrections: u16 },
-    Dls { slot: ServiceSlot, text: String },
-    /// Dynamic Label Plus (ETSI TS 102 980). `tags`: (content_type, text).
-    DlPlus { slot: ServiceSlot, item_toggle: bool, item_running: bool, tags: Vec<(u8, String)> },
-    /// Slideshow-Bild; `data_b64` = Rohbytes (JPEG/PNG) Base64.
-    MotSlide { slot: ServiceSlot, mime: String, name: String, data_b64: String },
+    ServiceStopped { slot: ServiceSlot, sid: u32 },
+    /// Fehlerzaehler der letzten Sekunde (Superframes ohne Firecode/RS-Erfolg,
+    /// nicht korrigierbare RS-Zeilen, AAC-CRC-/Decoderfehler, korrigierte RS-Symbole).
+    ServiceStats { slot: ServiceSlot, sid: u32, frame_errors: u16, rs_errors: u16, aac_errors: u16, rs_corrections: u16 },
+    Dls { slot: ServiceSlot, sid: u32, text: String },
+    /// Dynamic Label Plus (ETSI TS 102 980), je DL+-Kommando: `tags`: (content_type, text),
+    /// alle Content-Types 0..63; Text = Ausschnitt des zuletzt vollstaendigen DLS-Labels.
+    DlPlus { slot: ServiceSlot, sid: u32, item_toggle: bool, item_running: bool, tags: Vec<(u8, String)> },
+    /// Slideshow-Bild (X-PAD); `data_b64` = Rohbytes (JPEG/PNG) Base64.
+    MotSlide { slot: ServiceSlot, sid: u32, mime: String, name: String, data_b64: String },
     /// Sonstiges MOT-Objekt (SPI-Logos, EPG-Rohdaten).
     MotObject { sid: u32, content_type: u16, name: String, data_b64: String },
     /// EPG (SPI) als XML-Text, wie vom epg-compiler erzeugt.
@@ -244,7 +252,7 @@ pub enum Event {
     EwsSwitched { to_sid: u32, from_sid: Option<u32> },
 
     // Aufnahme / Timeshift
-    RecordingState { slot: ServiceSlot, active: bool, path: Option<PathBuf>, bytes: u64, seconds: f64 },
+    RecordingState { slot: ServiceSlot, sid: u32, active: bool, path: Option<PathBuf>, bytes: u64, seconds: f64 },
     TimeshiftState { mode: TimeshiftMode, buffered_s: f64, offset_s: f64, capacity_s: f64 },
 
     // Scan
@@ -352,6 +360,23 @@ mod tests {
         assert!(s.contains("\"type\":\"ews_alert\""));
         let back: Event = serde_json::from_str(&s).unwrap();
         assert_eq!(back, ev);
+    }
+
+    #[test]
+    fn service_events_carry_sid() {
+        let ev = Event::DlPlus { slot: ServiceSlot::Background, sid: 0xD210, item_toggle: true, item_running: false, tags: vec![(1, "Titel".into()), (4, "Artist".into())] };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains("\"sid\":53776"));
+        assert!(s.contains("\"tags\":[[1,\"Titel\"],[4,\"Artist\"]]"));
+        let back: Event = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, ev);
+        // C++-Seite: service_started eines Paketdienstes
+        let js = r#"{"type":"service_started","slot":"background","sid":4292,"scids":0,"stereo":false,"codec":{"codec":"data"}}"#;
+        let ev: Event = serde_json::from_str(js).unwrap();
+        assert_eq!(ev, Event::ServiceStarted { slot: ServiceSlot::Background, sid: 4292, scids: 0, codec: Codec::Data, stereo: false });
+        // stop_service ohne sid bleibt kompakt
+        let c = Command::StopService { slot: ServiceSlot::Background, sid: None };
+        assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"type":"stop_service","slot":"background"}"#);
     }
 
     #[test]

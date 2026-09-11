@@ -26,15 +26,15 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 | `set_gain` | `gain: {lna, vga, amp}` |
 | `set_agc` | `enabled` |
 | `set_ppm` | `ppm` |
-| `select_service` | `sid`, `scids`, `slot: primary\|background` |
-| `stop_service` | `slot` |
+| `select_service` | `sid`, `scids`, `slot: primary\|background`. Primary: Audio-Ausgabe + Aufnahme (höchstens einer; ein Wechsel bei laufender Aufnahme wird abgelehnt). Background: nur Backend + Aufnahme, **mehrere gleichzeitig** möglich (Entscheidung 24) |
+| `stop_service` | `slot`, `sid?` (ohne `sid`: alle Dienste des Slots) |
 | `start_scan` | `channels: []`, `mode: single\|to_data\|continuous` |
 | `stop_scan` | |
 | `set_volume` | `percent` |
 | `set_mute` | `muted` |
 | `set_audio_device` | `index?` |
-| `start_recording` | `path`, `format: {format: wav} \| {format: mp3, kbps} \| {format: aac_passthrough}`, `slot` |
-| `stop_recording` | `slot` |
+| `start_recording` | `path`, `format: {format: wav} \| {format: mp3, kbps} \| {format: aac_passthrough}`, `slot`, `sid?` (heute nur `wav`: 48 kHz, Stereo, 16 Bit, vor der Lautstärke abgegriffen) |
+| `stop_recording` | `slot`, `sid?` |
 | `export_timeshift_range` | `from_s`, `to_s`, `path`, `format` |
 | `start_iq_dump` / `stop_iq_dump` | `path` |
 | `start_frame_dump` / `stop_frame_dump` | `path` |
@@ -71,16 +71,16 @@ und die App bei Überlast verwerfen darf.
 | `service_added` | `service: {sid, scids, name, is_audio, is_primary, sub_ch, bitrate_kbps, pty}` – kann für dasselbe `sid`/`scids` erneut kommen (z. B. sobald der Programmtyp aus FIG 0/17 bekannt ist); die App ersetzt den Eintrag |
 | `ensemble_reconfigured` | |
 | `clock_time` | `unix_utc`, `lto_minutes` |
-| `service_started` | `slot`, `sid`, `scids`, `codec: {codec: he_aac, sbr, ps, sample_rate} \| {codec: mp2, sample_rate}`, `stereo` |
-| `service_stopped` | `slot` |
-| `service_stats` **LW** | `slot`, `frame_errors`, `rs_errors`, `aac_errors`, `rs_corrections` |
-| `dls` | `slot`, `text` |
-| `dl_plus` | `slot`, `item_toggle`, `item_running`, `tags: [[content_type, text], ...]` |
-| `mot_slide` | `slot`, `mime`, `name`, `data_b64` |
+| `service_started` | `slot`, `sid`, `scids`, `codec: {codec: he_aac, sbr, ps, sample_rate} \| {codec: mp2, sample_rate} \| {codec: data}`, `stereo` – bei Audio erst mit dem ersten dekodierten Block (Codec-Daten stammen aus dem Superframe/Decoder), bei Paketdiensten sofort |
+| `service_stopped` | `slot`, `sid` |
+| `service_stats` **LW** | `slot`, `sid`, `frame_errors`, `rs_errors`, `aac_errors`, `rs_corrections` – Zähler der letzten Sekunde Sendezeit (42 DAB-Rahmen): Superframes ohne Firecode-/RS-Erfolg, nicht korrigierbare RS-Zeilen, AAC-CRC-/Decoderfehler, korrigierte RS-Symbole |
+| `dls` | `slot`, `sid`, `text` – nur bei geändertem Text |
+| `dl_plus` | `slot`, `sid`, `item_toggle`, `item_running`, `tags: [[content_type, text], ...]` – je DL+-Kommando (TS 102 980), alle Content-Types 0..63, Text = Ausschnitt des letzten vollständigen Labels |
+| `mot_slide` | `slot`, `sid`, `mime`, `name`, `data_b64` (X-PAD-Slideshow eines Audiodienstes) |
 | `mot_object` | `sid`, `content_type`, `name`, `data_b64` |
 | `epg_object` | `sid`, `date_yyyymmdd`, `xml` |
 | `announcement` | `kind`, `sub_ch`, `active` |
-| `audio_format` | `rate`, `channels` |
+| `audio_format` | `rate`, `channels` (nach `service_started` und bei Wechsel; PCM ist immer als L/R-Paare unterwegs, `channels` = 2) |
 | `audio_level` **LW** | `left`, `right` |
 | `audio_underrun` | `missed` |
 | `audio_devices` | `names[]`, `current?` |
@@ -89,7 +89,7 @@ und die App bei Überlast verwerfen darf.
 | `ews_alive` | `sub_ch?` (Unterkanal des aktiven Alarms, höchstens 1/s Ensemble-Zeit; `null` = Heartbeat ohne Alarm, 1/s) |
 | `ewf_alarm` | `active`, `sub_ch` |
 | `ews_switched` | `to_sid`, `from_sid?` |
-| `recording_state` | `slot`, `active`, `path?`, `bytes`, `seconds` |
+| `recording_state` | `slot`, `sid`, `active`, `path?`, `bytes`, `seconds` (bei Start, 1 Hz während der Aufnahme, bei Ende) |
 | `timeshift_state` **LW** | `mode: live\|paused\|playing`, `buffered_s`, `offset_s`, `capacity_s` |
 | `scan_progress` | `channel`, `index`, `total` |
 | `scan_result` | `channel`, `eid?`, `ensemble?`, `services[]`, `snr` |
@@ -111,6 +111,10 @@ und die App bei Überlast verwerfen darf.
 ← {"type":"ensemble_found","eid":4284,"name":"DR Deutschland","channel":"5C"}
 ← {"type":"service_added","service":{"sid":53776,"scids":0,"name":"Dlf","is_audio":true,"is_primary":true,"sub_ch":4,"bitrate_kbps":96,"pty":1}}
 → {"type":"select_service","sid":53776,"scids":0,"slot":"primary"}
+← {"type":"service_started","slot":"primary","sid":53776,"scids":0,"codec":{"codec":"he_aac","sbr":true,"ps":false,"sample_rate":48000},"stereo":true}
+← {"type":"audio_format","rate":48000,"channels":2}
+← {"type":"dls","slot":"primary","sid":53776,"text":"Aus EUDI-Wallet wird \"d-you\" ..., Falk Steiner"}
+← {"type":"dl_plus","slot":"primary","sid":53776,"item_toggle":false,"item_running":true,"tags":[[1,"Aus EUDI-Wallet wird \"d-you\" ..."],[4,"Falk Steiner"]]}
 ← {"type":"ews_alert","phase":"trigger","sub_ch":1,"stage":1,"iid":1,"locations":["Z1:5C+F300"],"is_test":false}
 → {"type":"shutdown"}
 ← {"type":"exiting","reason":"shutdown"}

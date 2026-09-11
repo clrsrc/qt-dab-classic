@@ -48,7 +48,13 @@ target_include_directories(dabcore
             ${DABCORE_SRC}/dsp
             ${DABCORE_SRC}/dsp/viterbi
             ${DABCORE_SRC}/dsp/protection
-            ${DABCORE_SRC}/support)
+            ${DABCORE_SRC}/support
+            ${DABCORE_SRC}/backend
+            ${DABCORE_SRC}/backend/audio
+            ${DABCORE_SRC}/backend/reed-solomon
+            ${DABCORE_SRC}/backend/data
+            ${DABCORE_SRC}/pad
+            ${DABCORE_SRC}/audio)
 target_compile_definitions(dabcore PUBLIC
     __FFTW3__
     __ARCH_X86__           # Viterbi AVX2/SSE Runtime-Dispatch
@@ -65,8 +71,16 @@ if(DABCORE_AUDIO_PORTAUDIO)
     target_compile_definitions(dabcore PUBLIC DABCORE_AUDIO_PORTAUDIO)
     target_link_libraries(dabcore PUBLIC PkgConfig::PORTAUDIO)
 endif()
+# FDK-AAC: nur der Header (Typen) wird gebraucht, die DLL wird zur Laufzeit
+# geladen (Entscheidung 20). Ohne Header entfaellt der FDK-Pfad.
 if(DABCORE_FDK_AAC_RUNTIME)
-    target_compile_definitions(dabcore PUBLIC DABCORE_FDK_AAC_RUNTIME)
+    find_path(FDK_AAC_INCLUDE_DIR aacdecoder_lib.h PATH_SUFFIXES fdk-aac)
+    if(FDK_AAC_INCLUDE_DIR)
+        target_compile_definitions(dabcore PUBLIC DABCORE_FDK_AAC_RUNTIME)
+        target_include_directories(dabcore PRIVATE ${FDK_AAC_INCLUDE_DIR})
+    else()
+        message(STATUS "aacdecoder_lib.h nicht gefunden – FDK-AAC-Laufzeitpfad aus")
+    endif()
 endif()
 # Viterbi-Kern bekommt AVX2/SSE4.1 (Dispatch zur Laufzeit, siehe v1 OPT-9.1)
 set_source_files_properties(
@@ -90,4 +104,9 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-replay.ps1)
+    # MSC-Pfad: Dienst Dlf -> WAV-Dump, DLS, Stats; shutdown bei laufendem Dienst
+    add_test(NAME dabcored_audio
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-audio.ps1)
 endif()

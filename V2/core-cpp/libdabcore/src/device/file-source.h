@@ -16,6 +16,16 @@
 #include <string>
 #include <thread>
 
+// 64-Bit-Dateipositionen (Mitschnitte > 2 GB; fseek/ftell mit long reichen
+// unter Windows nicht).
+#ifdef _WIN32
+inline int     fileSeek(FILE* f, int64_t off, int whence) { return _fseeki64(f, off, whence); }
+inline int64_t fileTell(FILE* f) { return _ftelli64(f); }
+#else
+inline int     fileSeek(FILE* f, int64_t off, int whence) { return fseeko(f, off, whence); }
+inline int64_t fileTell(FILE* f) { return ftello(f); }
+#endif
+
 struct FileSourceOptions {
     bool   loop = false;      // am Dateiende von vorn beginnen
     bool   fast = false;      // kein Echtzeit-Pacing

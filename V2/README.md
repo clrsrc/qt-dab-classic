@@ -55,9 +55,17 @@ Kernprozess direkt (Headless, ohne Rust): `--fast` spielt ohne Pacing,
 .\core-cpp\build\dabcored.exe --no-audio --file ..\Warntag-2026\test\final-l32-g40-60s.uff --fast --duration 20 --events out.jsonl
 ```
 
-Stand Spike 2: Datei → Sync → OFDM → FIC (Ensemble, Dienste, Uhrzeit, TII,
-EWS FIG 0/15 und 0/19) ist Qt-frei in `libdabcore` portiert; der MSC-Pfad
-(Audio, PAD, MOT, EPG) folgt in M0.
+Stand M0: Datei → Sync → OFDM → FIC (Ensemble, Dienste, Uhrzeit, TII,
+EWS FIG 0/15 und 0/19) und der MSC-Pfad (Backend je Dienst, DAB+ Superframe/
+Firecode/Reed-Solomon, AAC per faad2 oder FDK-AAC zur Laufzeit, PAD mit DLS,
+DL+ und MOT-Slides, MOT über Paketdienste, Audio-Thread mit 48-k-Konvertierung,
+Lautstärke, Pegel, PortAudio, WAV-Aufnahme, Frame-Dump) sind Qt-frei in
+`libdabcore` portiert. Mehrere Dienste gleichzeitig (Primary + n Background).
+Offen: EPG-Compiler (SPI-Binär→XML), MP2, Timeshift.
+
+    dabcored --no-audio --fast --file X.uff --service Dlf --wav out.wav --events out.jsonl
+    dab-cli replay X.uff --fast --service Dlf --wav out.wav --duration 30
+    python tools/dlplus-stats.py X.uff --duration 300   # Spike 3: DL+-Statistik
 ```
 
 Oberfläche (Entwicklung mit Hot-Reload):

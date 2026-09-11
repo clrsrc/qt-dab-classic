@@ -58,20 +58,26 @@ json serviceStarted(Slot slot, uint32_t sid, uint8_t scids, bool heAac, bool sbr
     else       j["codec"] = {{"codec", "mp2"}, {"sample_rate", rate}};
     return j;
 }
-json serviceStopped(Slot slot) { auto j = ev("service_stopped"); j["slot"] = slotName(slot); return j; }
-json serviceStats(Slot slot, uint16_t fe, uint16_t rs, uint16_t aac, uint16_t rsc) {
-    auto j = ev("service_stats"); j["slot"] = slotName(slot);
+json serviceStartedData(Slot slot, uint32_t sid, uint8_t scids) {
+    auto j = ev("service_started");
+    j["slot"] = slotName(slot); j["sid"] = sid; j["scids"] = scids; j["stereo"] = false;
+    j["codec"] = {{"codec", "data"}};
+    return j;
+}
+json serviceStopped(Slot slot, uint32_t sid) { auto j = ev("service_stopped"); j["slot"] = slotName(slot); j["sid"] = sid; return j; }
+json serviceStats(Slot slot, uint32_t sid, uint16_t fe, uint16_t rs, uint16_t aac, uint16_t rsc) {
+    auto j = ev("service_stats"); j["slot"] = slotName(slot); j["sid"] = sid;
     j["frame_errors"] = fe; j["rs_errors"] = rs; j["aac_errors"] = aac; j["rs_corrections"] = rsc; return j;
 }
-json dls(Slot slot, const std::string& t) { auto j = ev("dls"); j["slot"] = slotName(slot); j["text"] = t; return j; }
-json dlPlus(Slot slot, bool it, bool ir, const std::vector<std::pair<uint8_t, std::string>>& tags) {
-    auto j = ev("dl_plus"); j["slot"] = slotName(slot); j["item_toggle"] = it; j["item_running"] = ir;
+json dls(Slot slot, uint32_t sid, const std::string& t) { auto j = ev("dls"); j["slot"] = slotName(slot); j["sid"] = sid; j["text"] = t; return j; }
+json dlPlus(Slot slot, uint32_t sid, bool it, bool ir, const std::vector<std::pair<uint8_t, std::string>>& tags) {
+    auto j = ev("dl_plus"); j["slot"] = slotName(slot); j["sid"] = sid; j["item_toggle"] = it; j["item_running"] = ir;
     json arr = json::array();
     for (auto& [ct, s] : tags) arr.push_back(json::array({ct, s}));
     j["tags"] = arr; return j;
 }
-json motSlide(Slot slot, const std::string& mime, const std::string& name, const std::vector<uint8_t>& d) {
-    auto j = ev("mot_slide"); j["slot"] = slotName(slot); j["mime"] = mime; j["name"] = name; j["data_b64"] = base64Encode(d); return j;
+json motSlide(Slot slot, uint32_t sid, const std::string& mime, const std::string& name, const std::vector<uint8_t>& d) {
+    auto j = ev("mot_slide"); j["slot"] = slotName(slot); j["sid"] = sid; j["mime"] = mime; j["name"] = name; j["data_b64"] = base64Encode(d); return j;
 }
 json motObject(uint32_t sid, uint16_t ct, const std::string& name, const std::vector<uint8_t>& d) {
     auto j = ev("mot_object"); j["sid"] = sid; j["content_type"] = ct; j["name"] = name; j["data_b64"] = base64Encode(d); return j;
@@ -107,8 +113,8 @@ json ewsSwitched(uint32_t to, int64_t from) {
     if (from >= 0) j["from_sid"] = static_cast<uint32_t>(from); else j["from_sid"] = nullptr; return j;
 }
 
-json recordingState(Slot slot, bool active, const std::string& path, uint64_t bytes, double s) {
-    auto j = ev("recording_state"); j["slot"] = slotName(slot); j["active"] = active;
+json recordingState(Slot slot, uint32_t sid, bool active, const std::string& path, uint64_t bytes, double s) {
+    auto j = ev("recording_state"); j["slot"] = slotName(slot); j["sid"] = sid; j["active"] = active;
     if (path.empty()) j["path"] = nullptr; else j["path"] = path;
     j["bytes"] = bytes; j["seconds"] = s; return j;
 }

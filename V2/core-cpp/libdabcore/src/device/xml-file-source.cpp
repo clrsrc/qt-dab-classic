@@ -255,8 +255,8 @@ bool XmlFileSource::open(std::string& error) {
     uint64_t nrElements = 0;
     for (int i = 0; i < fd_.nrBlocks; i++) nrElements += fd_.blockList[i].nrElements;
     uint16_t sampleSize = fd_.sampleSize();
-    fseek(file_, 0, SEEK_END);
-    uint64_t fileLength = ftell(file_);
+    fileSeek(file_, 0, SEEK_END);
+    uint64_t fileLength = static_cast<uint64_t>(fileTell(file_));
     dataStart_ = fileLength - (uint64_t)(nrElements * (sampleSize / 2));
     if (dataStart_ <= 1000)   // as with DABstar
         dataStart_ = 5000;
@@ -291,7 +291,7 @@ uint64_t XmlFileSource::computeNrSamples(int blockNumber) const {
 }
 
 void XmlFileSource::seekStart() {
-    fseek(file_, static_cast<long>(dataStart_), SEEK_SET);
+    fileSeek(file_, static_cast<int64_t>(dataStart_), SEEK_SET);   // 64 Bit: Dateien > 2 GB
     // v1: convBuffer wird nicht zurueckgesetzt; convBuffer [0] traegt das
     // letzte Sample des vorigen Blocks (ein Sample Verzoegerung).
 }
