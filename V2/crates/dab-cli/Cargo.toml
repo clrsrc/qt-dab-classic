@@ -1,0 +1,22 @@
+[package]
+name = "dab-cli"
+description = "DAB Classic: Headless-Treiber fuer Replay, Live-Betrieb und Regressionstests ohne GUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "dab-cli"
+path = "src/main.rs"
+
+[dependencies]
+dab-api = { workspace = true }
+dab-core = { workspace = true }
+dab-app = { workspace = true }
+serde_json = { workspace = true }
+crossbeam-channel = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+clap = { workspace = true }

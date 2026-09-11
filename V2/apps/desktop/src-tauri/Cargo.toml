@@ -1,0 +1,27 @@
+[package]
+name = "dab-classic"
+description = "DAB Classic – DAB+-Empfänger (Tauri 2 + Svelte 5)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "dab_classic_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+dab-api = { workspace = true }
+dab-core = { workspace = true }
+dab-app = { workspace = true }
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+crossbeam-channel = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }

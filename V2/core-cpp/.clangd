@@ -1,0 +1,13 @@
+# clangd-Konfiguration fuer den MinGW-Kern (siehe auch Memory: MSVC-Header-Falle).
+CompileFlags:
+  CompilationDatabase: build
+  Add:
+    - --target=x86_64-w64-mingw32
+    - -IC:/msys64/ucrt64/include
+    - -IC:/msys64/ucrt64/include/c++/15.2.0
+    - -IC:/msys64/ucrt64/include/c++/15.2.0/x86_64-w64-mingw32
+  Remove:
+    - -mavx2
+    - -msse4.1
+Diagnostics:
+  UnusedIncludes: None

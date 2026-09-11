@@ -1,0 +1,17 @@
+[package]
+name = "dab-core"
+description = "DAB Classic: startet und kapselt den Empfangskern (dabcored.exe) und liefert Kanaele: Kommandos rein, Ereignisse raus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+dab-api = { workspace = true }
+crossbeam-channel = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Threading"] }

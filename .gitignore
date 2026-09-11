@@ -60,3 +60,17 @@ __pycache__/
 # Mitschnitte und Testlaeufe (lokal)
 Warntag-2026/
 .cache/
+
+# V2 / DAB Classic v3.0 (Rust-Workspace, Tauri, C++-Kern)
+V2/target/
+V2/core-cpp/build*/
+V2/apps/desktop/node_modules/
+V2/apps/desktop/build/
+V2/apps/desktop/.svelte-kit/
+V2/apps/desktop/dist/
+V2/apps/desktop/src-tauri/target/
+V2/apps/desktop/src-tauri/gen/
+V2/apps/desktop/src-tauri/resources/core/
+V2/dist-portable/
+V2/tests/data/*.uff
+V2/tests/data/*.iq

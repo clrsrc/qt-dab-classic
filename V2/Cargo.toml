@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dab-api",
+    "crates/dab-core",
+    "crates/dab-app",
+    "crates/dab-music",
+    "crates/dab-cli",
+    "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+version = "3.0.0-dev"
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["Stefan Kammann"]
+repository = "https://github.com/clrsrc/qt-dab-classic"
+
+[workspace.dependencies]
+dab-api = { path = "crates/dab-api" }
+dab-core = { path = "crates/dab-core" }
+dab-app = { path = "crates/dab-app" }
+dab-music = { path = "crates/dab-music" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+crossbeam-channel = "0.5"
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
