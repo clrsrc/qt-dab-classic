@@ -113,7 +113,16 @@ void AudioPipeline::run() {
                 wav_.write(wavBuf.data(), static_cast<uint32_t>(size / 2));
             }
             if (audio_) {
-                if (!sinkStarted_) { sinkStarted_ = true; audio_->start(); }
+                if (!sinkStarted_) {
+                    sinkStarted_ = true;
+                    audio_->start();
+                    // Vorlauf: 200 ms Stille, damit der Ausgabepuffer im
+                    // Betrieb nicht um Null pendelt (die Bloecke kommen
+                    // superframe-weise in 120-ms-Schueben; ohne Vorlauf
+                    // reisst jeder Jitter den PortAudio-Callback leer).
+                    std::vector<float> silence(static_cast<size_t>(2 * 48000 / 5), 0.0f);
+                    audio_->write(silence.data(), static_cast<uint32_t>(silence.size()));
+                }
                 int vol = volume_.load();
                 if (muted_) {
                     std::fill(out.begin(), out.begin() + size, 0.0f);

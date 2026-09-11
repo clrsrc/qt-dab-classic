@@ -2,6 +2,10 @@
 
 #include "device/xml-file-source.h"
 #include "device/raw-file-source.h"
+#include "device/hackrf-source.h"
+#include "device/rtlsdr-source.h"
+#include "scan/scan-controller.h"
+#include "support/dab-channels.h"
 #include "frontend/ofdm-handler.h"
 #include "frontend/receiver-callbacks.h"
 #include "backend/msc-handler.h"
@@ -90,7 +94,8 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
     : sink_(std::move(sink)), opt_(options), aacKind_(aacDecoderKindFromName(options.aacDecoder)) {
     state_ = {
         {"source", nullptr}, {"channel", nullptr},
-        {"gain", {{"lna", 0}, {"vga", 0}, {"amp", false}}}, {"agc", true},
+        // Defaults HackRF (v1 hackrf-handler): LNA 40, VGA 24, AMP aus
+        {"gain", {{"lna", 40}, {"vga", 24}, {"amp", false}}}, {"agc", true},
         {"synced", false}, {"ensemble", nullptr}, {"services", json::array()},
         {"primary", nullptr}, {"background", nullptr},
         {"volume_percent", 70}, {"muted", false}, {"timeshift", nullptr},
@@ -157,10 +162,21 @@ void DabCore::wireCallbacks() {
         { std::lock_guard<std::mutex> lk(stateM_); state_["synced"] = s; }
         sink_(events::synced(s));
     };
-    cb.noSignal = [this] { sink_(events::noSignal(currentChannel())); };
+    cb.noSignal = [this] {
+        sink_(events::noSignal(currentChannel()));
+        if (scanning_.load() && scan_) scan_->onNoSignal();
+    };
     cb.syncLost = [this] { sink_(events::log("debug", "Synchronisation verloren")); };
     cb.snr = [this](float db) {
+        lastSnrDb_.store(db);
         auto now = std::chrono::steady_clock::now();
+        // SNR-AGC wie v1 (radio.cpp show_snr -> deviceHandler::adjustGain bei
+        // jedem SNR-Wert; der ofdmHandler liefert ihn alle 3 Rahmen ~ 0,29 s,
+        // also hoechstens ~7 dB/s VGA-Aenderung). Kein weiteres Takten.
+        if (agc_ && source_ && !source_->isFileInput()) {
+            lastAgc_ = now;
+            if (source_->adjustGain(db)) emitGain();
+        }
         if (now - lastSnr_ < 100ms) return;      // 10 Hz
         lastSnr_ = now;
         sink_(events::snr(db));
@@ -298,8 +314,10 @@ void DabCore::emitService(const std::string& rawName, uint32_t sid, int subChId,
 // Headless-Auswahl (--service / --all-audio): laeuft im OFDM-Thread.
 // Exakter Name/SId gewinnt sofort; ein Teilstring-Treffer ("Dlf" passt auch
 // auf "Dlf Kultur") wird erst genommen, wenn die FIC einen Dienst zum zweiten
-// Mal meldet, also alle Dienste einmal gesehen wurden.
+// Mal meldet und der Kandidat mindestens 1,5 s alt ist (die FIC meldet die
+// Dienste in beliebiger Reihenfolge; live kommt "Dlf Kultur" oft vor "Dlf").
 void DabCore::maybeAutoSelect(const ServiceInfo& s, bool seenBefore) {
+    if (scanning_.load()) return;
     if (autoPending_.empty() && !opt_.autoAllAudio) return;
     auto slotFor = [this](const std::string& wanted) {
         return (!opt_.autoServices.empty() && wanted == opt_.autoServices[0]) ? Slot::Primary : Slot::Background;
@@ -313,9 +331,13 @@ void DabCore::maybeAutoSelect(const ServiceInfo& s, bool seenBefore) {
             selectService(s.sid, s.scids, slotFor(wanted));
             return;
         }
-        if (m == 1 && !autoCandidates_.count(autoPending_[i])) autoCandidates_[autoPending_[i]] = s;
+        if (m == 1 && !autoCandidates_.count(autoPending_[i])) {
+            autoCandidates_[autoPending_[i]] = s;
+            if (autoCandidates_.size() == 1) autoCandidateSince_ = std::chrono::steady_clock::now();
+        }
     }
-    if (seenBefore && !autoCandidates_.empty()) {
+    const bool graceOver = std::chrono::steady_clock::now() - autoCandidateSince_ >= 1500ms;
+    if (seenBefore && graceOver && !autoCandidates_.empty()) {
         for (size_t i = 0; i < autoPending_.size();) {
             auto it = autoCandidates_.find(autoPending_[i]);
             if (it == autoCandidates_.end()) { ++i; continue; }
@@ -346,14 +368,33 @@ bool DabCore::handle(const json& c) {
     if (type == "open_device") { openDevice(c.value("source", json::object())); return true; }
     if (type == "close_device") { closeDevice(); return true; }
     if (type == "set_channel") {
-        std::lock_guard<std::mutex> lk(stateM_);
-        state_["channel"] = c.value("channel", "");
-        // Bei Datei-Quellen nur merken; Geraete folgen in M1.
+        stopScan();
+        const std::string ch = c.value("channel", "");
+        if (source_ && ofdm_ && !source_->isFileInput()) {
+            tuneChannel(ch, false);
+        } else {
+            // Ohne Geraet (oder bei Datei-Quellen) nur merken; ein spaeteres
+            // open_device stellt den gemerkten Kanal ein.
+            std::lock_guard<std::mutex> lk(stateM_);
+            state_["channel"] = ch;
+        }
         return true;
     }
-    if (type == "set_gain") { std::lock_guard<std::mutex> lk(stateM_); state_["gain"] = c.value("gain", state_["gain"]); return true; }
-    if (type == "set_agc") { std::lock_guard<std::mutex> lk(stateM_); state_["agc"] = c.value("enabled", true); return true; }
+    if (type == "set_gain") { setGain(c.value("gain", json::object())); return true; }
+    if (type == "set_agc") { setAgc(c.value("enabled", true)); return true; }
+    if (type == "set_ppm") { setPpm(c.value("ppm", 0)); return true; }
+    if (type == "start_scan") {
+        std::vector<std::string> channels;
+        if (c.contains("channels") && c["channels"].is_array())
+            for (auto& x : c["channels"]) if (x.is_string()) channels.push_back(x.get<std::string>());
+        startScan(channels, c.value("mode", "single"));
+        return true;
+    }
+    if (type == "stop_scan") { stopScan(); return true; }
+    if (type == "start_iq_dump") { startIqDump(c.value("path", "")); return true; }
+    if (type == "stop_iq_dump") { stopIqDump(); return true; }
     if (type == "select_service") {
+        if (scanning_.load()) { sink_(events::log("warn", "select_service waehrend des Scans abgelehnt")); return true; }
         selectService(c.value("sid", 0u), static_cast<uint8_t>(c.value("scids", 0)), slotFromJson(c));
         return true;
     }
@@ -408,7 +449,7 @@ bool DabCore::handle(const json& c) {
         return true;
     }
 
-    // Alles Weitere (start_scan, Timeshift, IQ-Dump, ...) folgt in M1/M4.
+    // Alles Weitere (Timeshift, MP3/AAC-Aufnahme, ...) folgt in M3/M4.
     sink_(events::log("debug", "Kommando noch ohne Wirkung: " + type));
     return true;
 }
@@ -654,11 +695,257 @@ void DabCore::openDevice(const json& source) {
         openFile(path, source.value("loop", false), source.value("fast", opt_.fastReplay));
         return;
     }
-    if (kind == "hack_rf" || kind == "rtl_sdr") {
-        sink_(events::deviceError("Geraet " + kind + " folgt in M1"));
+    if (kind == "hack_rf") {
+        // dab-api: HackRf { serial: Option<String> } -> "serial": null
+        std::string serial;
+        if (source.contains("serial") && source["serial"].is_string()) serial = source["serial"].get<std::string>();
+        openHackRf(serial);
+        return;
+    }
+    if (kind == "rtl_sdr") {
+        int index = source.contains("index") && source["index"].is_number() ? source["index"].get<int>() : 0;
+        openRtlSdr(index);
         return;
     }
     sink_(events::deviceError("unbekannte Quelle: " + kind));
+}
+
+// --- Geraete (M1) -------------------------------------------------------------
+
+void DabCore::openHackRf(const std::string& serial) {
+    auto src = std::make_unique<HackRfSource>();
+    std::string error;
+    if (!src->open(serial, error)) {
+        { std::lock_guard<std::mutex> lk(stateM_); state_["source"] = nullptr; }
+        sink_(events::deviceError(error));
+        return;
+    }
+    std::string info = "HackRF " + src->boardInfo() + ", libhackrf " + src->libraryVersion() +
+                       ", 4,096 MS/s -> 2,048 MS/s (Mittelung 2:1), Bandbreite 1536 kHz";
+    attachDevice(std::move(src), info);
+}
+
+void DabCore::openRtlSdr(int index) {
+    auto src = std::make_unique<RtlSdrSource>();
+    std::string error;
+    if (!src->open(index, error)) {
+        { std::lock_guard<std::mutex> lk(stateM_); state_["source"] = nullptr; }
+        sink_(events::deviceError(error));
+        return;
+    }
+    std::string info = "RTL-SDR " + src->model() + ", Tuner " + src->tunerType() + ", " +
+                       std::to_string(src->gainTable().size()) + " Gain-Stufen, 2,048 MS/s";
+    attachDevice(std::move(src), info);
+}
+
+// Geraet uebernehmen: Ereignisse melden, OFDM anlegen; der Empfang beginnt
+// mit set_channel bzw. sofort, wenn ein Kanal schon gemerkt ist.
+void DabCore::attachDevice(std::unique_ptr<ISampleSource> src, const std::string& info) {
+    deviceLost_.store(false);
+    source_ = std::move(src);
+    fileSource_ = nullptr;
+    source_->setErrorCallback([this](const std::string& msg) { onDeviceLost(msg); });
+    if (ppm_ != 0) source_->setPpm(ppm_);
+    // Gain-Satz aus einem set_gain vor open_device anwenden, sonst die
+    // Geraete-Defaults (HackRF: LNA 40 / VGA 24 / AMP aus) uebernehmen.
+    if (pendingGain_) {
+        source_->setGain(*pendingGain_);
+        pendingGain_.reset();
+    }
+    sink_(events::deviceOpened(source_->name(), source_->serial(), static_cast<uint8_t>(source_->bitDepth())));
+    sink_(events::log("info", info));
+    emitGain();
+
+    autoPending_ = opt_.autoServices;
+    autoCandidates_.clear();
+    autoWavStarted_ = false;
+    ofdm_ = std::make_unique<ofdmHandler>(source_.get(), params_.get(), msc_.get(), callbacks_.get(), cpuSupport_);
+    std::string ch = currentChannel();
+    if (!ch.empty()) tuneChannel(ch, false);
+}
+
+bool DabCore::tuneChannel(const std::string& channel, bool scan) {
+    const int32_t freq = channelFrequencyHz(channel);
+    if (freq == 0) {
+        sink_(events::log("error", "unbekannter Kanal: " + channel));
+        return false;
+    }
+    if (!source_ || !ofdm_) {
+        sink_(events::log("warn", "set_channel ohne Geraet: " + channel));
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> lk(serviceM_);
+        stopAllServicesLocked();
+    }
+    const bool trace = std::getenv("DABCORE_TRACE") != nullptr;
+    auto t0 = std::chrono::steady_clock::now();
+    ofdm_->stop();
+    source_->stop();
+    {
+        std::lock_guard<std::mutex> lk(stateM_);
+        state_["channel"] = channel;
+        state_["synced"] = false;
+        state_["ensemble"] = nullptr;
+        state_["services"] = json::array();
+    }
+    autoPending_ = opt_.autoServices;
+    autoCandidates_.clear();
+    ofdm_->setScanMode(scan);
+    // v1 radio.cpp startChannel: restartReader (freq, SAMPLERATE / 10)
+    if (!source_->restart(freq, SAMPLERATE / 10)) {
+        sink_(events::deviceError("Kanal " + channel + " (" + std::to_string(freq / 1000) + " kHz) nicht einstellbar"));
+        return false;
+    }
+    ofdm_->start();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    sink_(events::log("info", "Kanal " + channel + " (" + std::to_string(freq / 1000) + " kHz)" +
+                              (scan ? ", Scan" : "") + ", Umschaltung " + std::to_string(ms) + " ms"));
+    if (trace) std::fprintf(stderr, "tuneChannel %s: %lld ms\n", channel.c_str(), static_cast<long long>(ms));
+    return true;
+}
+
+void DabCore::onDeviceLost(const std::string& message) {
+    sink_(events::deviceError(message));
+    if (!deviceLost_.exchange(true) && deviceLostHandler_) deviceLostHandler_();
+}
+
+// --- Gain / AGC / ppm -----------------------------------------------------------
+
+void DabCore::emitGain() {
+    DeviceGain g;
+    if (source_) g = source_->gain();
+    else {
+        std::lock_guard<std::mutex> lk(stateM_);
+        g.lna = state_["gain"].value("lna", 0);
+        g.vga = state_["gain"].value("vga", 0);
+        g.amp = state_["gain"].value("amp", false);
+    }
+    {
+        std::lock_guard<std::mutex> lk(stateM_);
+        state_["gain"] = {{"lna", g.lna}, {"vga", g.vga}, {"amp", g.amp}};
+        state_["agc"] = agc_;
+    }
+    sink_(events::gainChanged(g.lna, g.vga, g.amp, agc_));
+}
+
+void DabCore::setGain(const json& gain) {
+    DeviceGain g;
+    {
+        std::lock_guard<std::mutex> lk(stateM_);
+        g.lna = gain.value("lna", state_["gain"].value("lna", 0));
+        g.vga = gain.value("vga", state_["gain"].value("vga", 0));
+        g.amp = gain.value("amp", state_["gain"].value("amp", false));
+    }
+    if (source_ && !source_->isFileInput()) {
+        source_->setGain(g);
+    } else {
+        // Ohne Geraet merken; attachDevice wendet den Satz beim Oeffnen an.
+        pendingGain_ = g;
+        std::lock_guard<std::mutex> lk(stateM_);
+        state_["gain"] = {{"lna", g.lna}, {"vga", g.vga}, {"amp", g.amp}};
+        return;
+    }
+    emitGain();
+}
+
+void DabCore::setAgc(bool enabled) {
+    agc_ = enabled;
+    emitGain();
+}
+
+void DabCore::setPpm(int ppm) {
+    ppm_ = ppm;
+    if (source_ && !source_->isFileInput()) source_->setPpm(ppm);
+    sink_(events::log("info", "ppm-Korrektur " + std::to_string(ppm)));
+}
+
+// --- Scan -----------------------------------------------------------------------
+
+void DabCore::startScan(const std::vector<std::string>& channelsIn, const std::string& modeName) {
+    stopScan();
+    if (!source_ || !ofdm_ || source_->isFileInput()) {
+        sink_(events::log("warn", "Scan nur mit Geraet (HackRF/RTL-SDR)"));
+        sink_(events::scanFinished());
+        return;
+    }
+    std::vector<std::string> channels = channelsIn;
+    if (channels.empty())
+        for (auto& c : bandIIIChannels()) channels.push_back(c.name);
+    ScanMode mode = scanModeFromName(modeName);
+
+    ScanHooks hooks;
+    hooks.tune = [this](const std::string& ch) { return tuneChannel(ch, true); };
+    hooks.snapshot = [this] {
+        ScanSnapshot s;
+        std::lock_guard<std::mutex> lk(stateM_);
+        if (state_["ensemble"].is_object()) {
+            s.eid = state_["ensemble"].value("eid", -1);
+            s.ensemble = state_["ensemble"].value("name", "");
+        }
+        for (auto& e : state_["services"]) {
+            ServiceInfo si;
+            si.sid = e.value("sid", 0u); si.scids = e.value("scids", 0); si.name = e.value("name", "");
+            si.isAudio = e.value("is_audio", true); si.isPrimary = e.value("is_primary", true);
+            si.subCh = e.value("sub_ch", 0); si.bitrateKbps = e.value("bitrate_kbps", 0); si.pty = e.value("pty", 0);
+            s.services.push_back(si);
+        }
+        s.snr = s.eid >= 0 ? lastSnrDb_.load() : 0.0f;
+        return s;
+    };
+    if (source_->hasAmp()) {
+        hooks.ampGet = [this] { return source_->gain().amp; };
+        hooks.ampSet = [this](bool amp) {
+            DeviceGain g = source_->gain();
+            g.amp = amp;
+            source_->setGain(g);
+            emitGain();
+            return true;
+        };
+    }
+    hooks.emit = sink_;
+    hooks.finished = [this] { scanFinished(); };
+
+    {
+        std::lock_guard<std::mutex> lk(serviceM_);
+        stopAllServicesLocked();
+    }
+    scanning_.store(true);
+    sink_(events::log("info", "Scan (" + modeName + "): " + std::to_string(channels.size()) + " Kanaele, " +
+                              std::to_string(opt_.scanDwellMs) + " ms je Kanal"));
+    scan_ = std::make_unique<ScanController>(std::move(hooks), std::move(channels), mode, opt_.scanDwellMs);
+    scan_->start();
+}
+
+// Scan-Modus verlassen: OFDM verarbeitet wieder den MSC, der Kern bleibt
+// auf dem zuletzt eingestellten Kanal (single: letzter Kanal der Liste,
+// to_data: der Kanal mit Diensten).
+void DabCore::scanFinished() {
+    scanning_.store(false);
+    if (ofdm_) ofdm_->setScanMode(false);
+    sink_(events::scanFinished());
+}
+
+void DabCore::stopScan() {
+    if (!scan_) return;
+    bool aborted = scan_->stop();
+    scan_.reset();
+    if (aborted) scanFinished();
+}
+
+// --- IQ-Dump --------------------------------------------------------------------
+
+void DabCore::startIqDump(const std::string& path) {
+    if (!source_) { sink_(events::log("error", "start_iq_dump ohne Quelle")); return; }
+    std::string error;
+    if (!source_->startDump(path, error)) { sink_(events::log("error", error)); return; }
+    sink_(events::log("info", "IQ-Dump (.uff, 8 Bit) nach " + path));
+}
+
+void DabCore::stopIqDump() {
+    if (!source_ || !source_->dumping()) return;
+    source_->stopDump();
+    sink_(events::log("info", "IQ-Dump beendet"));
 }
 
 void DabCore::openFile(const std::string& path, bool loop, bool fast) {
@@ -722,7 +1009,9 @@ void DabCore::closeDevice() {
         stopSpike();
         sink_(events::deviceClosed());
     }
+    stopScan();
     if (ofdm_ || source_) {
+        if (source_ && source_->dumping()) stopIqDump();
         // Erst die Dienste (Backends + Pipelines), waehrend der OFDM-Thread
         // noch laeuft; closing_ verhindert, dass der OFDM-Thread (Auto-
         // Auswahl) zwischendurch neue Backends anlegt.

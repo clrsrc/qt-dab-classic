@@ -4,11 +4,15 @@
 #include <chrono>
 #include <vector>
 
+// Ausgaberate des Dumps: die Leser liefern immer 2,048 MS/s (nach Resampling).
+#define SAMPLERATE_FILE_DUMP 2048000
+
 FileSourceBase::FileSourceBase(const std::string& path, uint32_t ringSize, FileSourceOptions options)
     : path_(path), opt_(options), ring_(ringSize) {}
 
 FileSourceBase::~FileSourceBase() {
     FileSourceBase::stop();
+    FileSourceBase::stopDump();
     if (file_ != nullptr) std::fclose(file_);
 }
 
@@ -17,8 +21,9 @@ std::string FileSourceBase::serial() const {
     return p == std::string::npos ? path_ : path_.substr(p + 1);
 }
 
-bool FileSourceBase::restart(int32_t frequencyHz) {
+bool FileSourceBase::restart(int32_t frequencyHz, int32_t samplesToSkip) {
     (void)frequencyHz;
+    (void)samplesToSkip;
     if (running_.load()) return true;
     if (file_ == nullptr) return false;
     running_.store(true);
@@ -36,7 +41,37 @@ void FileSourceBase::stop() {
 int32_t FileSourceBase::getSamples(std::complex<float>* buffer, int32_t n) {
     int32_t got = ring_.getDataFromBuffer(buffer, n);
     spaceCv_.notify_one();
+    if (dumping_.load()) {
+        std::lock_guard<std::mutex> lk(dumpM_);
+        if (dump_) {
+            if (dumpTemp_.size() < static_cast<size_t>(got)) dumpTemp_.resize(got);
+            auto q = [](float v) {
+                int x = static_cast<int>(v * 127.0f + (v >= 0 ? 0.5f : -0.5f));
+                return static_cast<int8_t>(x > 127 ? 127 : x < -128 ? -128 : x);
+            };
+            for (int32_t i = 0; i < got; i++)
+                dumpTemp_[i] = std::complex<int8_t>(q(buffer[i].real()), q(buffer[i].imag()));
+            dump_->add(dumpTemp_.data(), got);
+        }
+    }
     return got;
+}
+
+bool FileSourceBase::startDump(const std::string& path, std::string& error) {
+    std::lock_guard<std::mutex> lk(dumpM_);
+    if (dump_) { error = "Dump laeuft bereits: " + dump_->path(); return false; }
+    auto w = std::make_unique<XmlFileWriter>(path, 8, "int8", SAMPLERATE_FILE_DUMP, vfoFrequency(), -1,
+                                             name(), serial(), "3.0");
+    if (!w->ok()) { error = "kann " + path + " nicht schreiben"; return false; }
+    dump_ = std::move(w);
+    dumping_.store(true);
+    return true;
+}
+
+void FileSourceBase::stopDump() {
+    std::lock_guard<std::mutex> lk(dumpM_);
+    dumping_.store(false);
+    if (dump_) { dump_->computeHeader(); dump_.reset(); }
 }
 
 int32_t FileSourceBase::samples() {

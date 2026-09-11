@@ -22,21 +22,21 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 |---|---|
 | `open_device` | `source: {kind: hack_rf, serial?} \| {kind: rtl_sdr, index} \| {kind: file, path, loop, fast?}` (`fast`: Datei ohne Echtzeit-Pacing; Standard = `--fast` von dabcored) |
 | `close_device` | |
-| `set_channel` | `channel` ("5C") |
-| `set_gain` | `gain: {lna, vga, amp}` |
-| `set_agc` | `enabled` |
-| `set_ppm` | `ppm` |
+| `set_channel` | `channel` ("5C"). Bei Geräten: laufende Dienste stoppen, Quelle neu abstimmen (v1: 204 800 Samples verwerfen), FIC zurücksetzen; danach kommen `synced`, `ensemble_found`, `service_added` neu oder `no_signal`. Vor `open_device` oder bei Datei-Quellen wird der Kanal nur gemerkt |
+| `set_gain` | `gain: {lna, vga, amp}` → `gain_changed` |
+| `set_agc` | `enabled` (Standard an, Entscheidung 26) → `gain_changed` |
+| `set_ppm` | `ppm` (HackRF: über die Frequenz korrigiert, RTL-SDR: `rtlsdr_set_freq_correction`) |
 | `select_service` | `sid`, `scids`, `slot: primary\|background`. Primary: Audio-Ausgabe + Aufnahme (höchstens einer; ein Wechsel bei laufender Aufnahme wird abgelehnt). Background: nur Backend + Aufnahme, **mehrere gleichzeitig** möglich (Entscheidung 24) |
 | `stop_service` | `slot`, `sid?` (ohne `sid`: alle Dienste des Slots) |
-| `start_scan` | `channels: []`, `mode: single\|to_data\|continuous` |
-| `stop_scan` | |
+| `start_scan` | `channels: []` (leer = alle 38 Band-III-Kanäle), `mode: single\|to_data\|continuous`. Nur mit Gerät; laufende Dienste werden gestoppt, `select_service` ist während des Scans abgelehnt. Je Kanal `scan_progress`, dann nach der Verweilzeit (v1 `switchDelay` 6 s, continuous 12 s) oder nach „kein Signal“ ein `scan_result`; beim ersten `no_signal` wird einmal der AMP umgeschaltet und derselbe Kanal weiter beobachtet (AMP-Retry, `gain_changed`). `single`: alle Kanäle einmal, dann `scan_finished`, der Kern bleibt auf dem letzten Kanal; `to_data`: bis zum ersten Ensemble mit Diensten, dort bleiben; `continuous`: bis `stop_scan` |
+| `stop_scan` | → `scan_finished` |
 | `set_volume` | `percent` |
 | `set_mute` | `muted` |
 | `set_audio_device` | `index?` |
 | `start_recording` | `path`, `format: {format: wav} \| {format: mp3, kbps} \| {format: aac_passthrough}`, `slot`, `sid?` (heute nur `wav`: 48 kHz, Stereo, 16 Bit, vor der Lautstärke abgegriffen) |
 | `stop_recording` | `slot`, `sid?` |
 | `export_timeshift_range` | `from_s`, `to_s`, `path`, `format` |
-| `start_iq_dump` / `stop_iq_dump` | `path` |
+| `start_iq_dump` / `stop_iq_dump` | `path` – Samples der Quelle als `.uff` (Qt-DAB-XML-Format, 8 Bit: HackRF `int8`, RTL-SDR `uint8`, Datei-Quelle `int8` der resampelten 2,048 MS/s); von `open_device{file}` wieder lesbar |
 | `start_frame_dump` / `stop_frame_dump` | `path` |
 | `timeshift_configure` | `capacity_s`, `backing: {backing: ram} \| {backing: disk, dir}` |
 | `timeshift_pause` / `timeshift_play` / `timeshift_live` | |
@@ -59,7 +59,8 @@ und die App bei Überlast verwerfen darf.
 | `ready` | `core_version`, `protocol_version`, `decoders[]` |
 | `device_opened` | `name`, `serial`, `bit_depth` |
 | `device_closed` | |
-| `device_error` | `message` |
+| `device_error` | `message` (auch bei USB-Abriss im Betrieb; der Kern schließt die Quelle danach, `device_closed` folgt) |
+| `gain_changed` | `lna`, `vga`, `amp`, `agc` – nach `set_gain`/`set_agc`, beim Öffnen eines Geräts, bei jeder AGC-Nachführung (HackRF: VGA ±2 bei SNR < 8 / > 18, RTL-SDR: eine Tuner-Gain-Stufe) und beim AMP-Retry im Scan; die App speichert den Satz je Gerät und Kanal (Entscheidung 26). HackRF: LNA 0–40 (8er-Schritte), VGA 0–62 (2er), AMP an/aus; RTL-SDR: `lna` = Tuner-Gain in 0,1 dB (nächster Tabellenwert), `vga`/`amp` ohne Bedeutung |
 | `file_progress` **LW** | `position_s`, `length_s` |
 | `file_ended` | |
 | `synced` | `synced` |

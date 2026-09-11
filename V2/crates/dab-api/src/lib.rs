@@ -202,6 +202,11 @@ pub enum Event {
     DeviceOpened { name: String, serial: String, bit_depth: u8 },
     DeviceClosed,
     DeviceError { message: String },
+    /// Aktueller Gain-Satz und AGC-Zustand: nach `SetGain`/`SetAgc`, beim
+    /// Oeffnen eines Geraets, bei jeder AGC-Nachfuehrung (VGA +-2 bzw.
+    /// Tuner-Gain-Stufe) und beim AMP-Retry im Scan. Die App speichert ihn
+    /// je Geraet und Kanal (Entscheidung 26).
+    GainChanged { lna: u16, vga: u16, amp: bool, agc: bool },
     FileProgress { position_s: f64, length_s: f64 },
     FileEnded,
 
@@ -377,6 +382,17 @@ mod tests {
         // stop_service ohne sid bleibt kompakt
         let c = Command::StopService { slot: ServiceSlot::Background, sid: None };
         assert_eq!(serde_json::to_string(&c).unwrap(), r#"{"type":"stop_service","slot":"background"}"#);
+    }
+
+    #[test]
+    fn gain_changed_is_flat() {
+        // C++-Seite: events::gainChanged (flache Felder wie protocol.md)
+        let js = r#"{"type":"gain_changed","lna":40,"vga":26,"amp":false,"agc":true}"#;
+        let ev: Event = serde_json::from_str(js).unwrap();
+        assert_eq!(ev, Event::GainChanged { lna: 40, vga: 26, amp: false, agc: true });
+        assert!(!ev.is_latest_wins());
+        let s = serde_json::to_string(&Command::SetGain { gain: Gain { lna: 40, vga: 24, amp: false } }).unwrap();
+        assert_eq!(s, r#"{"type":"set_gain","gain":{"lna":40,"vga":24,"amp":false}}"#);
     }
 
     #[test]

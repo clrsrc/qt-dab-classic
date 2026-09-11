@@ -36,6 +36,9 @@ json deviceOpened(const std::string& n, const std::string& s, uint8_t b) {
 }
 json deviceClosed() { return ev("device_closed"); }
 json deviceError(const std::string& m) { auto j = ev("device_error"); j["message"] = m; return j; }
+json gainChanged(int lna, int vga, bool amp, bool agc) {
+    auto j = ev("gain_changed"); j["lna"] = lna; j["vga"] = vga; j["amp"] = amp; j["agc"] = agc; return j;
+}
 json fileProgress(double p, double l) { auto j = ev("file_progress"); j["position_s"] = p; j["length_s"] = l; return j; }
 json fileEnded() { return ev("file_ended"); }
 

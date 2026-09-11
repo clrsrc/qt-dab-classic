@@ -43,6 +43,8 @@ target_include_directories(dabcore
     PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/libdabcore/include
     PRIVATE ${DABCORE_SRC}
             ${DABCORE_SRC}/device
+            ${DABCORE_SRC}/device/librtlsdr   # rtl-sdr.h includes <rtl-sdr_export.h>
+            ${DABCORE_SRC}/scan
             ${DABCORE_SRC}/frontend
             ${DABCORE_SRC}/fic
             ${DABCORE_SRC}/dsp
@@ -109,4 +111,16 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-audio.ps1)
+    # Geraete ohne Hardware: open_device rtl_sdr ohne DLL/Stick -> device_error
+    # binnen 2 s, Prozess laeuft weiter, shutdown funktioniert; set_channel/
+    # set_gain/start_scan ohne Geraet stuerzen nicht ab
+    add_test(NAME dabcored_device
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-device.ps1)
+    # IQ-Dump-Roundtrip: Datei -> start_iq_dump (.uff, int8) -> Replay findet Ensemble
+    add_test(NAME dabcored_iqdump
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-iqdump.ps1)
 endif()

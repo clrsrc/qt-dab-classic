@@ -2,7 +2,9 @@
 //!
 //! ```text
 //! dab-cli replay <datei.uff|.iq> [--service NAME|0xSID] [--wav out.wav] [--events out.jsonl] [--duration S] [--loop] [--fast]
-//! dab-cli live   --channel 5C [--service Dlf] [--device hackrf|rtlsdr] [--events out.jsonl]
+//! dab-cli live   --channel 5C [--service Dlf] [--device hackrf|rtlsdr] [--events out.jsonl] [--duration S]
+//!                [--gain LNA,VGA,AMP] [--no-agc] [--iq-dump out.uff]
+//! dab-cli scan   [--device hackrf|rtlsdr] [--gain LNA,VGA,AMP] [--events out.jsonl]   # Band III, Tabelle
 //! dab-cli spike  [--seconds 10]        # IPC-Durchsatz mit dem Kernstub messen
 //! ```
 //! Der Kern wird ueber `--core PFAD`, `DABCORE=PFAD` oder die Standardorte gefunden.
@@ -10,7 +12,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use crossbeam_channel::RecvTimeoutError;
-use dab_api::{Command, Event, ScanMode, ServiceSlot, SourceKind};
+use dab_api::{Command, Event, Gain, ScanMode, ServiceSlot, SourceKind};
 use dab_core::{locate_core, CoreBackend, IpcBackend, IpcConfig};
 use std::collections::HashMap;
 use std::io::Write;
@@ -66,11 +68,24 @@ enum Sub {
         events: Option<PathBuf>,
         #[arg(long)]
         duration: Option<f64>,
+        /// Gain-Satz LNA,VGA,AMP (HackRF 0-40, 0-62, 0|1; RTL-SDR: LNA = Tuner-Gain in 0,1 dB)
+        #[arg(long)]
+        gain: Option<String>,
+        /// SNR-Nachfuehrung (AGC) abschalten
+        #[arg(long)]
+        no_agc: bool,
+        /// IQ-Dump der Quelle als .uff mitschreiben
+        #[arg(long)]
+        iq_dump: Option<PathBuf>,
     },
     /// Band-III-Scan
     Scan {
         #[arg(long, default_value = "hackrf")]
         device: String,
+        #[arg(long)]
+        gain: Option<String>,
+        #[arg(long)]
+        events: Option<PathBuf>,
     },
     /// IPC-Durchsatz messen (Kernstub sendet Testereignisse)
     Spike {
@@ -109,9 +124,10 @@ fn main() -> Result<()> {
                 wav,
                 events,
                 None,   // Dateizeit-Limit setzt der Kern um (--duration oben)
+                LiveOptions::default(),
             )
         }
-        Sub::Live { channel, service, device, events, duration } => run_session(
+        Sub::Live { channel, service, device, events, duration, gain, no_agc, iq_dump } => run_session(
             &backend,
             device_source(&device)?,
             Some(channel),
@@ -119,8 +135,9 @@ fn main() -> Result<()> {
             None,
             events,
             duration,
+            LiveOptions { gain: gain.as_deref().map(parse_gain).transpose()?, agc: !no_agc, iq_dump },
         ),
-        Sub::Scan { device } => run_scan(&backend, device_source(&device)?),
+        Sub::Scan { device, gain, events } => run_scan(&backend, device_source(&device)?, gain.as_deref().map(parse_gain).transpose()?, events),
         Sub::Spike { seconds } => run_spike(&backend, seconds),
     };
 
@@ -136,8 +153,30 @@ fn device_source(name: &str) -> Result<SourceKind> {
     }
 }
 
+/// "LNA,VGA,AMP" -> Gain
+fn parse_gain(s: &str) -> Result<Gain> {
+    let parts: Vec<&str> = s.split(',').map(|p| p.trim()).collect();
+    let num = |i: usize| -> Result<u16> {
+        parts.get(i).map(|p| p.parse::<u16>().map_err(|e| anyhow!("--gain {s}: {e}"))).unwrap_or(Ok(0))
+    };
+    Ok(Gain {
+        lna: num(0)?,
+        vga: num(1)?,
+        amp: matches!(parts.get(2).copied(), Some("1") | Some("true") | Some("on")),
+    })
+}
+
+#[derive(Default)]
+struct LiveOptions {
+    gain: Option<Gain>,
+    agc: bool,
+    iq_dump: Option<PathBuf>,
+}
+
 /// Wartet auf `Ready`, oeffnet die Quelle, waehlt ggf. Kanal und Dienst und
 /// protokolliert Ereignisse bis Dateiende, Zeitlimit oder Kern-Ende.
+/// Der Kern verarbeitet Kommandos der Reihe nach: `SetChannel` direkt nach
+/// `OpenDevice` trifft auf die schon geoeffnete Quelle (oder wird gemerkt).
 fn run_session(
     backend: &IpcBackend,
     source: SourceKind,
@@ -146,21 +185,40 @@ fn run_session(
     wav: Option<PathBuf>,
     events_path: Option<PathBuf>,
     duration: Option<f64>,
+    live: LiveOptions,
 ) -> Result<()> {
     let tx = backend.commands();
     let rx = backend.events();
     let mut sink = EventSink::open(events_path)?;
 
     wait_ready(&rx, &mut sink)?;
+    let is_device = !matches!(source, SourceKind::File { .. });
+    if let Some(g) = live.gain {
+        tx.send(Command::SetGain { gain: g })?;
+    }
+    if is_device {
+        tx.send(Command::SetAgc { enabled: live.agc })?;
+    }
     tx.send(Command::OpenDevice { source })?;
     if let Some(ch) = channel {
         tx.send(Command::SetChannel { channel: ch })?;
     }
+    if let Some(p) = live.iq_dump {
+        tx.send(Command::StartIqDump { path: p })?;
+    }
+    let mut snr: Vec<f32> = Vec::new();
+    let mut gain_changes = 0u32;
+    let mut stats = (0u64, 0u64, 0u64, 0u64, 0u32);   // frame, rs, aac, rs_corr, n
 
     let start = Instant::now();
     let mut services: HashMap<u32, dab_api::ServiceInfo> = HashMap::new();
     let mut selected = false;
     let mut candidate: Option<(u32, u8)> = None;
+    let mut candidate_since: Option<Instant> = None;
+    // Ein Teilstring-Treffer wartet so lange auf einen exakten Treffer
+    // (die FIC meldet die Dienste in beliebiger Reihenfolge, "Dlf Kultur"
+    // kommt oft vor "Dlf").
+    const CANDIDATE_GRACE: Duration = Duration::from_millis(1500);
     let mut wav = wav;
     let wanted = service.map(|s| s.trim().to_string());
 
@@ -169,6 +227,16 @@ fn run_session(
             if start.elapsed().as_secs_f64() >= d {
                 log::info!("Zeitlimit erreicht");
                 break;
+            }
+        }
+        // Teilstring-Kandidat uebernehmen, wenn die Schonfrist ohne exakten
+        // Treffer abgelaufen ist.
+        if !selected {
+            if let (Some((sid, scids)), Some(since)) = (candidate, candidate_since) {
+                if since.elapsed() >= CANDIDATE_GRACE {
+                    tx.send(Command::SelectService { sid, scids, slot: ServiceSlot::Primary })?;
+                    selected = true;
+                }
             }
         }
         let ev = match rx.recv_timeout(Duration::from_millis(200)) {
@@ -187,9 +255,8 @@ fn run_session(
         match &ev {
             Event::ServiceAdded { service } => {
                 // Exakter Name/SId sofort; ein Teilstring-Treffer ("Dlf" passt
-                // auch auf "Dlf Kultur") erst, wenn die FIC einen Dienst zum
-                // zweiten Mal meldet (alle Dienste einmal gesehen).
-                let seen_before = services.insert(service.sid, service.clone()).is_some();
+                // auch auf "Dlf Kultur") erst nach der Schonfrist.
+                services.insert(service.sid, service.clone());
                 if !selected {
                     if let Some(w) = &wanted {
                         match service_match(service, w) {
@@ -197,14 +264,11 @@ fn run_session(
                                 tx.send(Command::SelectService { sid: service.sid, scids: service.scids, slot: ServiceSlot::Primary })?;
                                 selected = true;
                             }
-                            1 if candidate.is_none() => candidate = Some((service.sid, service.scids)),
-                            _ => {}
-                        }
-                        if !selected && seen_before {
-                            if let Some((sid, scids)) = candidate.take() {
-                                tx.send(Command::SelectService { sid, scids, slot: ServiceSlot::Primary })?;
-                                selected = true;
+                            1 if candidate.is_none() => {
+                                candidate = Some((service.sid, service.scids));
+                                candidate_since = Some(Instant::now());
                             }
+                            _ => {}
                         }
                     }
                 }
@@ -214,6 +278,15 @@ fn run_session(
                     tx.send(Command::StartRecording { path: p, format: dab_api::RecFormat::Wav, slot: ServiceSlot::Primary, sid: None })?;
                 }
             }
+            Event::Snr { db } => snr.push(*db),
+            Event::GainChanged { .. } => gain_changes += 1,
+            Event::ServiceStats { slot: ServiceSlot::Primary, frame_errors, rs_errors, aac_errors, rs_corrections, .. } => {
+                stats.0 += *frame_errors as u64;
+                stats.1 += *rs_errors as u64;
+                stats.2 += *aac_errors as u64;
+                stats.3 += *rs_corrections as u64;
+                stats.4 += 1;
+            }
             Event::FileEnded | Event::Exiting { .. } => break,
             Event::DeviceError { message } => return Err(anyhow!("Geraetefehler: {message}")),
             _ => {}
@@ -222,6 +295,16 @@ fn run_session(
 
     if wanted.is_some() && !selected {
         log::warn!("Dienst nicht gefunden; bekannte Dienste: {:?}", services.values().map(|s| &s.name).collect::<Vec<_>>());
+    }
+    if !snr.is_empty() {
+        let min = snr.iter().cloned().fold(f32::INFINITY, f32::min);
+        let max = snr.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let mean = snr.iter().sum::<f32>() / snr.len() as f32;
+        println!("SNR: min {min:.1} / mittel {mean:.1} / max {max:.1} dB ({} Werte), gain_changed: {gain_changes}", snr.len());
+    }
+    if stats.4 > 0 {
+        println!("Primary-Statistik ueber {} s: Superframe-Fehler {}, RS-Fehler {}, AAC-Fehler {}, RS-Korrekturen {}",
+                 stats.4, stats.0, stats.1, stats.2, stats.3);
     }
     Ok(())
 }
@@ -242,22 +325,49 @@ fn service_match(s: &dab_api::ServiceInfo, wanted: &str) -> u8 {
     }
 }
 
-fn run_scan(backend: &IpcBackend, source: SourceKind) -> Result<()> {
+fn run_scan(backend: &IpcBackend, source: SourceKind, gain: Option<Gain>, events_path: Option<PathBuf>) -> Result<()> {
     let tx = backend.commands();
     let rx = backend.events();
-    let mut sink = EventSink::open(None)?;
+    let mut sink = EventSink::open(events_path)?;
     wait_ready(&rx, &mut sink)?;
+    if let Some(g) = gain {
+        tx.send(Command::SetGain { gain: g })?;
+    }
     tx.send(Command::OpenDevice { source })?;
     let channels: Vec<String> = dab_api::BAND_III.iter().map(|(c, _)| c.to_string()).collect();
     tx.send(Command::StartScan { channels, mode: ScanMode::Single })?;
     let start = Instant::now();
+    let mut results: Vec<(String, Option<u16>, Option<String>, usize, f32)> = Vec::new();
+    let mut amp_retries = 0u32;
     for ev in rx.iter() {
+        sink.write(start.elapsed(), &ev)?;
         print_event(start.elapsed(), &ev);
         match ev {
+            Event::ScanResult { channel, eid, ensemble, services, snr } => results.push((channel, eid, ensemble, services.len(), snr)),
+            Event::Log { text, .. } if text.contains("AMP") => amp_retries += 1,
+            Event::DeviceError { message } => return Err(anyhow!("Geraetefehler: {message}")),
             Event::ScanFinished | Event::Exiting { .. } => break,
             _ => {}
         }
     }
+    let elapsed = start.elapsed().as_secs_f64();
+    println!();
+    println!("{:<5} {:<6} {:<24} {:>7} {:>8}", "Kanal", "EId", "Ensemble", "Dienste", "SNR dB");
+    let mut found = 0;
+    for (ch, eid, name, n, snr) in &results {
+        if eid.is_some() {
+            found += 1;
+        }
+        println!(
+            "{:<5} {:<6} {:<24} {:>7} {:>8.1}",
+            ch,
+            eid.map(|e| format!("{e:04X}")).unwrap_or_else(|| "-".into()),
+            name.as_deref().unwrap_or("-"),
+            n,
+            snr
+        );
+    }
+    println!("{} Kanaele, {found} Ensembles, {amp_retries} AMP-Retries, Dauer {elapsed:.1} s", results.len());
     Ok(())
 }
 
@@ -352,6 +462,7 @@ fn event_name(ev: &Event) -> &'static str {
         Event::DeviceOpened { .. } => "device_opened",
         Event::DeviceClosed => "device_closed",
         Event::DeviceError { .. } => "device_error",
+        Event::GainChanged { .. } => "gain_changed",
         Event::FileProgress { .. } => "file_progress",
         Event::FileEnded => "file_ended",
         Event::Synced { .. } => "synced",
@@ -423,6 +534,9 @@ fn print_event(t: Duration, ev: &Event) {
         Event::Log { level, text } => println!("{ts}  LOG  {level:?}: {text}"),
         Event::DeviceOpened { name, serial, bit_depth } => println!("{ts}  GERAET {name} {serial} {bit_depth} Bit"),
         Event::DeviceError { message } => println!("{ts}  FEHLER {message}"),
+        Event::GainChanged { lna, vga, amp, agc } => println!("{ts}  GAIN  LNA {lna} VGA {vga} AMP {} AGC {}", *amp as u8, *agc as u8),
+        Event::NoSignal { channel } => println!("{ts}  KEIN SIGNAL auf {channel}"),
+        Event::ScanProgress { channel, index, total } => println!("{ts}  SCAN {channel} ({}/{total})", index + 1),
         Event::FileEnded => println!("{ts}  DATEIENDE"),
         Event::ScanResult { channel, ensemble, services, snr, .. } => println!("{ts}  SCAN {channel}: {} ({} Dienste, SNR {snr:.1})", ensemble.as_deref().unwrap_or("-"), services.len()),
         Event::RecordingState { active, path, seconds, .. } => println!("{ts}  REC  {} {:?} {seconds:.1} s", if *active { "laeuft" } else { "aus" }, path),

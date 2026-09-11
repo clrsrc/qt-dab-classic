@@ -68,6 +68,25 @@ Offen: EPG-Compiler (SPI-Binär→XML), MP2, Timeshift.
     python tools/dlplus-stats.py X.uff --duration 300   # Spike 3: DL+-Statistik
 ```
 
+Stand M1 (Live-Empfang): HackRF One (`src/device/hackrf-source.*`, Port von
+Qt-DAB `hackrf-handler`: 4,096 MS/s mit 2:1-Mittelung, Bandbreite 1536 kHz,
+LNA/VGA/AMP, ppm über die Frequenz) und RTL-SDR (`rtlsdr-source.*`, Port von
+`rtlsdr-handler`: 2,048 MS/s, Tuner-Gain-Tabelle, ppm; `librtlsdr.dll` aus dem
+Osmocom-Windows-Release liegt in `core-cpp/third_party/bin/`), beide per
+LoadLibrary zur Laufzeit. `set_channel` mit Dienste-Stopp und FIC-Reset,
+SNR-AGC (Entscheidung 26, v1 `adjustGain`), `gain_changed`-Ereignis,
+Band-III-Scan mit AMP-Retry (`src/scan/scan-controller.*`, Verweilzeit 6 s wie
+v1 `switchDelay`), IQ-Dump als `.uff` (portierter `xml-filewriter`, auch aus
+der Datei-Quelle), USB-Abriss → `device_error` + `device_closed`.
+
+```powershell
+.\target\release\dab-cli.exe live --channel 5C --service Dlf --duration 30 --events live.jsonl
+.\target\release\dab-cli.exe live --channel 5C --gain 40,24,0 --no-agc --iq-dump 5c.uff --duration 10
+.\target\release\dab-cli.exe scan --device hackrf            # Tabelle aller 38 Kanaele
+.\core-cpp\build\dabcored.exe --device hackrf --channel 5C --service Dlf --duration 30 --events live.jsonl
+.\core-cpp\build\dabcored.exe --no-audio --device hackrf --scan   # Tabelle auf stderr
+```
+
 Oberfläche (Entwicklung mit Hot-Reload):
 
 ```powershell

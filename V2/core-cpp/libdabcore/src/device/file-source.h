@@ -7,14 +7,17 @@
 
 #include "isample-source.h"
 #include "ringbuffer.h"
+#include "xml-file-writer.h"
 
 #include <atomic>
 #include <condition_variable>
 #include <cstdio>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 // 64-Bit-Dateipositionen (Mitschnitte > 2 GB; fseek/ftell mit long reichen
 // unter Windows nicht).
@@ -37,13 +40,19 @@ public:
     FileSourceBase(const std::string& path, uint32_t ringSize, FileSourceOptions options);
     ~FileSourceBase() override;
 
-    bool restart(int32_t frequencyHz) override;
+    bool restart(int32_t frequencyHz, int32_t samplesToSkip = 0) override;
     void stop() override;
     int32_t getSamples(std::complex<float>* buffer, int32_t n) override;
     int32_t samples() override;
     bool waitForSamples(int32_t n, int timeoutMs) override;
     bool isFileInput() const override { return true; }
     std::string serial() const override;
+
+    // Sample-Dump der (resampelten) 2,048-MS/s-Daten als .uff, Container
+    // int8 (Werte * 127) – erlaubt den IQ-Dump-Roundtrip-Test ohne Geraet.
+    bool startDump(const std::string& path, std::string& error) override;
+    void stopDump() override;
+    bool dumping() const override { return dumping_.load(); }
 
     // Fortschritt (Sekunden Dateizeit: Position, Laenge), etwa 2x je Dateisekunde.
     void setProgressCallback(std::function<void(double, double)> cb) { progressCb_ = std::move(cb); }
@@ -73,6 +82,10 @@ private:
     std::thread thread_;
     std::atomic<bool> running_{false};
     std::mutex m_;
+    std::mutex dumpM_;
+    std::unique_ptr<XmlFileWriter> dump_;
+    std::atomic<bool> dumping_{false};
+    std::vector<std::complex<int8_t>> dumpTemp_;
     std::condition_variable dataCv_;   // Leser -> Verbraucher: neue Daten
     std::condition_variable spaceCv_;  // Verbraucher -> Leser: Platz frei
     std::function<void(double, double)> progressCb_;

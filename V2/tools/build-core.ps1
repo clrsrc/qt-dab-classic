@@ -68,5 +68,12 @@ foreach ($opt in 'libhackrf.dll', 'libusb-1.0.dll', 'librtlsdr.dll', 'libfdk-aac
     $p = Join-Path $ucrt $opt
     if (Test-Path $p) { Copy-Item $p $dest -Force }
 }
+# Fremd-DLLs ohne MSYS2-Paket (core-cpp\third_party\bin): librtlsdr.dll aus dem
+# Osmocom-Windows-Release (https://ftp.osmocom.org/binaries/windows/rtl-sdr/),
+# braucht nur libusb-1.0.dll, die schon aus ucrt64 kommt.
+$third = Join-Path $src 'third_party\bin'
+if (Test-Path $third) {
+    Get-ChildItem $third -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName $dest -Force }
+}
 Get-ChildItem $dest | ForEach-Object { Write-Host ("   {0,-28} {1,8:N0} kB" -f $_.Name, ($_.Length / 1kb)) }
 Write-Host "Fertig: $(Join-Path $dest 'dabcored.exe')"
