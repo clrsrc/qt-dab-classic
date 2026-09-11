@@ -1,0 +1,143 @@
+/* DAB Classic – Classic Compact Thema: dunkles Chrome, schwarze LCD-Flaechen
+   mit gruener Schrift, geprägte Knoepfe. Eine Datei fuer alles. */
+
+:root {
+  --chrome: #21252b;
+  --chrome-hi: #3e4450;
+  --chrome-lo: #14171c;
+  --lcd: #000;
+  --lcd-inset: #14171c;
+  --green: #00c040;
+  --green-hi: #00e050;
+  --green-dim: #3a4050;
+  --green-bg: #002a10;
+  --text: #9da5b4;
+  --text-dim: #6a7280;
+  --list: #0a0e14;
+  --red: #ff2020;
+  --amber: #e0b030;
+  --btn-top: #3a3f50;
+  --btn-bot: #20242e;
+  --btn-border: #454b58;
+  --font: 11px/1.3 "Segoe UI", Tahoma, sans-serif;
+  --mono: "Consolas", "Courier New", monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--chrome); color: var(--text); font: var(--font); user-select: none; cursor: default; }
+button, select, input { font: inherit; color: inherit; }
+
+.shell {
+  display: flex; flex-direction: column; height: 100vh;
+  border: 2px outset var(--chrome-hi); border-bottom-color: var(--chrome-lo); border-right-color: var(--chrome-lo);
+  background: var(--chrome);
+}
+
+/* --- Titelleiste --- */
+.titlebar {
+  display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 4px;
+  background: linear-gradient(90deg, #0a0f3a, #101860 30%, #182080 50%, #101860 70%, #0a0f3a);
+  border-bottom: 1px solid #0a0a10; flex: none;
+}
+.titlebar .title { flex: 1; color: #e0e0e0; font-weight: bold; font-size: 10px; letter-spacing: 0.15em; }
+.titlebar .tag { font-size: 9px; font-weight: bold; padding: 0 5px; border-radius: 2px; background: #1a1e30; color: var(--green-dim); }
+.titlebar .tag.on { color: var(--green-hi); }
+.titlebar .tag.err { color: var(--red); }
+.winbtn {
+  width: 16px; height: 14px; padding: 0; line-height: 12px; font-size: 9px; font-weight: bold;
+  background: #3a3a3a; border: 1px outset #555; color: #ccc;
+}
+.winbtn.close { color: #ff4040; }
+.winbtn:active { border-style: inset; }
+
+/* --- Knoepfe --- */
+.btn {
+  background: linear-gradient(#3a3f50, #2a2f3a 50%, #20242e);
+  border: 1px outset var(--btn-border); border-bottom-color: var(--chrome-lo); border-right-color: var(--chrome-lo);
+  color: #a0a8b8; font-size: 10px; font-weight: bold; padding: 1px 6px; min-height: 18px; white-space: nowrap;
+}
+.btn:hover { color: var(--green-hi); }
+.btn:active, .btn.down { border-style: inset; background: #1a1e28; }
+.btn:disabled { color: #4a5060; border-color: #2a2e36; }
+.btn.on { color: var(--green-hi); border-style: inset; background: #141a20; }
+.btn.rec.on { color: var(--red); }
+.btn.transport { min-width: 24px; padding: 1px 4px; }
+
+/* --- LCD-Flaechen --- */
+.lcd {
+  background: var(--lcd); color: var(--green); font-family: var(--mono);
+  border: 2px inset var(--lcd-inset); border-bottom-color: #2a2e36; border-right-color: #2a2e36;
+}
+.lcd .dim { color: var(--green-dim); }
+.lcd .hi { color: var(--green-hi); }
+
+/* --- Auswahlfelder --- */
+select, input[type="text"], input[type="number"] {
+  background: var(--list); color: var(--green); border: 1px inset #2a2e36; padding: 1px 3px; font-size: 10px; min-height: 18px;
+}
+select option { background: var(--list); color: var(--green); }
+input[type="checkbox"] { accent-color: var(--green); margin: 0 4px 0 0; }
+input[type="range"] { accent-color: var(--green); height: 14px; }
+
+/* --- Panels --- */
+.panel { border-top: 1px solid var(--chrome-lo); border-bottom: 1px solid var(--chrome-hi); }
+.panel-head {
+  display: flex; align-items: center; gap: 6px; padding: 1px 6px; font-size: 9px; font-weight: bold; letter-spacing: 0.1em;
+  color: #7080a0; background: #1a1e28; text-transform: uppercase;
+}
+.panel-head .grow { flex: 1; }
+.panel-head .mini { font-size: 9px; padding: 0 5px; min-height: 14px; font-weight: normal; letter-spacing: 0; text-transform: none; }
+.panel-body { padding: 4px 6px; }
+
+.list {
+  background: var(--list); color: var(--green); border: 1px inset #2a2e36; overflow: auto; font-size: 11px;
+}
+.row {
+  display: flex; align-items: center; gap: 6px; padding: 2px 6px; border: 0; background: none; width: 100%; text-align: left;
+  color: var(--green); font: inherit; cursor: default;
+}
+.row:hover { background: #0e1a0e; }
+.row.active { background: var(--green-bg); color: #00ff50; }
+.row .grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .meta { color: #2f8a4a; font-size: 10px; font-family: var(--mono); }
+.row.active .meta { color: #40c060; }
+
+.tabs { display: flex; gap: 2px; padding: 3px 4px; border-top: 1px solid var(--chrome-lo); }
+.tabs .btn { flex: 1; font-size: 9px; letter-spacing: 0.08em; }
+
+/* --- Statusleiste --- */
+.statusbar {
+  display: flex; align-items: center; gap: 10px; height: 18px; padding: 0 6px; flex: none;
+  background: #181c22; border-top: 1px solid #2a2e36; font-size: 9px; font-weight: bold;
+}
+.statusbar .led { color: var(--green-dim); }
+.statusbar .led.on { color: var(--green); }
+.statusbar .led.alarm { color: var(--red); animation: blink 0.6s steps(2, start) infinite; }
+.statusbar .msg { flex: 1; font-weight: normal; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.statusbar .msg.warn { color: var(--amber); }
+.statusbar .msg.error { color: var(--red); }
+.statusbar .clock { font-family: var(--mono); color: var(--green); font-weight: normal; }
+
+@keyframes blink { to { visibility: hidden; } }
+@keyframes ticker { from { transform: translateX(100%); } to { transform: translateX(-100%); } }
+
+/* --- Overlay / Dialoge --- */
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.dialog {
+  background: var(--chrome); border: 2px outset var(--chrome-hi); min-width: 260px; max-width: 90vw; padding: 10px 12px;
+}
+.dialog h3 { margin: 0 0 6px; font-size: 11px; color: var(--green-hi); letter-spacing: 0.05em; }
+.dialog p { margin: 0 0 10px; }
+.dialog .actions { display: flex; justify-content: flex-end; gap: 6px; }
+.menu {
+  position: fixed; z-index: 60; background: var(--chrome); border: 1px outset var(--chrome-hi); padding: 2px; min-width: 160px;
+}
+.menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 3px 10px; color: var(--text); }
+.menu button:hover:not(:disabled) { background: var(--green-bg); color: var(--green-hi); }
+.menu button:disabled { color: #4a5060; }
+
+.notices { position: fixed; right: 8px; bottom: 24px; display: flex; flex-direction: column; gap: 4px; z-index: 40; pointer-events: none; }
+.notice { background: #1a1e28; border: 1px solid var(--chrome-hi); padding: 3px 8px; font-size: 10px; color: var(--text); max-width: 320px; }
+.notice.warn { border-color: var(--amber); color: var(--amber); }
+.notice.error { border-color: var(--red); color: var(--red); }

@@ -1,0 +1,372 @@
+// Zentraler Store: Spiegel des Rust-Zustands ("Truth" in dab-app::state).
+// Initial per Snapshot (`get_state`), danach werden dieselben Delta-Ereignisse
+// angewendet, die auch die Rust-Seite verarbeitet. Komponenten lesen nur
+// hieraus und rufen `api` fuer Aktionen.
+
+import { api, type AppEvent, type AppState, type CoreEvent, type Presets, type ServiceInfo, type Settings } from "./core";
+import { setLang } from "./i18n.svelte";
+
+export function emptyState(): AppState {
+  return {
+    core_alive: false,
+    core_version: "",
+    core_restarts: 0,
+    device: null,
+    device_error: null,
+    channel: null,
+    synced: false,
+    snr: 0,
+    fic_ok: 0,
+    fic_total: 0,
+    ensemble: null,
+    services: [],
+    current: null,
+    dls: "",
+    dl_plus: null,
+    slide: null,
+    level: [0, 0],
+    gain: { lna: 40, vga: 40, amp: false },
+    agc: true,
+    volume: 70,
+    muted: false,
+    scan: { active: false, channel: "", index: 0, total: 0, results: [] },
+    ews_present: false,
+    alert: null,
+    ews_switched_from: null,
+    recording: false,
+    file: null,
+    audio_devices: [],
+    audio_device_current: null,
+    pending: null,
+    clock_utc: null,
+    log_tail: [],
+  };
+}
+
+export interface Notice {
+  id: number;
+  level: "info" | "warn" | "error";
+  text: string;
+  at: number;
+}
+
+export const s = $state<AppState>(emptyState());
+
+export const ui = $state({
+  presets: { version: 1, slots: Array<null>(10).fill(null) } as Presets,
+  settings: null as Settings | null,
+  dataDir: "",
+  portable: false,
+  notices: [] as Notice[],
+  /** Letzter Preset-Status (Zeile in der Statusleiste). */
+  presetStatus: null as { slot: number | null; status: string; name: string; channel: string; at: number } | null,
+  /** Sekundentakt fuer Uhr/MOT-Frische. */
+  now: Date.now(),
+  ready: false,
+});
+
+let noticeId = 0;
+export function notify(level: Notice["level"], text: string, ttlMs = 4000) {
+  const n: Notice = { id: ++noticeId, level, text, at: Date.now() };
+  ui.notices = [...ui.notices, n].slice(-3);
+  setTimeout(() => {
+    ui.notices = ui.notices.filter((x) => x.id !== n.id);
+  }, ttlMs);
+}
+
+// ---------------------------------------------------------------------------
+// Ableitungen
+// ---------------------------------------------------------------------------
+
+export function currentService(): ServiceInfo | null {
+  const c = s.current;
+  if (!c) return null;
+  return s.services.find((x) => x.sid === c.sid && x.scids === c.scids) ?? null;
+}
+
+export function activePresetSlot(): number | null {
+  const c = s.current;
+  const ch = s.channel;
+  if (!c || !ch) return null;
+  const i = ui.presets.slots.findIndex(
+    (p) => p && p.sid === c.sid && p.scids === c.scids && p.channel.toUpperCase() === ch.toUpperCase(),
+  );
+  return i >= 0 ? i : null;
+}
+
+export function slideUrl(): string | null {
+  const sl = s.slide;
+  return sl ? `data:${sl.mime || "image/jpeg"};base64,${sl.data_b64}` : null;
+}
+
+export function motFresh(): boolean {
+  return !!s.slide && ui.now / 1000 - s.slide.received_at < 60;
+}
+
+export function alertActive(): boolean {
+  const a = s.alert;
+  return !!a && (a.phase === "trigger" || a.phase === "sustain");
+}
+
+export function dlPlusTitle(): { title: string; artist: string } | null {
+  const d = s.dl_plus;
+  if (!d) return null;
+  const tag = (t: number) => d.tags.find((x) => x[0] === t)?.[1] ?? "";
+  const title = tag(1);
+  const artist = tag(4) || tag(9) || tag(8);
+  if (!title && !artist) return null;
+  return { title, artist };
+}
+
+// ---------------------------------------------------------------------------
+// Reducer (spiegelt dab-app::state::AppState::apply)
+// ---------------------------------------------------------------------------
+
+function sortServices(list: ServiceInfo[]) {
+  list.sort((a, b) => a.name.trim().toLowerCase().localeCompare(b.name.trim().toLowerCase()) || a.scids - b.scids);
+}
+
+function clearService() {
+  s.current = null;
+  s.dls = "";
+  s.dl_plus = null;
+  s.slide = null;
+  s.level = [0, 0];
+}
+
+function clearReception() {
+  s.synced = false;
+  s.snr = 0;
+  s.fic_ok = 0;
+  s.fic_total = 0;
+  s.ensemble = null;
+  s.services = [];
+  clearService();
+}
+
+export function applyCoreEvent(ev: CoreEvent) {
+  const e = ev as Record<string, any>;
+  switch (ev.type) {
+    case "ready":
+      s.core_alive = true;
+      s.core_version = String(e.core_version);
+      break;
+    case "device_opened":
+      s.device = { kind: s.device?.kind ?? "hackrf", name: e.name, serial: e.serial };
+      s.device_error = null;
+      break;
+    case "device_closed":
+      s.device = null;
+      s.file = null;
+      clearReception();
+      break;
+    case "device_error":
+      s.device_error = e.message;
+      break;
+    case "gain_changed":
+      s.gain = { lna: e.lna, vga: e.vga, amp: e.amp };
+      s.agc = e.agc;
+      break;
+    case "file_progress":
+      if (s.file) {
+        s.file.position_s = e.position_s;
+        s.file.length_s = e.length_s;
+      } else {
+        s.file = { path: "", loop: false, position_s: e.position_s, length_s: e.length_s, ended: false };
+      }
+      break;
+    case "file_ended":
+      if (s.file) s.file.ended = true;
+      break;
+    case "synced":
+      s.synced = e.synced;
+      break;
+    case "no_signal":
+      s.synced = false;
+      s.channel = e.channel;
+      break;
+    case "snr":
+      s.snr = e.db;
+      break;
+    case "fic_quality":
+      s.fic_ok = e.ok;
+      s.fic_total = e.total;
+      break;
+    case "ensemble_found": {
+      if (!s.ensemble || s.ensemble.eid !== e.eid) {
+        s.services = [];
+        clearService();
+      }
+      s.ensemble = { eid: e.eid, name: e.name, channel: e.channel };
+      s.channel = e.channel;
+      break;
+    }
+    case "service_added": {
+      const svc = e.service as ServiceInfo;
+      const list = s.services.filter((x) => !(x.sid === svc.sid && x.scids === svc.scids));
+      list.push(svc);
+      sortServices(list);
+      s.services = list;
+      break;
+    }
+    case "ensemble_reconfigured":
+      s.services = [];
+      break;
+    case "clock_time":
+      s.clock_utc = e.unix_utc;
+      break;
+    case "service_started":
+      if (e.slot === "primary") {
+        const same = s.current && s.current.sid === e.sid && s.current.scids === e.scids;
+        if (!same) clearService();
+        s.current = { sid: e.sid, scids: e.scids, codec: e.codec, stereo: e.stereo };
+      }
+      break;
+    case "service_stopped":
+      if (e.slot === "primary" && s.current?.sid === e.sid) clearService();
+      break;
+    case "dls":
+      if (e.slot === "primary") s.dls = e.text;
+      break;
+    case "dl_plus":
+      if (e.slot === "primary") s.dl_plus = { item_running: e.item_running, item_toggle: e.item_toggle, tags: e.tags };
+      break;
+    case "mot_slide":
+      if (e.slot === "primary") {
+        s.slide = { sid: e.sid, mime: e.mime, name: e.name, data_b64: e.data_b64, received_at: Math.floor(Date.now() / 1000) };
+      }
+      break;
+    case "audio_level":
+      s.level = [e.left, e.right];
+      break;
+    case "audio_devices":
+      s.audio_devices = e.names;
+      s.audio_device_current = e.current ?? null;
+      break;
+    case "ews_present":
+      s.ews_present = true;
+      break;
+    case "ews_alert":
+      if (e.phase === "end") {
+        s.alert = null;
+        s.ews_switched_from = null;
+      } else {
+        const dismissed = !!s.alert && s.alert.dismissed && s.alert.iid === e.iid && s.alert.sub_ch === e.sub_ch;
+        s.alert = { phase: e.phase, sub_ch: e.sub_ch, stage: e.stage, iid: e.iid, locations: e.locations, is_test: e.is_test, dismissed };
+      }
+      break;
+    case "ews_switched":
+      s.ews_switched_from = e.from_sid ?? null;
+      break;
+    case "recording_state":
+      if (e.slot === "primary") s.recording = e.active;
+      break;
+    case "scan_progress":
+      if (!s.scan.active) s.scan.results = [];
+      clearReception();
+      s.scan.active = true;
+      s.scan.channel = e.channel;
+      s.scan.index = e.index;
+      s.scan.total = e.total;
+      s.channel = e.channel;
+      break;
+    case "scan_result":
+      s.scan.results = [
+        ...s.scan.results.filter((r) => r.channel !== e.channel),
+        { channel: e.channel, eid: e.eid ?? null, ensemble: e.ensemble ?? null, services: e.services, snr: e.snr },
+      ];
+      break;
+    case "scan_finished":
+      s.scan.active = false;
+      break;
+    case "log":
+      if (e.level === "error" || e.level === "warn") {
+        s.log_tail = [...s.log_tail, String(e.text)].slice(-20);
+      }
+      break;
+    case "exiting":
+      s.core_alive = false;
+      s.device = null;
+      s.scan.active = false;
+      clearReception();
+      break;
+  }
+}
+
+export function applyAppEvent(ev: AppEvent) {
+  switch (ev.type) {
+    case "preset_status":
+      ui.presetStatus = { ...ev, at: Date.now() };
+      if (ev.status === "tuning") {
+        s.pending = { slot: ev.slot, channel: ev.channel, name: ev.name };
+      } else {
+        s.pending = null;
+      }
+      break;
+    case "presets_changed":
+      ui.presets = ev.presets;
+      break;
+    case "settings_changed":
+      ui.settings = ev.settings;
+      setLang(ev.settings.language);
+      break;
+    case "core_restarted":
+      s.core_restarts = ev.attempt;
+      notify("warn", `core_restarted:${ev.reason}:${ev.attempt}`, 8000);
+      break;
+    case "notice":
+      notify(ev.level, ev.text, 6000);
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+
+let unsubs: (() => void)[] = [];
+let ticker: ReturnType<typeof setInterval> | undefined;
+
+export async function init() {
+  unsubs.push(await api.onEvent(applyCoreEvent));
+  unsubs.push(await api.onAppEvent(applyAppEvent));
+  const [snap, settings, presets, [dir, portable]] = await Promise.all([
+    api.getState(),
+    api.getSettings(),
+    api.getPresets(),
+    api.dataDir(),
+  ]);
+  Object.assign(s, snap);
+  ui.settings = settings;
+  setLang(settings.language);
+  ui.presets = presets;
+  ui.dataDir = dir;
+  ui.portable = portable;
+  ui.ready = true;
+  ticker = setInterval(() => (ui.now = Date.now()), 1000);
+}
+
+export function dispose() {
+  unsubs.forEach((u) => u());
+  unsubs = [];
+  if (ticker) clearInterval(ticker);
+}
+
+/** Snapshot neu holen (nach Aktionen, die der Spiegel nicht selbst sieht, z. B. open_device). */
+export async function refreshState() {
+  Object.assign(s, await api.getState());
+}
+
+/** Einstellungen aendern (Teilobjekt) und an die Rust-Seite geben. */
+export async function patchSettings(patch: Partial<Settings>) {
+  if (!ui.settings) return;
+  const next = { ...ui.settings, ...patch };
+  ui.settings = next;
+  if (patch.language !== undefined) setLang(patch.language);
+  await api.updateSettings(next);
+}
+
+export async function togglePanel(name: keyof Settings["panels"]) {
+  if (!ui.settings) return;
+  await patchSettings({ panels: { ...ui.settings.panels, [name]: !ui.settings.panels[name] } });
+}

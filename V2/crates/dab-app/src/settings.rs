@@ -4,7 +4,7 @@
 use dab_api::Gain;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
@@ -32,6 +32,31 @@ pub struct Settings {
     pub music_mp3_kbps: u16,
     pub audio_device: Option<u32>,
     pub debug_panel_open: bool,
+    /// Beim Start das zuletzt benutzte Geraet oeffnen und den letzten Dienst wiederherstellen.
+    pub autostart: bool,
+    /// Letzte Datei fuer die Datei-Wiedergabe (Entscheidung 13).
+    pub last_file: Option<PathBuf>,
+    pub file_loop: bool,
+    pub rtlsdr_index: u32,
+    /// Sichtbarkeit der ein-/ausklappbaren Panels (Entscheidung 9).
+    pub panels: Panels,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct Panels {
+    pub presets: bool,
+    pub services: bool,
+    pub settings: bool,
+    pub scan: bool,
+    pub epg: bool,
+    pub timer: bool,
+}
+
+impl Default for Panels {
+    fn default() -> Self {
+        Self { presets: true, services: true, settings: false, scan: false, epg: false, timer: false }
+    }
 }
 
 impl Default for Settings {
@@ -56,6 +81,11 @@ impl Default for Settings {
             music_mp3_kbps: 256,
             audio_device: None,
             debug_panel_open: false,
+            autostart: true,
+            last_file: None,
+            file_loop: true,
+            rtlsdr_index: 0,
+            panels: Panels::default(),
         }
     }
 }

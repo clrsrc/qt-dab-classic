@@ -10,17 +10,41 @@ pub struct DataDirs {
 }
 
 impl DataDirs {
-    /// Portabel, wenn neben der EXE ein Ordner `data/` oder eine Datei
-    /// `portable.txt` liegt; sonst `%APPDATA%\DAB Classic`.
+    /// Reihenfolge: Umgebungsvariable `DABCLASSIC_DATA` (Entwicklung/Tests),
+    /// dann portabel (`data/` oder `portable.txt` neben der EXE), im
+    /// Entwicklungsbaum (`target/debug/`) auch `apps/desktop/data/`, sonst
+    /// `%APPDATA%\DAB Classic`.
     pub fn detect() -> Self {
+        if let Some(env) = std::env::var_os("DABCLASSIC_DATA").filter(|v| !v.is_empty()) {
+            return Self { root: PathBuf::from(env), portable: true };
+        }
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
                 if let Some(d) = Self::detect_in(dir) {
                     return d;
                 }
+                if let Some(d) = Self::detect_dev(dir) {
+                    return d;
+                }
             }
         }
         Self::user_profile()
+    }
+
+    /// Entwicklungsmodus: EXE unter `<workspace>/target/{debug,release}/`,
+    /// dort `apps/desktop/data/` als portabler Ordner (falls vorhanden).
+    pub fn detect_dev(exe_dir: &Path) -> Option<Self> {
+        let mut dir = exe_dir.to_path_buf();
+        for _ in 0..4 {
+            let data = dir.join("apps").join("desktop").join("data");
+            if data.is_dir() {
+                return Some(Self { root: data, portable: true });
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+        None
     }
 
     /// Wie [`detect`](Self::detect), aber fuer ein gegebenes EXE-Verzeichnis (testbar).

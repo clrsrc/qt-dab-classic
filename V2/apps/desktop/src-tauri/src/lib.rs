@@ -1,67 +1,171 @@
-//! DAB Classic – Tauri-Seite: startet den Kern ueber `dab-core`, reicht
-//! Ereignisse als Tauri-Events an das Frontend und nimmt Kommandos per
-//! `invoke` entgegen. Die App-Logik liegt in `dab-app`; hier ist nur die Bruecke.
+//! DAB Classic – Tauri-Seite: startet den Kern ueber `dab-core`, fuehrt den
+//! App-Zustand (`dab-app::App`, die "Truth") im Ereignis-Thread, reicht
+//! Kern-Ereignisse als Tauri-Events an das Frontend und nimmt Aktionen per
+//! `invoke` entgegen. Logik liegt in `dab-app`; hier ist nur die Bruecke.
 
-use dab_api::{Command, Event};
-use dab_app::{DataDirs, Presets, Settings};
+use dab_api::{Command, Event, Gain, SourceKind};
+use dab_app::{App, AppEvent, AppState as Truth, DataDirs, Effects, NoticeLevel, Preset, Presets, Settings, StoreResult};
 use dab_core::{locate_core, CoreBackend, IpcBackend, IpcConfig};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-/// Gemeinsamer Zustand der App (Tauri-managed).
-pub struct AppState {
-    pub dirs: DataDirs,
-    pub settings: Mutex<Settings>,
-    pub presets: Mutex<Presets>,
+/// Gemeinsamer Zustand (Tauri-managed).
+pub struct Shared {
+    pub app: Arc<Mutex<App>>,
     pub core: Mutex<Option<IpcBackend>>,
+    pub shutting_down: AtomicBool,
+    pub restarts: AtomicU32,
 }
 
-/// Name des Tauri-Events, unter dem alle Kern-Ereignisse ankommen.
+/// Kern-Ereignisse 1:1 (Delta-Events fuer den Spiegel im Frontend).
 const CORE_EVENT: &str = "dab://event";
+/// Hinweise der App-Schicht (Preset-Status, Presets/Settings geaendert, Kern-Neustart).
+const APP_EVENT: &str = "dab://app";
+/// Hoechstens so viele automatische Neustarts des Kerns hintereinander.
+const MAX_RESTARTS: u32 = 5;
+
+type R<T> = Result<T, String>;
+
+fn lock_app(s: &Shared) -> R<std::sync::MutexGuard<'_, App>> {
+    s.app.lock().map_err(|e| e.to_string())
+}
+
+/// Fuehrt die Effekte einer Aktion aus: Kommandos an den Kern, Hinweise ans Frontend.
+fn run_effects(handle: &AppHandle, shared: &Shared, fx: Effects) {
+    if !fx.commands.is_empty() {
+        match shared.core.lock() {
+            Ok(guard) => match guard.as_ref() {
+                Some(core) => {
+                    let tx = core.commands();
+                    for c in fx.commands {
+                        if let Err(e) = tx.send(c) {
+                            log::warn!("Kommando verloren: {e}");
+                        }
+                    }
+                }
+                None => {
+                    let _ = handle.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: "core not running".into() });
+                }
+            },
+            Err(e) => log::warn!("core lock: {e}"),
+        }
+    }
+    for ev in fx.events {
+        if let Err(e) = handle.emit(APP_EVENT, &ev) {
+            log::warn!("emit: {e}");
+        }
+    }
+}
+
+/// Aktion unter dem App-Lock ausfuehren und die Effekte anschliessend (ohne Lock) anwenden.
+fn act<T>(handle: &AppHandle, shared: &Shared, f: impl FnOnce(&mut App) -> Result<(T, Effects), dab_app::AppError>) -> R<T> {
+    let (out, fx) = {
+        let mut app = lock_app(shared)?;
+        f(&mut app).map_err(|e| e.to_string())?
+    };
+    run_effects(handle, shared, fx);
+    Ok(out)
+}
 
 // ---------------------------------------------------------------------------
 // invoke-Handler
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-fn core_send(state: State<'_, AppState>, command: Command) -> Result<(), String> {
-    let guard = state.core.lock().map_err(|e| e.to_string())?;
-    let core = guard.as_ref().ok_or("Kern laeuft nicht")?;
-    core.commands().send(command).map_err(|e| e.to_string())
+fn get_state(shared: State<'_, Shared>) -> R<Truth> {
+    Ok(lock_app(&shared)?.state.clone())
 }
 
 #[tauri::command]
-fn core_alive(state: State<'_, AppState>) -> bool {
-    state.core.lock().map(|g| g.as_ref().map(|c| c.is_alive()).unwrap_or(false)).unwrap_or(false)
+fn get_settings(shared: State<'_, Shared>) -> R<Settings> {
+    Ok(lock_app(&shared)?.settings.clone())
 }
 
 #[tauri::command]
-fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
-    state.settings.lock().map(|s| s.clone()).map_err(|e| e.to_string())
+fn update_settings(handle: AppHandle, shared: State<'_, Shared>, settings: Settings) -> R<()> {
+    act(&handle, &shared, |a| Ok(((), a.update_settings(settings))))
 }
 
 #[tauri::command]
-fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
-    let mut s = state.settings.lock().map_err(|e| e.to_string())?;
-    *s = settings;
-    s.save(&state.dirs.settings_file()).map_err(|e| e.to_string())
+fn get_presets(shared: State<'_, Shared>) -> R<Presets> {
+    Ok(lock_app(&shared)?.presets.clone())
+}
+
+/// Generischer Weg fuer Kern-Kommandos; die App-Schicht fuehrt Kanal, Geraet,
+/// Lautstaerke usw. mit und ergaenzt z. B. den gespeicherten Gain.
+#[tauri::command]
+fn core_send(handle: AppHandle, shared: State<'_, Shared>, command: Command) -> R<()> {
+    act(&handle, &shared, |a| a.command(command).map(|fx| ((), fx)))
 }
 
 #[tauri::command]
-fn get_presets(state: State<'_, AppState>) -> Result<Presets, String> {
-    state.presets.lock().map(|p| p.clone()).map_err(|e| e.to_string())
+fn core_alive(shared: State<'_, Shared>) -> bool {
+    shared.core.lock().map(|g| g.as_ref().map(|c| c.is_alive()).unwrap_or(false)).unwrap_or(false)
 }
 
 #[tauri::command]
-fn save_presets(state: State<'_, AppState>, presets: Presets) -> Result<(), String> {
-    let mut p = state.presets.lock().map_err(|e| e.to_string())?;
-    *p = presets;
-    p.save(&state.dirs.presets_file()).map_err(|e| e.to_string())
+fn restart_core(handle: AppHandle, shared: State<'_, Shared>) -> R<()> {
+    shared.restarts.store(0, Ordering::SeqCst);
+    if let Ok(mut g) = shared.core.lock() {
+        if let Some(mut c) = g.take() {
+            c.shutdown();
+        }
+    }
+    spawn_core(&handle, "manual").map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn data_dir(state: State<'_, AppState>) -> (String, bool) {
-    (state.dirs.root.display().to_string(), state.dirs.portable)
+fn open_device(handle: AppHandle, shared: State<'_, Shared>, source: SourceKind) -> R<()> {
+    act(&handle, &shared, |a| Ok(((), a.open_device(source))))
+}
+
+#[tauri::command]
+fn step_service(handle: AppHandle, shared: State<'_, Shared>, delta: i32) -> R<()> {
+    act(&handle, &shared, |a| a.step_service(delta).map(|fx| ((), fx)))
+}
+
+#[tauri::command]
+fn set_gain(handle: AppHandle, shared: State<'_, Shared>, gain: Gain) -> R<()> {
+    act(&handle, &shared, |a| Ok(((), a.set_gain(gain))))
+}
+
+#[tauri::command]
+fn preset_recall(handle: AppHandle, shared: State<'_, Shared>, slot: usize) -> R<()> {
+    act(&handle, &shared, |a| a.preset_recall(slot, Instant::now()).map(|fx| ((), fx)))
+}
+
+#[tauri::command]
+fn preset_store(handle: AppHandle, shared: State<'_, Shared>, slot: usize, sid: Option<u32>, scids: Option<u8>, force: bool) -> R<StoreResult> {
+    let service = sid.map(|s| (s, scids.unwrap_or(0)));
+    act(&handle, &shared, |a| a.preset_store_service(slot, service, force))
+}
+
+#[tauri::command]
+fn preset_clear(handle: AppHandle, shared: State<'_, Shared>, slot: usize) -> R<Option<Preset>> {
+    act(&handle, &shared, |a| a.preset_clear(slot))
+}
+
+#[tauri::command]
+fn presets_import(handle: AppHandle, shared: State<'_, Shared>, path: Option<String>) -> R<usize> {
+    act(&handle, &shared, |a| a.presets_import_favorites(path.as_deref().map(std::path::Path::new)))
+}
+
+#[tauri::command]
+fn favorites_path(shared: State<'_, Shared>) -> R<Option<String>> {
+    Ok(lock_app(&shared)?.favorites_path().map(|p| p.display().to_string()))
+}
+
+#[tauri::command]
+fn active_preset_slot(shared: State<'_, Shared>) -> R<Option<usize>> {
+    Ok(lock_app(&shared)?.active_preset_slot())
+}
+
+#[tauri::command]
+fn data_dir(shared: State<'_, Shared>) -> R<(String, bool)> {
+    let a = lock_app(&shared)?;
+    Ok((a.dirs.root.display().to_string(), a.dirs.portable))
 }
 
 // ---------------------------------------------------------------------------
@@ -75,50 +179,7 @@ fn resource_core_path(app: &AppHandle) -> Option<std::path::PathBuf> {
         .ok()
         .map(|d| d.join("resources").join("core").join("dabcored.exe"))
         .filter(|p| p.is_file())
-        .or_else(|| {
-            app.path().resource_dir().ok().map(|d| d.join("core").join("dabcored.exe")).filter(|p| p.is_file())
-        })
-}
-
-fn start_core(app: &AppHandle) -> anyhow::Result<IpcBackend> {
-    let exe = resource_core_path(app)
-        .or_else(|| locate_core(None))
-        .ok_or_else(|| anyhow::anyhow!("dabcored.exe nicht gefunden"))?;
-    log::info!("Kern: {}", exe.display());
-    let backend = IpcBackend::spawn(IpcConfig::new(&exe))?;
-
-    // Bruecke: crossbeam -> Tauri-Event. Latest-wins-Ereignisse werden auf
-    // ~20 Hz je Typ gedrosselt, damit das WebView nicht ueberflutet wird.
-    let rx = backend.events();
-    let handle = app.clone();
-    std::thread::Builder::new()
-        .name("core-event-bridge".into())
-        .spawn(move || {
-            use std::collections::HashMap;
-            use std::time::{Duration, Instant};
-            let min_gap = Duration::from_millis(50);
-            let mut last: HashMap<&'static str, Instant> = HashMap::new();
-            for ev in rx.iter() {
-                if ev.is_latest_wins() {
-                    let key = latest_key(&ev);
-                    let now = Instant::now();
-                    if let Some(t) = last.get(key) {
-                        if now.duration_since(*t) < min_gap {
-                            continue;
-                        }
-                    }
-                    last.insert(key, now);
-                }
-                let exiting = matches!(ev, Event::Exiting { .. });
-                if let Err(e) = handle.emit(CORE_EVENT, &ev) {
-                    log::warn!("emit: {e}");
-                }
-                if exiting {
-                    break;
-                }
-            }
-        })?;
-    Ok(backend)
+        .or_else(|| app.path().resource_dir().ok().map(|d| d.join("core").join("dabcored.exe")).filter(|p| p.is_file()))
 }
 
 fn latest_key(ev: &Event) -> &'static str {
@@ -136,6 +197,115 @@ fn latest_key(ev: &Event) -> &'static str {
     }
 }
 
+/// Startet den Kernprozess und den Brueckenthread. Der Thread verarbeitet
+/// jedes Ereignis zuerst in der App-Schicht (Zustand, Preset-Automat), reicht
+/// es dann an das Frontend weiter (Latest-wins ~20 Hz je Typ) und fuehrt die
+/// Effekte aus. Endet der Kern unerwartet, wird er neu gestartet.
+fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
+    let exe = resource_core_path(handle)
+        .or_else(|| locate_core(None))
+        .ok_or_else(|| anyhow::anyhow!("dabcored.exe nicht gefunden"))?;
+    log::info!("Kern: {} ({reason})", exe.display());
+    let backend = IpcBackend::spawn(IpcConfig::new(&exe))?;
+    let rx = backend.events();
+    let shared = handle.state::<Shared>();
+    *shared.core.lock().map_err(|e| anyhow::anyhow!("{e}"))? = Some(backend);
+
+    let app = handle.clone();
+    std::thread::Builder::new().name("core-event-bridge".into()).spawn(move || {
+        use std::collections::HashMap;
+        let shared = app.state::<Shared>();
+        let min_gap = Duration::from_millis(50);
+        let mut last: HashMap<&'static str, Instant> = HashMap::new();
+        let mut exit_reason = String::from("stdout geschlossen");
+        loop {
+            match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(ev) => {
+                    let now = Instant::now();
+                    let mut fx = match shared.app.lock() {
+                        Ok(mut a) => {
+                            let mut fx = a.handle_event(&ev, now);
+                            if matches!(ev, Event::Ready { .. }) {
+                                fx.append(a.startup(now));
+                            }
+                            fx
+                        }
+                        Err(_) => Effects::default(),
+                    };
+                    let forward = if ev.is_latest_wins() {
+                        let key = latest_key(&ev);
+                        let now = Instant::now();
+                        let ok = last.get(key).map(|t| now.duration_since(*t) >= min_gap).unwrap_or(true);
+                        if ok {
+                            last.insert(key, now);
+                        }
+                        ok
+                    } else {
+                        true
+                    };
+                    if forward {
+                        if let Err(e) = app.emit(CORE_EVENT, &ev) {
+                            log::warn!("emit: {e}");
+                        }
+                    }
+                    if let Event::Exiting { reason } = &ev {
+                        exit_reason = reason.clone();
+                        fx.commands.clear();
+                        run_effects(&app, &shared, fx);
+                        break;
+                    }
+                    run_effects(&app, &shared, fx);
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    let fx = shared.app.lock().map(|mut a| a.tick(Instant::now())).unwrap_or_default();
+                    run_effects(&app, &shared, fx);
+                }
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        if shared.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
+        // Unerwartetes Ende: Neustart mit Meldung (begrenzt).
+        let attempt = shared.restarts.fetch_add(1, Ordering::SeqCst) + 1;
+        if attempt > MAX_RESTARTS {
+            let _ = app.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: format!("core stopped ({exit_reason}), giving up") });
+            return;
+        }
+        log::warn!("Kern beendet ({exit_reason}), Neustart {attempt}/{MAX_RESTARTS}");
+        std::thread::sleep(Duration::from_secs(1));
+        if let Ok(mut g) = shared.core.lock() {
+            g.take();
+        }
+        if let Ok(mut a) = shared.app.lock() {
+            a.state.core_restarts = attempt;
+        }
+        match spawn_core(&app, &exit_reason) {
+            Ok(()) => {
+                let _ = app.emit(APP_EVENT, AppEvent::CoreRestarted { reason: exit_reason, attempt });
+            }
+            Err(e) => {
+                let _ = app.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: format!("core restart failed: {e}") });
+            }
+        }
+    })?;
+    Ok(())
+}
+
+fn stop_all(shared: &Shared) {
+    shared.shutting_down.store(true, Ordering::SeqCst);
+    if let Ok(mut a) = shared.app.lock() {
+        if let Err(e) = a.save_all() {
+            log::warn!("Speichern beim Beenden: {e}");
+        }
+    }
+    if let Ok(mut g) = shared.core.lock() {
+        if let Some(mut c) = g.take() {
+            c.shutdown();
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -145,56 +315,49 @@ pub fn run() {
         log::warn!("Datenordner {}: {e}", dirs.root.display());
     }
     log::info!("Datenordner: {} (portabel: {})", dirs.root.display(), dirs.portable);
-    let settings = Settings::load(&dirs.settings_file());
-    let presets = Presets::load(&dirs.presets_file());
+    let app = App::new(dirs);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState {
-            dirs,
-            settings: Mutex::new(settings),
-            presets: Mutex::new(presets),
+        .plugin(tauri_plugin_dialog::init())
+        .manage(Shared {
+            app: Arc::new(Mutex::new(app)),
             core: Mutex::new(None),
+            shutting_down: AtomicBool::new(false),
+            restarts: AtomicU32::new(0),
         })
         .setup(|app| {
             let handle = app.handle().clone();
-            match start_core(&handle) {
-                Ok(backend) => {
-                    let state = app.state::<AppState>();
-                    // Startwerte an den Kern
-                    let s = state.settings.lock().unwrap();
-                    let tx = backend.commands();
-                    let _ = tx.send(Command::SetVolume { percent: s.volume_percent });
-                    let _ = tx.send(Command::SetAgc { enabled: s.agc });
-                    let _ = tx.send(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch });
-                    drop(s);
-                    *state.core.lock().unwrap() = Some(backend);
-                }
-                Err(e) => {
-                    log::error!("Kern konnte nicht gestartet werden: {e}");
-                    let _ = handle.emit(CORE_EVENT, Event::DeviceError { message: format!("Kern: {e}") });
-                }
+            if let Err(e) = spawn_core(&handle, "start") {
+                log::error!("Kern konnte nicht gestartet werden: {e}");
+                let _ = handle.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: format!("core: {e}") });
             }
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<AppState>() {
-                    if let Ok(mut g) = state.core.lock() {
-                        if let Some(mut c) = g.take() {
-                            c.shutdown();
-                        }
-                    }
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
+                if let Some(shared) = window.try_state::<Shared>() {
+                    stop_all(&shared);
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
+            get_state,
+            get_settings,
+            update_settings,
+            get_presets,
             core_send,
             core_alive,
-            get_settings,
-            save_settings,
-            get_presets,
-            save_presets,
+            restart_core,
+            open_device,
+            step_service,
+            set_gain,
+            preset_recall,
+            preset_store,
+            preset_clear,
+            presets_import,
+            favorites_path,
+            active_preset_slot,
             data_dir
         ])
         .run(tauri::generate_context!())

@@ -2,13 +2,21 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Hauptfenster: Kern-Bruecke, rahmenloses Fenster (Drag, Minimieren, Schliessen)",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
     "core:window:allow-close",
     "core:window:allow-set-always-on-top",
-    "opener:default"
+    "opener:default",
+    "dialog:allow-open",
+    "dialog:allow-message",
+    "core:window:allow-set-size",
+    "core:window:allow-inner-size",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-resize-dragging"
   ]
 }

@@ -14,13 +14,15 @@
       {
         "label": "main",
         "title": "DAB Classic",
-        "width": 560,
-        "height": 420,
-        "minWidth": 480,
-        "minHeight": 360,
+        "width": 600,
+        "height": 560,
+        "minWidth": 520,
+        "minHeight": 380,
         "decorations": false,
         "resizable": true,
-        "center": true
+        "center": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required",
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -29,8 +31,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "resources": ["resources/core/*"],
+    "targets": [
+      "nsis"
+    ],
+    "resources": [
+      "resources/core/*"
+    ],
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper"
@@ -43,5 +49,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  }
+  },
+  "plugins": {}
 }
