@@ -22,6 +22,13 @@
       if (p.status === "not_found") return { level: "warn", text: t("preset.not_found", vars) };
       return { level: "info", text: t("preset.selected", vars) };
     }
+    // Senderliste (lib/stations.ts): gleiche Zustandsmaschine ohne Slot; Start-Wiederherstellung hat keinen Namen
+    if (p && ui.now - p.at < 6000 && p.slot == null && p.name) {
+      const vars = { name: p.name, channel: p.channel };
+      if (p.status === "tuning") return { level: "info", text: t("stations.tuning", vars) };
+      if (p.status === "not_found") return { level: "warn", text: t("stations.not_found", vars) };
+      return { level: "info", text: t("stations.selected", vars) };
+    }
     if (s.alert?.phase === "pre_trigger") return { level: "warn", text: `${t("alarm.pre")} · SubCh ${s.alert.sub_ch}` };
     if (s.log_tail.length) return { level: "warn", text: s.log_tail[s.log_tail.length - 1] };
     if (nextT) return { level: "info", text: t("timer.next", { name: timerLabel(nextT), time: fmtDateTime(nextT.start_unix) }) };

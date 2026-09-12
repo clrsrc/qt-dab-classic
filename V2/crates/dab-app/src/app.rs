@@ -41,6 +41,8 @@ pub enum AppEvent {
     /// TII / Debug-Panel (crate::tii): Senderliste geaendert, Zaehler (1 Hz bei offenem Panel).
     TiiUpdated { tii: Vec<crate::tii::TiiSeen> },
     DebugStats { debug: crate::tii::DebugState },
+    /// Senderliste ueber alle Ensembles geaendert (crate::stations).
+    StationsChanged { stations: Vec<crate::stations::StationEntry> },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -131,6 +133,8 @@ pub struct App {
     pub sleep: crate::sleep::Sleep,
     /// TII-Datenbank und Debug-Zeitgeber (crate::tii).
     pub tii: crate::tii::TiiCtl,
+    /// Senderliste ueber alle Ensembles (crate::stations).
+    pub stations_ctl: crate::stations::StationsCtl,
     pending: Option<Pending>,
 }
 
@@ -147,7 +151,22 @@ impl App {
         state.agc = settings.agc;
         let (logos, epg) = crate::epg::open_caches(&dirs);
         let sched = crate::timer::Scheduler::load(&dirs, settings.record_pre_s as i64, settings.record_post_s as i64);
-        Self { dirs, state, settings, presets, logos, epg, sched, rec: Default::default(), sleep: Default::default(), tii: Default::default(), pending: None }
+        let mut app = Self {
+            dirs,
+            state,
+            settings,
+            presets,
+            logos,
+            epg,
+            sched,
+            rec: Default::default(),
+            sleep: Default::default(),
+            tii: Default::default(),
+            stations_ctl: Default::default(),
+            pending: None,
+        };
+        app.stations_load();
+        app
     }
 
     /// Laufenden Preset-Aufruf verwerfen (Timer-Scheduler uebernimmt die Dienstwahl).
@@ -203,6 +222,9 @@ impl App {
     /// Letzten Kanal/Dienst/Geraet/Lautstaerke merken und alles speichern.
     pub fn save_all(&mut self) -> std::io::Result<()> {
         self.remember_last();
+        if self.stations_ctl.unsaved {
+            self.stations_save();
+        }
         self.settings.save(&self.dirs.settings_file())?;
         self.presets.save(&self.dirs.presets_file())
     }
@@ -281,6 +303,7 @@ impl App {
         fx.append(self.recording_on_event(ev));
         fx.append(self.sched_on_event(ev));
         fx.append(self.debug_on_event(ev, now));
+        fx.append(self.stations_on_event(ev, now));
         fx.append(self.tick(now));
         fx
     }
@@ -296,6 +319,7 @@ impl App {
         fx.append(self.media_tick(now));
         fx.append(self.timer_tick_all(crate::state::unix_now()));
         fx.append(self.debug_tick(now));
+        fx.append(self.stations_tick(now));
         fx
     }
 
@@ -533,43 +557,44 @@ impl App {
 
     pub fn preset_recall(&mut self, slot: usize, now: Instant) -> Result<Effects, AppError> {
         let preset = self.presets.get(slot).cloned().ok_or(if slot < PRESET_SLOTS { AppError::Empty } else { AppError::Slot })?;
+        self.tune_to(Some(slot), &preset.channel, preset.sid, preset.scids, &preset.name, now)
+    }
+
+    /// Gemeinsame Zustandsmaschine fuer Preset-Aufruf (`slot`), Senderliste
+    /// ([`tune_station`](Self::tune_station)) und Aehnliches: gleicher Kanal
+    /// und Dienst bekannt -> sofort `select_service`; sonst Kanal abstimmen,
+    /// auf `service_added` warten (Timeout [`PRESET_TIMEOUT`]). `sid` 0 =
+    /// ueber den Namen aufloesen (Favoriten-Import). Fortschritt kommt als
+    /// [`AppEvent::PresetStatus`].
+    pub(crate) fn tune_to(&mut self, slot: Option<usize>, channel: &str, sid: u32, scids: u8, name: &str, now: Instant) -> Result<Effects, AppError> {
         if self.state.recording {
             return Err(AppError::Recording);
         }
         if self.state.scan.active {
             return Err(AppError::Scanning);
         }
-        let same_channel = self.state.channel.as_deref().map(|c| c.eq_ignore_ascii_case(&preset.channel)).unwrap_or(false);
-        let found = if preset.sid != 0 {
-            self.state.service(preset.sid, preset.scids).cloned()
-        } else {
-            self.state.service_by_name(&preset.name).cloned()
-        };
+        let channel = channel.trim().to_uppercase();
+        let name = name.trim().to_string();
+        let same_channel = self.state.channel.as_deref().map(|c| c.eq_ignore_ascii_case(&channel)).unwrap_or(false);
+        let found = if sid != 0 { self.state.service(sid, scids).cloned() } else { self.state.service_by_name(&name).cloned() };
         let mut fx = Effects::default();
         if same_channel || self.state.is_file_source() {
             if let Some(s) = found {
                 // Gleicher Kanal, Dienst bekannt: direkt umschalten (< 1 s).
-                let p = Pending { slot: Some(slot), channel: preset.channel.clone(), sid: s.sid, scids: s.scids, name: preset.name.clone(), deadline: now };
+                let p = Pending { slot, channel: channel.clone(), sid: s.sid, scids: s.scids, name: name.clone(), deadline: now };
                 fx.append(self.pending_found(p, s));
                 return Ok(fx);
             }
             if self.state.is_file_source() {
-                return Ok(fx.ev(AppEvent::PresetStatus { slot: Some(slot), status: PresetStatus::NotFound, name: preset.name, channel: preset.channel }));
+                return Ok(fx.ev(AppEvent::PresetStatus { slot, status: PresetStatus::NotFound, name, channel }));
             }
             // Gleicher Kanal, Dienst (noch) nicht in der Liste: nur warten.
         } else {
-            fx.append(self.set_channel(&preset.channel));
+            fx.append(self.set_channel(&channel));
         }
-        self.pending = Some(Pending {
-            slot: Some(slot),
-            channel: preset.channel.clone(),
-            sid: preset.sid,
-            scids: preset.scids,
-            name: preset.name.clone(),
-            deadline: now + PRESET_TIMEOUT,
-        });
-        self.state.pending = Some(PendingState { slot: Some(slot), channel: preset.channel.clone(), name: preset.name.clone() });
-        Ok(fx.ev(AppEvent::PresetStatus { slot: Some(slot), status: PresetStatus::Tuning, name: preset.name, channel: preset.channel }))
+        self.pending = Some(Pending { slot, channel: channel.clone(), sid, scids, name: name.clone(), deadline: now + PRESET_TIMEOUT });
+        self.state.pending = Some(PendingState { slot, channel: channel.clone(), name: name.clone() });
+        Ok(fx.ev(AppEvent::PresetStatus { slot, status: PresetStatus::Tuning, name, channel }))
     }
 
     /// Belegt den Slot mit dem aktuellen Dienst. Ist der Slot belegt und

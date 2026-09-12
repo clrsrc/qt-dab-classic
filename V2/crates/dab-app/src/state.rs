@@ -152,6 +152,8 @@ pub struct AppState {
     pub tii: Vec<crate::tii::TiiSeen>,
     /// Debug-Panel: SNR-Verlauf, Fehlerzaehler, Frequenzversatz (crate::tii).
     pub debug: crate::tii::DebugState,
+    /// Senderliste ueber alle Ensembles, sortiert Kanal/Ensemble/Name (crate::stations).
+    pub stations: Vec<crate::stations::StationEntry>,
 }
 
 pub fn unix_now() -> i64 {

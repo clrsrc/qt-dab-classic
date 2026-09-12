@@ -28,7 +28,8 @@ INHALT
   HackRF One oder einem RTL-SDR-Stick, spielt Programme ab und bietet:
 
   - 10 Stationsspeicher (Tasten 1-9 und 0)
-  - Senderliste, Band-III-Scan ueber alle 38 Kanaele
+  - Senderliste ueber alle gefundenen Ensembles, Band-III-Scan ueber alle
+    38 Kanaele
   - Senderlogos und Dia-Show (MOT), Lauftext (DLS) mit Titel/Interpret (DL+)
   - EPG (Sendeplaene) mit Jetzt/Danach-Anzeige und Timer-Anlage per Klick
   - Aufnahme als WAV, Timer zum Umschalten und Aufnehmen, Sleep-Timer
@@ -115,22 +116,39 @@ INHALT
     "Scan" durchlaeuft alle 38 Band-III-Kanaele (ca. 100 s) und oeffnet das
     Scan-Panel mit den gefundenen Ensembles, SNR und Dienstezahl. Ein Klick
     auf ein Ergebnis stimmt den Kanal ab. Gefundene Kanaele sind danach in
-    der Kanalliste mit dem Ensemble-Namen markiert.
+    der Kanalliste mit dem Ensemble-Namen markiert, und alle Dienste aller
+    gefundenen Ensembles stehen im Panel "Senderliste" (unten).
     Bei uebersteuertem Eingang schaltet der Scan den HackRF-Vorverstaerker
     (AMP) selbst um und prueft den Kanal erneut.
 
   Sender waehlen
     Kanal in der Kanalliste waehlen (z. B. 5C fuer den Bundesmux). Im
-    Panel "Sender" erscheint die Dienstliste des Ensembles; Klick spielt
-    den Dienst. Pfeil hoch/runter schaltet zum vorherigen/naechsten Dienst.
-    Datendienste (z. B. EPG) stehen mit "Daten" in der Liste und werden
-    vom Kern im Hintergrund genutzt.
+    Panel "Ensemble" erscheint die Dienstliste des abgestimmten Ensembles;
+    Klick spielt den Dienst. Pfeil hoch/runter schaltet zum vorherigen/
+    naechsten Dienst. Datendienste (z. B. EPG) stehen mit "Daten" in der
+    Liste und werden vom Kern im Hintergrund genutzt.
+
+  Senderliste (alle Ensembles)
+    Das Panel "Senderliste" zeigt die Dienste ALLER bekannten Ensembles,
+    gruppiert je Ensemble (Kanal, Name, EId, Dienstezahl). Gefuellt wird
+    sie durch den Scan; ausserdem kommt jedes Ensemble, das Sie hoeren,
+    automatisch dazu (Kanal ohne Signal im Scan verschwindet wieder).
+    Klick auf einen Dienst schaltet um - auch auf einen anderen Kanal
+    (DAB Classic stimmt ab und wartet auf den Dienst, Statuszeile:
+    "Senderliste: suche ... auf ..."). Klick auf eine Ensemble-Kopfzeile
+    stimmt nur den Kanal ab. Filterfeld (Dienst-/Ensemble-Name) und
+    Schalter "nur Audio" (Standard an) grenzen die Liste ein; "Leeren"
+    setzt sie zurueck. Rechtsklick auf einen Dienst -> "Speicher n
+    belegen", oder den Dienst auf einen Speicherknopf ziehen - das geht
+    auch fuer Dienste anderer Ensembles. Die Liste bleibt in
+    data\stations.json erhalten.
 
   Die 10 Speicher belegen
     - Rechtsklick auf einen Speicherknopf -> "Mit aktuellem Sender belegen"
     - Langer Druck (0,5 s) auf einen Speicherknopf
     - Strg + Ziffer (1-9, 0) waehrend ein Dienst laeuft
-    - Dienst aus der Senderliste auf einen Speicherknopf ziehen (Drag)
+    - Dienst aus dem Ensemble-Panel oder der Senderliste auf einen
+      Speicherknopf ziehen (Drag), in der Senderliste auch per Rechtsklick
     Ein belegter Speicher fragt vor dem Ueberschreiben nach.
     Rechtsklick -> "Loeschen" gibt den Speicher frei.
     Aufruf: Klick auf den Knopf oder Taste 1-9 / 0. Liegt der Sender auf
@@ -164,9 +182,10 @@ INHALT
     Speicher        Die 10 Speicherknoepfe mit Logo, Name und Kanal;
                     "Favoriten importieren".
     Geraet/Kanal    Geraetewahl, Oeffnen/Schliessen, Kanalliste, Scan.
-    Panel-Leiste    Knoepfe Speicher, Sender, Scan, Einstellungen, EPG,
-                    Timer, Debug - jedes Panel laesst sich ein- und
-                    ausklappen; die Sichtbarkeit wird gespeichert.
+    Panel-Leiste    Knoepfe Speicher, Ensemble, Senderliste, Scan,
+                    Einstellungen, EPG, Timer, Debug - jedes Panel laesst
+                    sich ein- und ausklappen; die Sichtbarkeit wird
+                    gespeichert.
     Statusleiste    LEDs EWF (gruen = Ensemble meldet Notfallwarn-System,
                     rot = Alarm), SYNC, MOT, REC mit Laufzeit, Sleep-Timer-
                     Rest, TII-Kurzinfo, Uhrzeit, Hinweise (Speicherstatus,
@@ -174,8 +193,12 @@ INHALT
 
   Panels
     Speicher        Speicherleiste (Abschnitt 4).
-    Sender          Dienstliste des Ensembles (Klick = Umschalten, Drag
-                    auf einen Speicherknopf).
+    Ensemble        Dienstliste des abgestimmten Ensembles (Klick =
+                    Umschalten, Drag auf einen Speicherknopf).
+    Senderliste     Alle Dienste aller bekannten Ensembles, gruppiert je
+                    Ensemble; Klick = Umschalten auch ueber Kanalgrenzen,
+                    Filter, "nur Audio", Rechtsklick/Drag = Speicher
+                    belegen, "Leeren" (Abschnitt 4).
     Scan            Ergebnisse des Band-III-Scans.
     Einstellungen   Gruppen Geraet/Empfang (Geraet, RTL-SDR-Index, PPM,
                     AGC, manueller Gain, Merker je Geraet/Kanal), Audio
@@ -346,6 +369,8 @@ INHALT
   data\settings.json     alle Einstellungen (JSON, lesbar; Aenderungen
                          bei geschlossenem Programm vornehmen)
   data\presets.json      die 10 Speicher (Kanal, EId, SId, Name, Logo)
+  data\stations.json     Senderliste ueber alle Ensembles (Kanal, EId,
+                         Ensemble, SId, Name, Bitrate, zuletzt gesehen)
   data\timers.json       Timer (Version 2; Qt-DAB-Timer werden importiert)
   data\recordings\       Aufnahmen (WAV), sofern kein anderer Ordner
                          eingestellt ist

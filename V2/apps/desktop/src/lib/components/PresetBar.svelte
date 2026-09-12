@@ -1,7 +1,7 @@
 <script lang="ts">
   import { openMenu } from "$lib/dialogs.svelte";
   import { t } from "$lib/i18n.svelte";
-  import { clearPreset, importFavorites, recallPreset, storePreset } from "$lib/presets";
+  import { clearPreset, importFavorites, parseDragPayload, recallPreset, storePreset } from "$lib/presets";
   import { activePresetSlot, s, ui } from "$lib/state.svelte";
   import Logo from "./Logo.svelte";
 
@@ -40,9 +40,8 @@
   function drop(slot: number, e: DragEvent) {
     e.preventDefault();
     dragOver = null;
-    const raw = e.dataTransfer?.getData("text/plain") ?? "";
-    const m = raw.match(/^dab-service:(\d+):(\d+):(.*)$/);
-    if (m) void storePreset(slot, { sid: Number(m[1]), scids: Number(m[2]), name: m[3] });
+    const svc = parseDragPayload(e.dataTransfer?.getData("text/plain") ?? "");
+    if (svc) void storePreset(slot, svc);
   }
   function tip(slot: number) {
     const p = ui.presets.slots[slot];

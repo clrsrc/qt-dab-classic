@@ -3,7 +3,7 @@
 // (dab-app::tii, nach Staerke sortiert).
 
 import type { TiiSeen } from "./debug";
-import { s } from "./state.svelte";
+import { s, ui } from "./state.svelte";
 
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
@@ -47,6 +47,13 @@ export function strongestLabel(): string {
   return parts.join(" ");
 }
 
+/** Heimatkoordinaten in den Einstellungen eingetragen (unabhaengig davon, ob ein Sender aufgeloest wurde). */
 export function hasHome(): boolean {
+  const st = ui.settings;
+  return st?.home_lat != null && st?.home_lon != null && (st.home_lat !== 0 || st.home_lon !== 0);
+}
+
+/** Mindestens ein erkannter Sender hat eine berechnete Entfernung. */
+export function hasDistance(): boolean {
   return s.tii.some((t) => t.distance_km != null);
 }

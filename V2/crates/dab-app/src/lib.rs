@@ -16,6 +16,7 @@ pub mod recording;
 pub mod settings;
 pub mod sleep;
 pub mod state;
+pub mod stations;
 pub mod tii;
 pub mod timer;
 
@@ -28,5 +29,6 @@ pub use recording::RecordingInfo;
 pub use settings::{Panels, Settings};
 pub use sleep::{SleepAction, SleepState};
 pub use state::AppState;
+pub use stations::{StationEntry, Stations};
 pub use tii::{DebugState, TiiDatabase, TiiSeen, Transmitter};
 pub use timer::{AddOutcome, Conflict, EpgTimerRequest, Timer, TimerFireStatus, TimerKind, Timers};

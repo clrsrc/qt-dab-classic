@@ -1,16 +1,13 @@
 <script lang="ts">
   import { api, type ServiceInfo } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
+  import { startServiceDrag } from "$lib/presets";
   import { notify, s } from "$lib/state.svelte";
   import Logo from "./Logo.svelte";
 
   function select(svc: ServiceInfo) {
     if (!svc.is_audio) return;
     api.selectService(svc.sid, svc.scids).catch((e) => notify("warn", tError(e)));
-  }
-  function dragStart(svc: ServiceInfo, e: DragEvent) {
-    e.dataTransfer?.setData("text/plain", `dab-service:${svc.sid}:${svc.scids}:${svc.name.trim()}`);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
   }
   const isActive = (svc: ServiceInfo) => !!s.current && s.current.sid === svc.sid && s.current.scids === svc.scids;
 </script>
@@ -28,7 +25,7 @@
         class:active={isActive(svc)}
         class:data={!svc.is_audio}
         draggable={svc.is_audio}
-        ondragstart={(e) => dragStart(svc, e)}
+        ondragstart={(e) => startServiceDrag(e, svc)}
         onclick={() => select(svc)}
         ondblclick={() => select(svc)}
       >

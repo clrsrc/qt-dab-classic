@@ -17,6 +17,8 @@ mod epg_cmds;
 mod timer_cmds;
 /// TII/Debug-Panel (eigenes Modul, Registrierung unten).
 mod debug_cmds;
+/// Senderliste ueber alle Ensembles (eigenes Modul, Registrierung unten).
+mod stations_cmds;
 
 /// Gemeinsamer Zustand (Tauri-managed).
 pub struct Shared {
@@ -143,10 +145,28 @@ fn preset_recall(handle: AppHandle, shared: State<'_, Shared>, slot: usize) -> R
     act(&handle, &shared, |a| a.preset_recall(slot, Instant::now()).map(|fx| ((), fx)))
 }
 
+/// Ohne `sid`: aktueller Dienst. Mit `sid`: Dienst des aktuellen Ensembles
+/// (Drag aus dem Ensemble-Tab); mit `channel` + `eid` dazu: Eintrag der
+/// Senderliste, auch aus einem anderen Ensemble (stations_cmds).
 #[tauri::command]
-fn preset_store(handle: AppHandle, shared: State<'_, Shared>, slot: usize, sid: Option<u32>, scids: Option<u8>, force: bool) -> R<StoreResult> {
-    let service = sid.map(|s| (s, scids.unwrap_or(0)));
-    act(&handle, &shared, |a| a.preset_store_service(slot, service, force))
+fn preset_store(
+    handle: AppHandle,
+    shared: State<'_, Shared>,
+    slot: usize,
+    sid: Option<u32>,
+    scids: Option<u8>,
+    channel: Option<String>,
+    eid: Option<u16>,
+    force: bool,
+) -> R<StoreResult> {
+    let scids = scids.unwrap_or(0);
+    match (channel, eid, sid) {
+        (Some(ch), Some(eid), Some(sid)) => act(&handle, &shared, |a| a.preset_store_station(slot, &ch, eid, sid, scids, force)),
+        (_, _, sid) => {
+            let service = sid.map(|s| (s, scids));
+            act(&handle, &shared, |a| a.preset_store_service(slot, service, force))
+        }
+    }
 }
 
 #[tauri::command]
@@ -395,7 +415,10 @@ pub fn run() {
             debug_cmds::debug_state,
             debug_cmds::tii_set,
             debug_cmds::tii_list,
-            debug_cmds::home_set
+            debug_cmds::home_set,
+            stations_cmds::stations_list,
+            stations_cmds::station_tune,
+            stations_cmds::stations_clear
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");

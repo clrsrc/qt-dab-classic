@@ -4,7 +4,7 @@
   // Heimatkoordinaten. Daten: `s.tii` (dab-app::tii, sortiert).
   import { t } from "$lib/i18n.svelte";
   import { s, ui } from "$lib/state.svelte";
-  import { fmtAzimuth, fmtDistance, hasHome, tiiId } from "$lib/tii";
+  import { fmtAzimuth, fmtDistance, hasDistance, hasHome, tiiId } from "$lib/tii";
 
   const max = $derived(s.tii.length ? Math.max(0.001, s.tii[0].strength) : 1);
   const enabled = $derived(ui.settings?.tii_enabled ?? true);
@@ -28,6 +28,8 @@
     {/each}
     {#if !hasHome()}
       <div class="hint">{t("tii.no_home")}</div>
+    {:else if !hasDistance()}
+      <div class="hint">{t("tii.no_distance")}</div>
     {/if}
   {/if}
 </div>

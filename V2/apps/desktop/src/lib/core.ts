@@ -11,6 +11,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { EpgAppEvent, NowNext } from "./epg";
 import type { AddOutcome, EpgTimerRequest, RecordingInfo, SleepAction, SleepState, Timer, TimerAppEvent, Timers } from "./timers";
 import type { DebugAppEvent, DebugState, TiiSeen } from "./debug";
+import type { StationEntry, StationsAppEvent } from "./stations";
 
 // ---------------------------------------------------------------------------
 // Typen (spiegeln crates/dab-api und crates/dab-app; JSON snake_case)
@@ -105,6 +106,8 @@ export interface AppState {
   /** TII/Debug-Panel (lib/debug.ts, lib/tii.ts): Sender im Nullsymbol, Zaehler. */
   tii: TiiSeen[];
   debug: DebugState;
+  /** Senderliste ueber alle Ensembles (lib/stations.ts), sortiert Kanal/Ensemble/Name. */
+  stations: StationEntry[];
 }
 
 export interface ScanResult {
@@ -145,7 +148,10 @@ export interface Presets {
 
 export interface Panels {
   presets: boolean;
+  /** Tab "Ensemble" (Dienste des abgestimmten Ensembles). */
   services: boolean;
+  /** Tab "Senderliste" (lib/stations.ts). */
+  stations: boolean;
   settings: boolean;
   scan: boolean;
   epg: boolean;
@@ -213,7 +219,8 @@ export type AppEvent =
   | { type: "notice"; level: "info" | "warn" | "error"; text: string }
   | EpgAppEvent
   | TimerAppEvent
-  | DebugAppEvent;
+  | DebugAppEvent
+  | StationsAppEvent;
 
 // ---------------------------------------------------------------------------
 // Schnittstelle
@@ -245,7 +252,8 @@ export interface Transport {
   restartCore(): Promise<void>;
 
   presetRecall(slot: number): Promise<void>;
-  presetStore(slot: number, force: boolean, service?: { sid: number; scids: number }): Promise<StoreResult>;
+  /// `service` ohne channel/eid: Dienst des aktuellen Ensembles; mit beiden: Eintrag der Senderliste (lib/stations.ts).
+  presetStore(slot: number, force: boolean, service?: { sid: number; scids: number; channel?: string; eid?: number }): Promise<StoreResult>;
   presetClear(slot: number): Promise<Preset | null>;
   presetsImport(path?: string): Promise<number>;
   favoritesPath(): Promise<string | null>;
@@ -279,7 +287,7 @@ let recordingGuard: RecordingGuard | null = null;
 export function setRecordingGuard(g: RecordingGuard | null) {
   recordingGuard = g;
 }
-async function guarded(run: () => Promise<void>): Promise<void> {
+export async function guarded(run: () => Promise<void>): Promise<void> {
   try {
     await run();
   } catch (e) {
@@ -352,8 +360,15 @@ class TauriTransport implements Transport {
   presetRecall(slot: number) {
     return guarded(() => invoke<void>("preset_recall", { slot }));
   }
-  presetStore(slot: number, force: boolean, service?: { sid: number; scids: number }) {
-    return invoke<StoreResult>("preset_store", { slot, force, sid: service?.sid ?? null, scids: service?.scids ?? null });
+  presetStore(slot: number, force: boolean, service?: { sid: number; scids: number; channel?: string; eid?: number }) {
+    return invoke<StoreResult>("preset_store", {
+      slot,
+      force,
+      sid: service?.sid ?? null,
+      scids: service?.scids ?? null,
+      channel: service?.channel ?? null,
+      eid: service?.eid ?? null,
+    });
   }
   presetClear(slot: number) {
     return invoke<Preset | null>("preset_clear", { slot });

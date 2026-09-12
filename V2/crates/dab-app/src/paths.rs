@@ -70,6 +70,8 @@ impl DataDirs {
     pub fn settings_file(&self) -> PathBuf { self.root.join("settings.json") }
     pub fn presets_file(&self) -> PathBuf { self.root.join("presets.json") }
     pub fn timers_file(&self) -> PathBuf { self.root.join("timers.json") }
+    /// Senderliste ueber alle Ensembles (crate::stations).
+    pub fn stations_file(&self) -> PathBuf { self.root.join("stations.json") }
     pub fn epg_dir(&self) -> PathBuf { self.root.join("epg") }
     pub fn logos_dir(&self) -> PathBuf { self.root.join("logos") }
     pub fn recordings_dir(&self) -> PathBuf { self.root.join("recordings") }

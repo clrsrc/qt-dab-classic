@@ -59,7 +59,10 @@ pub struct Settings {
 #[serde(default)]
 pub struct Panels {
     pub presets: bool,
+    /// Tab "Ensemble": Dienste des abgestimmten Ensembles.
     pub services: bool,
+    /// Tab "Senderliste": alle Dienste aller bekannten Ensembles (crate::stations).
+    pub stations: bool,
     pub settings: bool,
     pub scan: bool,
     pub epg: bool,
@@ -70,7 +73,7 @@ pub struct Panels {
 
 impl Default for Panels {
     fn default() -> Self {
-        Self { presets: true, services: true, settings: false, scan: false, epg: false, timer: false, debug: false }
+        Self { presets: true, services: true, stations: true, settings: false, scan: false, epg: false, timer: false, debug: false }
     }
 }
 

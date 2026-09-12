@@ -47,6 +47,7 @@ export function emptyState(): AppState {
     now_next: null,
     tii: [],
     debug: emptyDebugState(),
+    stations: [],
   };
 }
 
@@ -350,6 +351,10 @@ export function applyAppEvent(ev: AppEvent) {
     case "tii_updated":
     case "debug_stats":
       applyDebugAppEvent(ev);
+      break;
+    // Senderliste (lib/stations.ts)
+    case "stations_changed":
+      s.stations = ev.stations;
       break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:
