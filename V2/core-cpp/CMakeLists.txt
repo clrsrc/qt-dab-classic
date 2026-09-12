@@ -98,6 +98,11 @@ target_link_libraries(dabcored PRIVATE dabcore)
 # --- Tests -----------------------------------------------------------------
 if(DABCORE_BUILD_TESTS)
     enable_testing()
+    # AGC-Logik ohne Geraet: Akquisitions-Ramp, AMP genau einmal,
+    # Bergsteiger auf synthetischem SNR-Profil, Halten/Neu-Sondieren, Einfrieren
+    add_executable(test_agc tests/test-agc.cpp libdabcore/src/device/agc-controller.cpp)
+    target_include_directories(test_agc PRIVATE ${DABCORE_SRC}/device)
+    add_test(NAME agc_controller COMMAND test_agc)
     add_test(NAME dabcored_ready
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass

@@ -206,6 +206,18 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	      emitCb (cb -> synced, b);
 	   }
 	};
+//	V3: Zeitpunkt des letzten Sync-Fortschritts (guter Rahmen oder
+//	gemeldetes noSignal); ohne Fortschritt ueber ~8 Rahmen (770 ms)
+//	wird noSignal auch dann gemeldet, wenn der Timesyncer Dips findet.
+	auto lastSyncProgress = std::chrono::steady_clock::now ();
+	auto noSyncProgress = [&] () {
+	   auto now = std::chrono::steady_clock::now ();
+	   if (now - lastSyncProgress >= std::chrono::milliseconds (770)) {
+	      emitCb (cb -> noSignal);
+	      attempts = 0;
+	      lastSyncProgress = now;
+	   }
+	};
 //
 //	to get some idea of the signal strength
 	try {
@@ -233,11 +245,17 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	               if (++ attempts >= 8) {
 	                  emitCb (cb -> noSignal);
 	                  attempts = 0;
+	                  lastSyncProgress = std::chrono::steady_clock::now ();
 	               }
 	               continue;
 
 	            default:			// does not happen
 	            case NO_END_OF_DIP_FOUND:
+//	V3: v1 zaehlte nur NO_DIP_FOUND als Versuch; bei einem schwachen
+//	Signal (Dip vorhanden, Ende bzw. Phasenreferenz nicht gefunden) kam
+//	deshalb nie noSignal und die Gain-Regelung blieb stehen. Deshalb
+//	zeitbasiert alle ~8 Rahmen ohne Sync-Fortschritt noSignal melden.
+	               noSyncProgress ();
 	               continue;
 	         }
 
@@ -254,9 +272,12 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	            badFrames ++;
 	            setSynced (false);
 	            inSync	= false;
+	            noSyncProgress ();
 	            continue;
 	         }
 	         sampleCount	= startIndex;
+	         attempts	= 0;		// V3: Fehlversuche nur am Stueck zaehlen
+	         lastSyncProgress = std::chrono::steady_clock::now ();
 	      }
 	      else {	// we are in sync and continue with a next frame
 	         totalFrames ++;
@@ -289,6 +310,7 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	      }
 
 	      goodFrames ++;
+	      lastSyncProgress = std::chrono::steady_clock::now ();
 	      double cLevel	= 0;
 
 //	The size of the ofdm Buffer is large enough to

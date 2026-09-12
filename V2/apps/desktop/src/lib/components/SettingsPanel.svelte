@@ -8,6 +8,7 @@
   import { notify, patchSettings, s, ui } from "$lib/state.svelte";
   import SleepTimer from "./SleepTimer.svelte";
   import { debugApi } from "$lib/debug";
+  import { CAPACITY_MAX_MIN, CAPACITY_MIN_MIN } from "$lib/timeshift";
 
   const run = (p: Promise<unknown>) => p.catch((e) => notify("warn", tError(e)));
   const sel = (e: Event) => (e.target as HTMLSelectElement).value;
@@ -197,6 +198,23 @@
         </span>
         <span class="lbl">{t("sleep.label")}</span>
         <span><SleepTimer /></span>
+      </div>
+
+      <!-- Timeshift (lib/timeshift.ts, Entscheidung 4) -->
+      <div class="group">{t("settings.group_timeshift")}</div>
+      <div class="grid">
+        <span class="lbl">{t("ts.capacity")}</span>
+        <span class="row">
+          <input
+            type="number"
+            class="ppm"
+            min={CAPACITY_MIN_MIN}
+            max={CAPACITY_MAX_MIN}
+            value={Math.round(st.timeshift_capacity_s / 60)}
+            onchange={(e) => patchSettings({ timeshift_capacity_s: Math.max(CAPACITY_MIN_MIN, Math.min(CAPACITY_MAX_MIN, num(e))) * 60 })}
+          />
+          <span class="k">{t("ts.capacity_hint", { mb: Math.round((st.timeshift_capacity_s / 60) * 0.78) })}</span>
+        </span>
       </div>
 
       <!-- Allgemein -->

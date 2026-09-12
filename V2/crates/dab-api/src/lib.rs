@@ -285,7 +285,19 @@ pub enum Event {
 
     // Aufnahme / Timeshift
     RecordingState { slot: ServiceSlot, sid: u32, active: bool, path: Option<PathBuf>, bytes: u64, seconds: f64 },
-    TimeshiftState { mode: TimeshiftMode, buffered_s: f64, offset_s: f64, capacity_s: f64 },
+    /// `frame_index` (Schreibzeiger) und `live_unix` (Ensemble-Uhrzeit am
+    /// Schreibzeiger, 0 = unbekannt) kamen additiv in M4 dazu; aeltere Kerne
+    /// senden sie nicht (Plan M4 1.4).
+    TimeshiftState {
+        mode: TimeshiftMode,
+        buffered_s: f64,
+        offset_s: f64,
+        capacity_s: f64,
+        #[serde(default)]
+        frame_index: u64,
+        #[serde(default)]
+        live_unix: i64,
+    },
 
     // Scan
     ScanProgress { channel: String, index: u16, total: u16 },

@@ -13,12 +13,13 @@ INHALT
   6. Tastenkuerzel
   7. Aufnahme und Umschaltsperre
   8. Timer (auch aus dem EPG), Vor-/Nachlauf, Sleep-Timer
-  9. Notfallwarnung (EWS) und Alarmfenster
- 10. Datei-Wiedergabe (.uff / .iq)
- 11. Datenordner data\
- 12. TII-Sendestandorte und Heimatkoordinaten
- 13. Sprache
- 14. Fuer Entwickler: Bauen, Testen, Portable-Paket
+  9. Timeshift (Pause, Spulen, letzte Minuten sichern)
+ 10. Notfallwarnung (EWS) und Alarmfenster
+ 11. Datei-Wiedergabe (.uff / .iq)
+ 12. Datenordner data\
+ 13. TII-Sendestandorte und Heimatkoordinaten
+ 14. Sprache
+ 15. Fuer Entwickler: Bauen, Testen, Portable-Paket
 
 
 1. WAS IST DAB CLASSIC
@@ -33,6 +34,8 @@ INHALT
   - Senderlogos und Dia-Show (MOT), Lauftext (DLS) mit Titel/Interpret (DL+)
   - EPG (Sendeplaene) mit Jetzt/Danach-Anzeige und Timer-Anlage per Klick
   - Aufnahme als WAV, Timer zum Umschalten und Aufnehmen, Sleep-Timer
+  - Timeshift: Live-Programm anhalten, zurueckspulen und die letzten
+    Minuten nachtraeglich als WAV sichern
   - Notfallwarnung (EWS nach ETSI TS 104 089) mit Alarmfenster und
     automatischer Umschaltung auf den Warndienst
   - Wiedergabe von IQ-Mitschnitten (.uff, .iq)
@@ -174,11 +177,15 @@ INHALT
                     laesst sich an der Titelleiste verschieben und am Rand
                     in der Groesse aendern.
     Anzeige         Ensemble (EId), Dienst, Bitrate, Codec, Stereo/Mono,
-                    FIC-Qualitaet, Kanal/Frequenz/SNR, Senderlogo bzw.
+                    FIC-Qualitaet, LIVE bzw. "TIMESHIFT -m:ss",
+                    Kanal/Frequenz/SNR, Senderlogo bzw.
                     Dia-Show, Jetzt/Danach aus dem EPG, Lauftext (DLS) mit
                     Titel/Interpret (DL+), Aussteuerung L/R.
     Transport       Vorheriger/naechster Dienst, Stopp, Stumm, EPG-, EWF-,
                     TMR- und REC-Knopf, Lautstaerkeregler.
+    Timeshift       Pause/Weiter, -30 s, +30 s, LIVE, Pufferbalken mit
+                    Abspielmarke, Zeitversatz und "letzte n min sichern"
+                    (Abschnitt 9); bei Datei-Wiedergabe ausgeblendet.
     Speicher        Die 10 Speicherknoepfe mit Logo, Name und Kanal;
                     "Favoriten importieren".
     Geraet/Kanal    Geraetewahl, Oeffnen/Schliessen, Kanalliste, Scan.
@@ -205,7 +212,8 @@ INHALT
                     (Ausgabegeraet, Lautstaerke), Notfallwarnung (EWS
                     auswerten, automatisch umschalten, Warnton), EPG,
                     Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
-                    Vor-/Nachlauf, Sleep-Timer), Allgemein (Sprache,
+                    Vor-/Nachlauf, Sleep-Timer), Timeshift (Puffergroesse
+                    in Minuten), Allgemein (Sprache,
                     Autostart, sichtbare Panels, Datenordner, Kern-Version
                     und Kern-Neustart), TII/Debug (Heimatkoordinaten,
                     TII-Auswertung, Schwelle, DX-Modus, Scope-Rate).
@@ -240,9 +248,10 @@ INHALT
   E                EPG-Panel ein/aus
   T                Timer-Panel ein/aus
   D                Debug-Panel ein/aus
-  Leertaste, Pfeil links/rechts, Esc
-                   reserviert fuer Timeshift (Pause/Play, +/-30 s, live),
-                   kommt mit dem naechsten Meilenstein
+  Leertaste        Timeshift: Pause / Weiter (Abschnitt 9)
+  Pfeil links      Timeshift: 30 s zurueck
+  Pfeil rechts     Timeshift: 30 s vor
+  Esc              Timeshift: zurueck auf live
   Im Alarmfenster: Esc oder Enter = Quittieren
 
   Die Kuerzel gelten, solange kein Eingabefeld den Fokus hat; nach einer
@@ -310,7 +319,62 @@ INHALT
     hebt ihn auf.
 
 
-9. NOTFALLWARNUNG (EWS) UND ALARMFENSTER
+9. TIMESHIFT (PAUSE, SPULEN, LETZTE MINUTEN SICHERN)
+----------------------------------------------------
+  DAB Classic schreibt das laufende Programm staendig in einen Ringpuffer
+  im Arbeitsspeicher mit. Damit laesst sich das Live-Radio anhalten, ein
+  Stueck zurueckspulen und ein bereits gehoerter Ausschnitt nachtraeglich
+  als WAV sichern - ohne vorher eine Aufnahme gestartet zu haben.
+
+  Die Timeshift-Leiste
+    Sie sitzt direkt unter der Transportleiste und erscheint, sobald ein
+    Programm laeuft (bei Datei-Wiedergabe wird sie ausgeblendet - dort
+    spult man die Datei selbst). Von links nach rechts:
+      Pause/Weiter (Leertaste), -30 s, +30 s, LIVE,
+      Pufferbalken mit der Marke der Abspielstelle,
+      Zeitversatz "-1:23" bzw. "LIVE",
+      Pufferlaenge und Uhrzeit der Abspielstelle,
+      Minutenfeld und "sichern".
+    Der gefuellte Teil des Balkens zeigt, wie viel Programm im Puffer
+    liegt; rechts aussen ist live. Ein Klick oder Ziehen auf dem Balken
+    springt an die angeklickte Stelle. Die Marke blinkt gelb, solange
+    pausiert ist.
+
+  Bedienung
+    Leertaste       Pause / Weiter ab der Pausestelle
+    Pfeil links     30 s zurueck (bis zum Pufferanfang)
+    Pfeil rechts    30 s vor (ueber live hinaus = live)
+    Esc             sofort zurueck auf live
+    Bei einem Zeitversatz zeigt die Anzeige oben "TIMESHIFT -m:ss"
+    statt "LIVE".
+
+  Letzte Minuten sichern
+    Minuten eintragen (1-240) und "sichern" klicken: Der gewuenschte
+    Ausschnitt wird aus dem Puffer als WAV geschrieben. Der Dateiname ist
+    derselbe wie bei der Aufnahme, ergaenzt um "_timeshift", z. B.
+    20260912_121101_Dlf______________Nachrichten_timeshift.wav; Ablage
+    ebenfalls im Aufnahmeordner. Das Sichern laeuft im Hintergrund
+    schneller als in Echtzeit, das Hoeren wird nicht unterbrochen.
+
+  Puffergroesse
+    Einstellungen -> Timeshift -> "Puffer min": 1 bis 240 Minuten
+    (Standard 60). Der Puffer liegt im Arbeitsspeicher und braucht rund
+    0,8 MB je Minute (60 min ~ 47 MB bei 104 kbit/s). Eine Aenderung legt
+    den Puffer neu an, der bisherige Inhalt geht dabei verloren.
+
+  Wann der Puffer neu beginnt
+    - Sender- oder Kanalwechsel (jeder Sender hat seinen eigenen Puffer)
+    - Ende oder Neustart des Programms
+    - Aenderung der Puffergroesse
+    - Notfall-Alarm: Der Alarm verlaesst den Puffer immer, springt auf
+      live und schaltet auf den Warndienst um; ein Hinweis meldet
+      "Alarm: Zeitversatz verworfen". Nach dem Alarm laeuft der vorherige
+      Sender live weiter und der Puffer beginnt von vorn.
+    Waehrend einer Aufnahme darf Timeshift bedient werden: Die Aufnahme
+    laeuft unabhaengig davon live weiter.
+
+
+10. NOTFALLWARNUNG (EWS) UND ALARMFENSTER
 ----------------------------------------
   DAB Classic wertet die Notfallwarn-Signalisierung nach ETSI TS 104 089
   (FIG 0/15) aus, wie sie der Bundesmux "DR Deutschland" (Kanal 5C) sendet
@@ -344,10 +408,10 @@ INHALT
   waehlbar.
 
   Zum Ausprobieren eignet sich die Datei-Wiedergabe eines Warntag-
-  Mitschnitts (Abschnitt 10).
+  Mitschnitts (Abschnitt 11).
 
 
-10. DATEI-WIEDERGABE (.uff / .iq)
+11. DATEI-WIEDERGABE (.uff / .iq)
 ---------------------------------
   Geraet "Datei" waehlen, Pfad eintragen oder mit "..." auswaehlen,
   "Schleife" nach Wunsch, "Oeffnen". Unterstuetzt werden .uff (Qt-DAB-
@@ -361,10 +425,10 @@ INHALT
 
   Der Kern kann die Samples einer laufenden Quelle (Geraet oder Datei)
   selbst als .uff mitschreiben (IQ-Dump, heute ueber dab-cli /
-  dabcored; siehe Abschnitt 14).
+  dabcored; siehe Abschnitt 15).
 
 
-11. DATENORDNER data\
+12. DATENORDNER data\
 ---------------------
   data\settings.json     alle Einstellungen (JSON, lesbar; Aenderungen
                          bei geschlossenem Programm vornehmen)
@@ -390,7 +454,7 @@ INHALT
   Datei auf Standard zuruecksetzen.
 
 
-12. TII-SENDESTANDORTE UND HEIMATKOORDINATEN
+13. TII-SENDESTANDORTE UND HEIMATKOORDINATEN
 --------------------------------------------
   Der Kern liest im Nullsymbol die TII-Kennungen (Haupt-/Unter-ID) der
   empfangenen Sender eines Gleichwellennetzes und ordnet sie ueber
@@ -404,14 +468,14 @@ INHALT
   der DX-Modus protokolliert jede neue Sichtung in data\tii-files.csv.
 
 
-13. SPRACHE
+14. SPRACHE
 -----------
   Einstellungen -> Allgemein -> Sprache: System, Deutsch oder English.
   Die Umschaltung wirkt sofort auf alle Texte, auch im Alarmfenster.
   "System" folgt der Windows-Anzeigesprache (Deutsch, sonst Englisch).
 
 
-14. FUER ENTWICKLER: BAUEN, TESTEN, PORTABLE-PAKET
+15. FUER ENTWICKLER: BAUEN, TESTEN, PORTABLE-PAKET
 --------------------------------------------------
   Quellen: Repository clrsrc/qt-dab-classic, Branch v3-dev, Ordner V2\.
   Verbindliche Entscheidungen: V2\docs\Entscheidungen.md,

@@ -7,7 +7,8 @@
 // Background: nur Backend + Aufnahme, beliebig viele – Entscheidung 24),
 // je Audiodienst eine AudioPipeline (eigener Thread) und die Audio-Ausgabe
 // (PortAudio oder Null-Sink). Stand M1: Datei-, HackRF- und RTL-SDR-Quelle,
-// Kanalwechsel, Gain/SNR-AGC, Band-III-Scan mit AMP-Retry, IQ-Dump (.uff),
+// Kanalwechsel, Gain-AGC (Akquisitions-Ramp + SNR-Bergsteiger, AgcController),
+// Band-III-Scan mit derselben Ramp, IQ-Dump (.uff),
 // Sync/OFDM/FIC, EWS, MSC/DAB+ Audio, PAD (DLS, DL+, MOT-Slides), MOT ueber
 // Paketdienste, WAV-Aufnahme, Frame-Dump.
 #pragma once
@@ -42,6 +43,7 @@ namespace dabcore {
 
 class AudioPipeline;
 class ScanController;
+class AgcController;
 
 struct CoreOptions {
     bool audio = true;          // PortAudio-Ausgabe (Entscheidung 3)
@@ -177,10 +179,20 @@ private:
     uint8_t cpuSupport_ = 0;
 
     // Gain / AGC / Scan
-    bool agc_ = true;
+    bool agc_ = true;                          // set_agc (Nutzerwunsch)
     int ppm_ = 0;
     std::optional<DeviceGain> pendingGain_;   // set_gain vor open_device
-    std::chrono::steady_clock::time_point lastAgc_{};
+    // AgcController (device/agc-controller.h) je geoeffnetem Geraet; agcM_
+    // schuetzt ihn zwischen OFDM-Thread (no_signal/snr/synced), Kommando-
+    // Thread (set_gain/set_agc) und Scan-Thread (tuneChannel). Nie halten,
+    // waehrend der OFDM-Thread gejoint wird.
+    std::mutex agcM_;
+    std::unique_ptr<AgcController> agcCtl_;
+    static int64_t agcNowMs();
+    // Scan: die Ramp laeuft auch bei AGC aus; danach wird der Gain-Satz
+    // von vor dem Scan wiederhergestellt.
+    bool scanForcedAgc_ = false;
+    DeviceGain preScanGain_;
     std::atomic<float> lastSnrDb_{0.0f};
     std::unique_ptr<ScanController> scan_;
     std::atomic<bool> scanning_{false};

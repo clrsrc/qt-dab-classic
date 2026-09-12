@@ -12,6 +12,7 @@ import type { EpgAppEvent, NowNext } from "./epg";
 import type { AddOutcome, EpgTimerRequest, RecordingInfo, SleepAction, SleepState, Timer, TimerAppEvent, Timers } from "./timers";
 import type { DebugAppEvent, DebugState, TiiSeen } from "./debug";
 import type { StationEntry, StationsAppEvent } from "./stations";
+import type { TimeshiftAppEvent, TimeshiftInfo } from "./timeshift";
 
 // ---------------------------------------------------------------------------
 // Typen (spiegeln crates/dab-api und crates/dab-app; JSON snake_case)
@@ -108,6 +109,8 @@ export interface AppState {
   debug: DebugState;
   /** Senderliste ueber alle Ensembles (lib/stations.ts), sortiert Kanal/Ensemble/Name. */
   stations: StationEntry[];
+  /** Timeshift-Puffer des laufenden Dienstes (lib/timeshift.ts, Entscheidung 4). */
+  timeshift: TimeshiftInfo;
 }
 
 export interface ScanResult {
@@ -220,7 +223,8 @@ export type AppEvent =
   | EpgAppEvent
   | TimerAppEvent
   | DebugAppEvent
-  | StationsAppEvent;
+  | StationsAppEvent
+  | TimeshiftAppEvent;
 
 // ---------------------------------------------------------------------------
 // Schnittstelle

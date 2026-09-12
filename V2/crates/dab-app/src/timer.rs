@@ -1021,9 +1021,9 @@ mod tests {
         assert!(a.dirs.timers_file().is_file(), "sofort gespeichert");
         // Noch nicht faellig
         assert!(a.scheduler_tick(T0 - 1).commands.is_empty());
-        // Faellig: Gain-Standard + Kanalwechsel
+        // Faellig: Kanalwechsel (AGC an: kein Gain vorgeben)
         let fx = a.scheduler_tick(T0);
-        assert_eq!(fx.commands, vec![Command::SetGain { gain: crate::DEFAULT_HACKRF_GAIN }, Command::SetChannel { channel: "11D".into() }]);
+        assert_eq!(fx.commands, vec![Command::SetChannel { channel: "11D".into() }]);
         assert!(a.sched.timers.get(id).unwrap().fired);
         assert!(a.sched.is_running());
         // Dienst erscheint -> select_service

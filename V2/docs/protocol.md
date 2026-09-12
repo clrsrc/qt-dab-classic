@@ -23,12 +23,12 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 | `open_device` | `source: {kind: hack_rf, serial?} \| {kind: rtl_sdr, index} \| {kind: file, path, loop, fast?}` (`fast`: Datei ohne Echtzeit-Pacing; Standard = `--fast` von dabcored) |
 | `close_device` | |
 | `set_channel` | `channel` ("5C"). Bei Geräten: laufende Dienste stoppen, Quelle neu abstimmen (v1: 204 800 Samples verwerfen), FIC zurücksetzen; danach kommen `synced`, `ensemble_found`, `service_added` neu oder `no_signal`. Vor `open_device` oder bei Datei-Quellen wird der Kanal nur gemerkt |
-| `set_gain` | `gain: {lna, vga, amp}` → `gain_changed` |
-| `set_agc` | `enabled` (Standard an, Entscheidung 26) → `gain_changed` |
+| `set_gain` | `gain: {lna, vga, amp}` → `gain_changed`. Bei AGC an ist der Satz der neue **Ausgangspunkt** der Regelung (Ramp bzw. Bergsteiger starten dort neu); ein `set_gain` unmittelbar vor `set_channel` gibt damit den gespeicherten Kanalwert vor (siehe „Gain-Regelung“) |
+| `set_agc` | `enabled` (Standard an, Entscheidung 26) → `gain_changed`. `false` friert den aktuellen Gain ein (keine Nachführung, im Scan läuft die Akquisitions-Ramp trotzdem und der Satz wird danach wiederhergestellt); `true` startet die Regelung ab dem aktuellen Gain neu |
 | `set_ppm` | `ppm` (HackRF: über die Frequenz korrigiert, RTL-SDR: `rtlsdr_set_freq_correction`) |
 | `select_service` | `sid`, `scids`, `slot: primary\|background`. Primary: Audio-Ausgabe + Aufnahme (höchstens einer; ein Wechsel bei laufender Aufnahme wird abgelehnt). Background: nur Backend + Aufnahme, **mehrere gleichzeitig** möglich (Entscheidung 24) |
 | `stop_service` | `slot`, `sid?` (ohne `sid`: alle Dienste des Slots) |
-| `start_scan` | `channels: []` (leer = alle 38 Band-III-Kanäle), `mode: single\|to_data\|continuous`. Nur mit Gerät; laufende Dienste werden gestoppt, `select_service` ist während des Scans abgelehnt. Je Kanal `scan_progress`, dann nach der Verweilzeit (v1 `switchDelay` 6 s, continuous 12 s) oder nach „kein Signal“ ein `scan_result`; beim ersten `no_signal` wird einmal der AMP umgeschaltet und derselbe Kanal weiter beobachtet (AMP-Retry, `gain_changed`). `single`: alle Kanäle einmal, dann `scan_finished`, der Kern bleibt auf dem letzten Kanal; `to_data`: bis zum ersten Ensemble mit Diensten, dort bleiben; `continuous`: bis `stop_scan` |
+| `start_scan` | `channels: []` (leer = alle 38 Band-III-Kanäle), `mode: single\|to_data\|continuous`. Nur mit Gerät; laufende Dienste werden gestoppt, `select_service` ist während des Scans abgelehnt. Je Kanal `scan_progress`, dann nach der Verweilzeit (v1 `switchDelay` 6 s, continuous 12 s) oder nach „kein Signal“ bei erschöpfter Akquisitions-Ramp ein `scan_result`: jedes `no_signal` hebt den Gain eine Ramp-Stufe (HackRF VGA +8, zuletzt einmal AMP an bei VGA 40), erst wenn nichts mehr zu probieren ist, gilt der Kanal als leer (ab VGA 24 nach ~5,5 s, ab dem zuletzt erfolgreichen Gain schneller); jeder Kanal startet mit dem zuletzt erfolgreichen Gain (`gain_changed` je Stufe); endet der Scan mitten in einer Ramp (letzter Kanal leer), geht der Gain auf den zuletzt erfolgreichen Wert ohne AMP zurück. Die Ramp läuft im Scan auch bei `set_agc{false}`; danach wird der Gain-Satz von vor dem Scan wiederhergestellt. `single`: alle Kanäle einmal, dann `scan_finished`, der Kern bleibt auf dem letzten Kanal; `to_data`: bis zum ersten Ensemble mit Diensten, dort bleiben; `continuous`: bis `stop_scan` |
 | `stop_scan` | → `scan_finished` |
 | `set_volume` | `percent` |
 | `set_mute` | `muted` |
@@ -61,7 +61,7 @@ und die App bei Überlast verwerfen darf.
 | `device_opened` | `name`, `serial`, `bit_depth` |
 | `device_closed` | |
 | `device_error` | `message` (auch bei USB-Abriss im Betrieb; der Kern schließt die Quelle danach, `device_closed` folgt) |
-| `gain_changed` | `lna`, `vga`, `amp`, `agc` – nach `set_gain`/`set_agc`, beim Öffnen eines Geräts, bei jeder AGC-Nachführung (HackRF: VGA ±2 bei SNR < 8 / > 18, RTL-SDR: eine Tuner-Gain-Stufe) und beim AMP-Retry im Scan; die App speichert den Satz je Gerät und Kanal (Entscheidung 26). HackRF: LNA 0–40 (8er-Schritte), VGA 0–62 (2er), AMP an/aus; RTL-SDR: `lna` = Tuner-Gain in 0,1 dB (nächster Tabellenwert), `vga`/`amp` ohne Bedeutung |
+| `gain_changed` | `lna`, `vga`, `amp`, `agc` – nach `set_gain`/`set_agc`, beim Öffnen eines Geräts und bei jeder Änderung durch die Regelung (nur bei tatsächlich geändertem Satz): Akquisitions-Ramp-Stufe (HackRF VGA +8 je `no_signal`, RTL-SDR +3 Tabellenstufen), AMP-Versuch/Rückfall, Probeschritt und Rücknahme des Bergsteigers (HackRF VGA ±4, RTL-SDR ±1 Stufe), Start beim Kanalwechsel; im Haltezustand kommt mindestens 15 s nichts (siehe „Gain-Regelung“). Die App speichert den Satz je Gerät und Kanal (Entscheidung 26); sinnvoll ist der zuletzt gemeldete Wert bei Sync, nicht ein Wert während der Ramp. `agc` ist der Wunsch aus `set_agc`, auch während der Scan-Ramp. HackRF: LNA 0–40 (8er-Schritte), VGA 0–62 (2er), AMP an/aus; RTL-SDR: `lna` = Tuner-Gain in 0,1 dB (nächster Tabellenwert), `vga`/`amp` ohne Bedeutung |
 | `file_progress` **LW** | `position_s`, `length_s` |
 | `file_ended` | |
 | `synced` | `synced` |
@@ -102,6 +102,21 @@ und die App bei Überlast verwerfen darf.
 | `log` | `level: error\|warn\|info\|debug`, `text` |
 | `state_snapshot` | `state: {...}` (siehe `CoreState`). Neben Quelle/Kanal/Gain/Diensten: `ensemble: [eid, name]`, `epg_enabled`, `tii_enabled`, `tii_threshold`, `tii_dx_mode`, `scopes{spectrum,iq,rate_hz}`, `snr` (letzter Wert), `clock_time{unix_utc,lto_minutes}?` (letztes `clock_time`), `ppm`, `scanning` und `running[]` – je laufendem Dienst (alle Slots): `slot`, `sid`, `scids`, `name`, `is_audio`, `codec?` (wie `service_started`, `null` bis zum ersten dekodierten Block), `stereo`, `dls?` (letzter Text), `dl_plus?` (`item_toggle`, `item_running`, `tags`), `slide?` (`mime`, `name`, `data_b64` der letzten `mot_slide`), `recording{active,path?,bytes,seconds}`. Damit kann eine neu verbundene App die Anzeige ohne Warten auf neue Ereignisse aufbauen |
 | `exiting` | `reason` |
+
+## Gain-Regelung (AGC)
+
+Kern: `core-cpp/libdabcore/src/device/agc-controller.{h,cpp}` (geräteneutral, ctest `agc_controller`).
+Sie arbeitet auf einer Gain-Stufe 0..N des Geräts – HackRF: VGA/2 (0..31, 2-dB-Schritte) plus AMP-Flag, LNA bleibt wie gesetzt (Standard 40); RTL-SDR: Index in die Tuner-Gain-Tabelle, kein AMP.
+Hintergrund (Messung 12.09.2026, HackRF/NRW): der Standard-VGA 24 reicht für 11D nicht zum Sync, der AMP übersteuert (kein Sync), und oberhalb von VGA ~48 sinkt der SNR wieder.
+
+| Zustand | Verhalten |
+|---|---|
+| **Akquisition** (kein Sync) | Bei jedem `no_signal` (≈ alle 0,77 s) eine Ramp-Stufe höher: HackRF VGA 24 → 32 → 40 → 48 → 56 → 62, dann **einmal AMP an bei VGA 40**, danach zurück auf VGA 40 / AMP aus und Ende der Ramp (keine Endlosschleife; RTL-SDR: +3 Tabellenstufen bis zum Maximum, dann Rückfall auf den Standardindex). Startpunkt: der aktuell gesetzte Gain – nach `set_gain` genau dieser, sonst der zuletzt erfolgreiche Gain (Sync **mit** dekodierten FIBs). Neustart der Ramp bei `set_channel`, `set_gain`, `set_agc{true}`. **Schein-Sync:** meldet der ofdmHandler `synced` (ggf. flatternd), aber 2,5 s lang keine dekodierten FIBs (`fic_quality` ok = 0; Befund 11D bei VGA 24: SNR 3 dB, kein Ensemble, kaum `no_signal`), zählt das wie ein `no_signal` – eine Ramp-Stufe höher. Der ofdmHandler meldet `no_signal` außerdem zeitbasiert (~0,77 s ohne Sync-Fortschritt), nicht mehr nur bei „kein Null-Symbol-Dip“. |
+| **Tracking** (Sync) | Bergsteiger auf dem SNR: nach jeder Stufenänderung 2 s einschwingen (der SNR kommt vom ofdmHandler als träge EMA), 1 s mitteln (nach einem Kanalwechsel zuerst 3,5 s + 1 s), dann Probeschritt (HackRF VGA +4). Mittelwert ≥ 0,25 dB besser → behalten, weiter in derselben Richtung; sonst zurück, Basis neu messen, andere Richtung. Beide Richtungen ohne Gewinn → **Halten**. Der AMP wird im Tracking nie verändert; ein erfolgreicher AMP-Versuch aus der Akquisition bleibt. Sync-Verlust → zurück in die Akquisition, das erste `no_signal` ändert noch nichts (kurzes Fading), danach Ramp ab der aktuellen Stufe (AMP-Versuch nur einmal je Kanal). |
+| **Halten** | 15 s keine Änderung; danach Basis neu messen: nur bei um ≥ 0,25 dB verändertem SNR (spätestens in jeder 4. Haltephase, also nach ≤ 60 s) wird neu sondiert – Hysterese gegen dauernde `gain_changed`. |
+| **AGC aus** | Eingefroren: `no_signal`/`snr` ändern nichts; `set_gain` wirkt direkt. Ausnahme Scan (siehe `start_scan`). |
+
+Typische Werte am Messort: 11D Sync nach ~1,2 s (bei VGA 32), Tracking auf VGA 40–44 bei 6,5–9 dB; 5C sofort Sync, VGA 36–44 bei 8–10 dB; 9B/9D/12D VGA 44; AMP im Endzustand nie an.
 
 ## Beispiel
 

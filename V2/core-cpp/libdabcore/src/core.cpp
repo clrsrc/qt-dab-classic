@@ -4,6 +4,7 @@
 #include "device/raw-file-source.h"
 #include "device/hackrf-source.h"
 #include "device/rtlsdr-source.h"
+#include "device/agc-controller.h"
 #include "scan/scan-controller.h"
 #include "support/dab-channels.h"
 #include "frontend/ofdm-handler.h"
@@ -207,21 +208,29 @@ void DabCore::wireCallbacks() {
     cb.synced = [this](bool s) {
         { std::lock_guard<std::mutex> lk(stateM_); state_["synced"] = s; }
         sink_(events::synced(s));
+        std::lock_guard<std::mutex> lk(agcM_);
+        if (agcCtl_) agcCtl_->onSynced(s, agcNowMs());
     };
     cb.noSignal = [this] {
         sink_(events::noSignal(currentChannel()));
-        if (scanning_.load() && scan_) scan_->onNoSignal();
+        // Akquisitions-Ramp: jedes no_signal hebt den Gain eine Stufe; der
+        // Scan wartet, solange noch eine Stufe zu bewerten ist.
+        bool moreToTry = false;
+        {
+            std::lock_guard<std::mutex> lk(agcM_);
+            if (agcCtl_) moreToTry = agcCtl_->onNoSignal(agcNowMs());
+        }
+        if (scanning_.load() && scan_) scan_->onNoSignal(moreToTry);
     };
     cb.syncLost = [this] { sink_(events::log("debug", "Synchronisation verloren")); };
     cb.snr = [this](float db) {
         lastSnrDb_.store(db);
         auto now = std::chrono::steady_clock::now();
-        // SNR-AGC wie v1 (radio.cpp show_snr -> deviceHandler::adjustGain bei
-        // jedem SNR-Wert; der ofdmHandler liefert ihn alle 3 Rahmen ~ 0,29 s,
-        // also hoechstens ~7 dB/s VGA-Aenderung). Kein weiteres Takten.
-        if (agc_ && source_ && !source_->isFileInput()) {
-            lastAgc_ = now;
-            if (source_->adjustGain(db)) emitGain();
+        // Tracking-AGC (Bergsteiger auf dem SNR, AgcController); der
+        // ofdmHandler liefert den Wert als EMA etwa alle 0,58 s.
+        {
+            std::lock_guard<std::mutex> lk(agcM_);
+            if (agcCtl_) agcCtl_->onSnr(db, agcNowMs());
         }
         if (now - lastSnr_ < 100ms) return;      // 10 Hz
         lastSnr_ = now;
@@ -242,6 +251,11 @@ void DabCore::wireCallbacks() {
     cb.spectrum = [this](const std::vector<uint8_t>& bins) { sink_(events::spectrum(bins)); };
     cb.iqSamples = [this](const std::vector<int8_t>& iq) { sink_(events::iqSamples(iq)); };
     cb.ficQuality = [this](int ok, int scaler) {
+        {
+            // Schein-Sync-Erkennung der AGC (Sync ohne dekodierte FIBs)
+            std::lock_guard<std::mutex> lk(agcM_);
+            if (agcCtl_) agcCtl_->onFicQuality(ok, agcNowMs());
+        }
         auto now = std::chrono::steady_clock::now();
         if (now - lastFicQuality_ < 1000ms) return;   // 1 Hz
         lastFicQuality_ = now;
@@ -1020,6 +1034,24 @@ void DabCore::attachDevice(std::unique_ptr<ISampleSource> src, const std::string
     sink_(events::deviceOpened(source_->name(), source_->serial(), static_cast<uint8_t>(source_->bitDepth())));
     sink_(events::log("info", info));
     emitGain();
+    // AGC auf den Gain-Stufen des Geraets (HackRF VGA/2 + AMP, RTL-SDR
+    // Tabellenindex); Startpunkt = der jetzt gesetzte Gain.
+    if (source_->gainStepCount() > 0) {
+        AgcConfig cfg;
+        cfg.maxStep = source_->gainStepCount() - 1;
+        cfg.acqIncrement = source_->gainAcqIncrement();
+        cfg.hasAmp = source_->hasAmp();
+        cfg.ampTrialStep = cfg.fallbackStep = source_->gainDefaultStep();
+        cfg.trackStep = source_->gainTrackStep();
+        auto ctl = std::make_unique<AgcController>(cfg, [this](int step, bool amp) {
+            source_->setGainStep(step, amp);
+            emitGain();
+        });
+        ctl->setStart(source_->gainStep(), source_->gain().amp, agcNowMs());
+        ctl->setEnabled(agc_, agcNowMs());
+        std::lock_guard<std::mutex> lk(agcM_);
+        agcCtl_ = std::move(ctl);
+    }
 
     autoPending_ = opt_.autoServices;
     autoCandidates_.clear();
@@ -1058,6 +1090,12 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
     autoPending_ = opt_.autoServices;
     autoCandidates_.clear();
     ofdm_->setScanMode(scan);
+    // AGC: Ramp neu ab dem gesetzten bzw. zuletzt erfolgreichen Gain (der
+    // OFDM-Thread steht, deshalb hier gefahrlos unter agcM_).
+    {
+        std::lock_guard<std::mutex> lk(agcM_);
+        if (agcCtl_) agcCtl_->onRetune(agcNowMs());
+    }
     // v1 radio.cpp startChannel: restartReader (freq, SAMPLERATE / 10)
     if (!source_->restart(freq, SAMPLERATE / 10)) {
         sink_(events::deviceError("Kanal " + channel + " (" + std::to_string(freq / 1000) + " kHz) nicht einstellbar"));
@@ -1077,6 +1115,11 @@ void DabCore::onDeviceLost(const std::string& message) {
 }
 
 // --- Gain / AGC / ppm -----------------------------------------------------------
+
+int64_t DabCore::agcNowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 void DabCore::emitGain() {
     DeviceGain g;
@@ -1105,6 +1148,9 @@ void DabCore::setGain(const json& gain) {
     }
     if (source_ && !source_->isFileInput()) {
         source_->setGain(g);
+        // Bei AGC an ist das der neue Ausgangspunkt (Ramp/Tracking neu)
+        std::lock_guard<std::mutex> lk(agcM_);
+        if (agcCtl_) agcCtl_->setStart(source_->gainStep(), source_->gain().amp, agcNowMs());
     } else {
         // Ohne Geraet merken; attachDevice wendet den Satz beim Oeffnen an.
         pendingGain_ = g;
@@ -1117,6 +1163,11 @@ void DabCore::setGain(const json& gain) {
 
 void DabCore::setAgc(bool enabled) {
     agc_ = enabled;
+    {
+        std::lock_guard<std::mutex> lk(agcM_);
+        // Waehrend des Scans laeuft die Ramp ohnehin; der Wunsch gilt danach.
+        if (agcCtl_ && !scanForcedAgc_) agcCtl_->setEnabled(enabled, agcNowMs());
+    }
     emitGain();
 }
 
@@ -1160,22 +1211,22 @@ void DabCore::startScan(const std::vector<std::string>& channelsIn, const std::s
         s.snr = s.eid >= 0 ? lastSnrDb_.load() : 0.0f;
         return s;
     };
-    if (source_->hasAmp()) {
-        hooks.ampGet = [this] { return source_->gain().amp; };
-        hooks.ampSet = [this](bool amp) {
-            DeviceGain g = source_->gain();
-            g.amp = amp;
-            source_->setGain(g);
-            emitGain();
-            return true;
-        };
-    }
     hooks.emit = sink_;
     hooks.finished = [this] { scanFinished(); };
 
     {
         std::lock_guard<std::mutex> lk(serviceM_);
         stopAllServicesLocked();
+    }
+    // Die Akquisitions-Ramp laeuft im Scan immer (Suche); bei AGC aus wird
+    // der Gain-Satz nach dem Scan wiederhergestellt (scanFinished).
+    {
+        std::lock_guard<std::mutex> lk(agcM_);
+        if (agcCtl_ && !agc_) {
+            scanForcedAgc_ = true;
+            preScanGain_ = source_->gain();
+            agcCtl_->setEnabled(true, agcNowMs());
+        }
     }
     scanning_.store(true);
     sink_(events::log("info", "Scan (" + modeName + "): " + std::to_string(channels.size()) + " Kanaele, " +
@@ -1190,6 +1241,24 @@ void DabCore::startScan(const std::vector<std::string>& channelsIn, const std::s
 void DabCore::scanFinished() {
     scanning_.store(false);
     if (ofdm_) ofdm_->setScanMode(false);
+    bool restore = false;
+    {
+        std::lock_guard<std::mutex> lk(agcM_);
+        if (scanForcedAgc_) {
+            scanForcedAgc_ = false;
+            if (agcCtl_) agcCtl_->setEnabled(false, agcNowMs());
+            restore = source_ != nullptr;
+        } else if (agcCtl_) {
+            // Ramp auf dem letzten (leeren) Kanal nicht bei VGA 62/AMP stehen lassen
+            agcCtl_->finishAcquisition(agcNowMs());
+        }
+    }
+    if (restore) {
+        source_->setGain(preScanGain_);
+        std::lock_guard<std::mutex> lk(agcM_);
+        if (agcCtl_) agcCtl_->setStart(source_->gainStep(), source_->gain().amp, agcNowMs());
+    }
+    if (restore) emitGain();
     sink_(events::scanFinished());
 }
 
@@ -1306,6 +1375,11 @@ void DabCore::closeDevice() {
         if (source_) source_->stop();
         if (trace) std::fprintf(stderr, "closeDevice: gestoppt\n");
         ofdm_.reset();
+        {
+            std::lock_guard<std::mutex> lk(agcM_);
+            agcCtl_.reset();
+            scanForcedAgc_ = false;
+        }
         fileSource_ = nullptr;
         source_.reset();
         {

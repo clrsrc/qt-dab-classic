@@ -19,6 +19,8 @@ mod timer_cmds;
 mod debug_cmds;
 /// Senderliste ueber alle Ensembles (eigenes Modul, Registrierung unten).
 mod stations_cmds;
+/// Timeshift-Puffer (eigenes Modul, Registrierung unten).
+mod timeshift_cmds;
 
 /// Gemeinsamer Zustand (Tauri-managed).
 pub struct Shared {
@@ -41,8 +43,34 @@ fn lock_app(s: &Shared) -> R<std::sync::MutexGuard<'_, App>> {
     s.app.lock().map_err(|e| e.to_string())
 }
 
+/// Ablaufspur (Umgebungsvariable DABCLASSIC_TRACE=1): jedes Kommando an den Kern,
+/// jedes nicht gedrosselte Kern-Ereignis und jedes App-Ereignis als Log-Zeile.
+fn trace_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("DABCLASSIC_TRACE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false))
+}
+
+fn trace_json<T: serde::Serialize>(prefix: &str, v: &T) {
+    if trace_on() {
+        let mut s = serde_json::to_string(v).unwrap_or_default();
+        if s.len() > 300 {
+            s.truncate(300);
+            s.push_str("…");
+        }
+        log::info!("{prefix} {s}");
+    }
+}
+
 /// Fuehrt die Effekte einer Aktion aus: Kommandos an den Kern, Hinweise ans Frontend.
 fn run_effects(handle: &AppHandle, shared: &Shared, fx: Effects) {
+    if trace_on() {
+        for c in &fx.commands {
+            trace_json("->", c);
+        }
+        for ev in &fx.events {
+            trace_json("app", ev);
+        }
+    }
     if !fx.commands.is_empty() {
         match shared.core.lock() {
             Ok(guard) => match guard.as_ref() {
@@ -142,6 +170,9 @@ fn set_gain(handle: AppHandle, shared: State<'_, Shared>, gain: Gain) -> R<()> {
 
 #[tauri::command]
 fn preset_recall(handle: AppHandle, shared: State<'_, Shared>, slot: usize) -> R<()> {
+    if trace_on() {
+        log::info!("invoke preset_recall slot={slot}");
+    }
     act(&handle, &shared, |a| a.preset_recall(slot, Instant::now()).map(|fx| ((), fx)))
 }
 
@@ -249,6 +280,9 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
             match rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(ev) => {
                     let now = Instant::now();
+                    if !ev.is_latest_wins() {
+                        trace_json("<-", &ev);
+                    }
                     let mut fx = match shared.app.lock() {
                         Ok(mut a) => {
                             let mut fx = a.handle_event(&ev, now);
@@ -418,7 +452,13 @@ pub fn run() {
             debug_cmds::home_set,
             stations_cmds::stations_list,
             stations_cmds::station_tune,
-            stations_cmds::stations_clear
+            stations_cmds::stations_clear,
+            timeshift_cmds::timeshift_pause_toggle,
+            timeshift_cmds::timeshift_skip,
+            timeshift_cmds::timeshift_seek,
+            timeshift_cmds::timeshift_live,
+            timeshift_cmds::timeshift_export,
+            timeshift_cmds::timeshift_status
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");

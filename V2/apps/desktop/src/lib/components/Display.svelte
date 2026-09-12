@@ -3,6 +3,7 @@
   import { t } from "$lib/i18n.svelte";
   import { currentService, dlPlusTitle, s, slideUrl, ui } from "$lib/state.svelte";
   import { fmtClock, remainingMin } from "$lib/epg";
+  import { fmtOffset } from "$lib/timeshift";
   import Logo from "./Logo.svelte";
 
   const svc = $derived(currentService());
@@ -17,7 +18,10 @@
     if (s.pending) return s.pending.name ? t("display.searching_service", { name: s.pending.name, channel: s.pending.channel }) : t("display.searching", { channel: s.pending.channel });
     if (svc) return svc.name.trim();
     if (!s.device) return t("display.no_device");
-    if (s.channel && !s.synced && !s.scan.active) return `${s.channel}: ${t("display.no_signal")}`;
+    // "kein Signal" erst nach einer no_signal-Meldung des Kerns; waehrend der
+    // Sync-Suche nach einem Kanalwechsel wechselt `synced` mehrmals pro Sekunde.
+    if (s.channel && ui.noSignal && !s.synced && !s.scan.active) return `${s.channel}: ${t("display.no_signal")}`;
+    if (s.channel && !s.ensemble && !s.scan.active) return t("display.searching", { channel: s.channel });
     return t("display.no_service");
   });
   const fileText = $derived.by(() => {
@@ -27,6 +31,8 @@
     return `${fmt(f.position_s)} / ${fmt(f.length_s)}${f.loop ? " ↻" : ""}${f.ended ? ` ${t("display.file_ended")}` : ""}`;
   });
   const vu = (x: number) => Math.min(100, Math.max(0, Math.sqrt(Math.max(0, x)) * 100));
+  // Timeshift (lib/timeshift.ts): bei Versatz > 0 statt des Live-Hinweises
+  const tsOffset = $derived(s.timeshift.offset_s > 0 ? fmtOffset(s.timeshift.offset_s) : "");
 </script>
 
 <section class="lcd display">
@@ -41,6 +47,11 @@
     <span>{codecText || "---"}</span>
     <span>{s.current ? (s.current.stereo ? t("display.stereo") : t("display.mono")) : "----"}</span>
     <span class="dim">{s.fic_total ? `FIC ${s.fic_ok}/${s.fic_total}` : ""}</span>
+    {#if tsOffset}
+      <span class="ts" class:paused={s.timeshift.mode === "paused"} title={t("ts.display_tip")}>TIMESHIFT {tsOffset}</span>
+    {:else if s.current && s.device?.kind !== "file"}
+      <span class="dim">LIVE</span>
+    {/if}
     <span class="dim">{fileText}</span>
   </div>
   {#if slide || s.logo_data_url}
@@ -82,6 +93,8 @@
   .row1 { display: flex; gap: 12px; font-size: 10px; white-space: nowrap; }
   .row1 .ens { flex: 1; overflow: hidden; text-overflow: ellipsis; }
   .tech span { min-width: 56px; }
+  .tech .ts { color: var(--green-hi); font-weight: bold; min-width: 120px; }
+  .tech .ts.paused { color: var(--amber, #e8b23a); animation: blink 1s steps(2, start) infinite; }
   .name { font-size: 16px; font-weight: bold; color: var(--green-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
   .name.pending { color: var(--amber); animation: blink 1s steps(2, start) infinite; }
   .media { display: flex; gap: 6px; align-items: center; }

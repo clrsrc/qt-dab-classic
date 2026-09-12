@@ -44,8 +44,19 @@ public:
     virtual DeviceGain setGain(const DeviceGain& g) { (void)g; return gain_; }
     virtual DeviceGain gain() const { return gain_; }
     virtual bool hasAmp() const { return false; }
-    // SNR-Nachfuehrung (v1 deviceHandler::adjustGain); true = Gain geaendert.
-    virtual bool adjustGain(float snr) { (void)snr; return false; }
+    // Abstrakte Gain-Stufen fuer die AGC (device/agc-controller.h):
+    // HackRF Stufe = VGA/2 (0..31), RTL-SDR Stufe = Index in die
+    // Tuner-Gain-Tabelle. gainStepCount() == 0: keine AGC (Dateien).
+    virtual int gainStepCount() const { return 0; }
+    virtual int gainStep() const { return 0; }
+    // Stufe je no_signal in der Akquisitions-Ramp (HackRF 4 = VGA +8, RTL-SDR 3)
+    virtual int gainAcqIncrement() const { return 1; }
+    // Stufe fuer AMP-Versuch und Rueckfall nach erschoepfter Ramp
+    virtual int gainDefaultStep() const { return 0; }
+    // Probeschritt des Bergsteigers (HackRF 2 = VGA +-4, RTL-SDR 1)
+    virtual int gainTrackStep() const { return 1; }
+    // Setzt Stufe (geklemmt) und AMP; nur geaenderte Teile gehen ans Geraet.
+    virtual void setGainStep(int step, bool amp) { (void)step; (void)amp; }
     virtual void setPpm(int ppm) { ppm_ = ppm; }
     virtual int  ppm() const { return ppm_; }
     virtual void resetBuffer() {}

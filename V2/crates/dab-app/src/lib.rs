@@ -19,6 +19,7 @@ pub mod state;
 pub mod stations;
 pub mod tii;
 pub mod timer;
+pub mod timeshift;
 
 pub use app::{App, AppError, AppEvent, Effects, NoticeLevel, PresetStatus, StoreResult, DEFAULT_HACKRF_GAIN, PRESET_TIMEOUT};
 pub use epg::{EpgCache, NowNext, Programme, ProgrammeBrief};
@@ -31,4 +32,5 @@ pub use sleep::{SleepAction, SleepState};
 pub use state::AppState;
 pub use stations::{StationEntry, Stations};
 pub use tii::{DebugState, TiiDatabase, TiiSeen, Transmitter};
+pub use timeshift::{TimeshiftInfo, TimeshiftNotice, CAPACITY_MAX_S, CAPACITY_MIN_S, SKIP_STEP_S};
 pub use timer::{AddOutcome, Conflict, EpgTimerRequest, Timer, TimerFireStatus, TimerKind, Timers};

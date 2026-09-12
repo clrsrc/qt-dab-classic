@@ -6,7 +6,8 @@
 // toSkip nach dem Umschalten, Tuner-Gain-Tabelle, manueller Gain-Modus
 // (v1-Default "agc off"), ppm-Korrektur, Bandbreite 1750 kHz.
 // Gain.lna = Tuner-Gain in 0,1 dB (naechster Tabellenwert), vga/amp ohne
-// Bedeutung; adjustGain schaltet eine Tabellenstufe hoch/runter.
+// Bedeutung; die AGC (AgcController) arbeitet ueber setGainStep auf dem
+// Tabellenindex (v1 adjustGain: eine Stufe hoch/runter, entfallen).
 // Bias-T entfaellt.
 #
 /*
@@ -101,7 +102,12 @@ public:
     const std::vector<int>& gainTable() const { return gains_; }
 
     DeviceGain setGain(const DeviceGain& g) override;
-    bool adjustGain(float snr) override;
+    // AGC-Stufen = Index in die aufsteigende Tuner-Gain-Tabelle
+    int gainStepCount() const override { return static_cast<int>(gains_.size()); }
+    int gainStep() const override { return gainIndex_; }
+    int gainAcqIncrement() const override { return 3; }
+    int gainDefaultStep() const override { return defaultIndex_; }
+    void setGainStep(int step, bool amp) override;
     void setPpm(int ppm) override;
 
     bool startDump(const std::string& path, std::string& error) override;
@@ -131,6 +137,7 @@ private:
     float convTable_[256];
     std::vector<int> gains_;    // aufsteigend, 0,1 dB
     int gainIndex_ = 0;
+    int defaultIndex_ = 0;      // v1-Default (gainsCount/4 von oben)
     std::string serial_, deviceModel_, tunerType_, libraryString_;
 
     std::mutex dumpM_;

@@ -137,6 +137,7 @@ bool RtlSdrSource::open(int index, std::string& error) {
     if (!gains_.empty()) {
         int fromTop = static_cast<int>(gains_.size()) > 3 ? static_cast<int>(gains_.size()) / 4 : 0;
         gainIndex_ = static_cast<int>(gains_.size()) - 1 - fromTop;
+        defaultIndex_ = gainIndex_;
         gain_.lna = gains_[gainIndex_];
     }
     // v1-Default agcMode = 1 ("agc off"): manueller Tuner-Gain
@@ -176,17 +177,15 @@ DeviceGain RtlSdrSource::setGain(const DeviceGain& g) {
     return gain_;
 }
 
-// SNR-Nachfuehrung: eine Tabellenstufe hoch (SNR < 8) oder runter (SNR > 18)
-bool RtlSdrSource::adjustGain(float snr) {
-    if (!isActive.load() || gains_.empty()) return false;
-    int idx = gainIndex_;
-    if (snr < 8.0f && idx < static_cast<int>(gains_.size()) - 1) idx++;
-    else if (snr > 18.0f && idx > 0) idx--;
-    if (idx == gainIndex_) return false;
+// AGC-Stufe = Tabellenindex (AMP ohne Bedeutung)
+void RtlSdrSource::setGainStep(int step, bool amp) {
+    (void)amp;
+    if (gains_.empty()) return;
+    int idx = std::clamp(step, 0, static_cast<int>(gains_.size()) - 1);
+    if (idx == gainIndex_) return;
     gainIndex_ = idx;
     gain_.lna = gains_[idx];
     applyTunerGain();
-    return true;
 }
 
 // correction is in ppm

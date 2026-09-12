@@ -43,6 +43,8 @@ pub enum AppEvent {
     DebugStats { debug: crate::tii::DebugState },
     /// Senderliste ueber alle Ensembles geaendert (crate::stations).
     StationsChanged { stations: Vec<crate::stations::StationEntry> },
+    /// Timeshift (crate::timeshift): Puffer verworfen (Alarm, Dienstwechsel).
+    TimeshiftNotice { notice: crate::timeshift::TimeshiftNotice },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,6 +168,7 @@ impl App {
             pending: None,
         };
         app.stations_load();
+        app.timeshift_init();
         app
     }
 
@@ -188,6 +191,7 @@ impl App {
             .cmd(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch })
             .cmd(Command::SetEpg { enabled: s.epg_enabled });
         fx.append(self.debug_startup());
+        fx.append(self.timeshift_startup());
         if s.ppm != 0 {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
         }
@@ -230,6 +234,11 @@ impl App {
     }
 
     fn remember_last(&mut self) {
+        // Waehrend eines Scans ist state.channel der Scan-Kanal (zuletzt 13F) –
+        // der darf nicht als "letzter Kanal" fuer den naechsten Start gelten.
+        if self.state.scan.active {
+            return;
+        }
         if let Some(ch) = &self.state.channel {
             self.settings.last_channel = Some(ch.clone());
         }
@@ -242,7 +251,7 @@ impl App {
         self.settings.volume_percent = self.state.volume;
     }
 
-    fn save_settings(&self) -> Effects {
+    pub(crate) fn save_settings(&self) -> Effects {
         if let Err(e) = self.settings.save(&self.dirs.settings_file()) {
             log::warn!("settings.json: {e}");
         }
@@ -265,9 +274,14 @@ impl App {
         self.state.apply(ev);
         let mut fx = self.media_on_event(ev);
         match ev {
-            Event::GainChanged { lna, vga, amp, agc: _ } => {
+            Event::GainChanged { lna, vga, amp, agc } => {
+                // Entscheidung 26: Gain-Merker je Geraet/Kanal nur bei AGC AUS
+                // (manuelle Werte). Bei AGC an findet der Kern den Wert selbst
+                // (Akquisitions-Ramp + Nachfuehrung); ein gemerkter AGC-Zwischenstand
+                // (Befund 12.09.: 11D mit VGA 58 = 5 dB statt 7 dB) wuerde sonst
+                // beim naechsten Wechsel als Startpunkt schaden.
                 if let (Some(dev), Some(ch)) = (self.state.device_kind(), self.state.channel.clone()) {
-                    if dev != "file" && !self.state.scan.active {
+                    if dev != "file" && !self.state.scan.active && !*agc {
                         self.settings.set_gain_for(dev, &ch, Gain { lna: *lna, vga: *vga, amp: *amp });
                     }
                 }
@@ -304,6 +318,7 @@ impl App {
         fx.append(self.sched_on_event(ev));
         fx.append(self.debug_on_event(ev, now));
         fx.append(self.stations_on_event(ev, now));
+        fx.append(self.timeshift_on_event(ev));
         fx.append(self.tick(now));
         fx
     }
@@ -425,11 +440,12 @@ impl App {
         Effects::default().cmd(Command::OpenDevice { source })
     }
 
-    /// Kanalwechsel: vorher den gespeicherten Gain (oder den Standard) senden.
+    /// Kanalwechsel: bei AGC aus vorher den gespeicherten Gain (oder den
+    /// Standard) senden; bei AGC an regelt der Kern selbst.
     pub fn set_channel(&mut self, channel: &str) -> Effects {
         let channel = channel.trim().to_uppercase();
         let mut fx = Effects::default();
-        if !self.state.is_file_source() {
+        if !self.state.is_file_source() && !self.settings.agc {
             if let Some(g) = self.gain_for_channel(&channel) {
                 fx = fx.cmd(Command::SetGain { gain: g });
             }
@@ -542,6 +558,7 @@ impl App {
             fx = fx.cmd(Command::SetAudioDevice { index: s.audio_device });
         }
         fx.append(self.debug_on_settings(&old));
+        fx.append(self.timeshift_on_settings(&old));
         fx.append(self.save_settings());
         fx
     }
@@ -755,11 +772,8 @@ mod tests {
         tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf")], now);
         a.presets.set(1, preset("11D", 0xE1C0, "WDR 5"));
         let fx = a.preset_recall(1, now).unwrap();
-        // Gain-Standard (kein gespeicherter Wert), dann Kanalwechsel, Status "tuning"
-        assert_eq!(
-            fx.commands,
-            vec![Command::SetGain { gain: DEFAULT_HACKRF_GAIN }, Command::SetChannel { channel: "11D".into() }]
-        );
+        // AGC an (Standard): kein Gain vorgeben, nur Kanalwechsel, Status "tuning"
+        assert_eq!(fx.commands, vec![Command::SetChannel { channel: "11D".into() }]);
         assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::Tuning, slot: Some(1), .. }));
         assert!(a.is_pending());
         assert!(a.state.services.is_empty(), "Senderliste beim Kanalwechsel geleert");
@@ -877,9 +891,16 @@ mod tests {
     fn gain_persisted_per_device_and_channel() {
         let now = Instant::now();
         let mut a = app();
+        // AGC an: nichts merken, beim Kanalwechsel keinen Gain vorgeben
         a.set_channel("11D");
-        a.handle_event(&Event::GainChanged { lna: 40, vga: 40, amp: false, agc: true }, now);
-        a.handle_event(&Event::GainChanged { lna: 40, vga: 44, amp: false, agc: true }, now);
+        a.handle_event(&Event::GainChanged { lna: 40, vga: 58, amp: false, agc: true }, now);
+        assert_eq!(a.settings.gain_for("hackrf", "11D"), None);
+        assert_eq!(a.set_channel("5C").commands, vec![Command::SetChannel { channel: "5C".into() }]);
+        // AGC aus: manuelle Werte je Kanal merken
+        a.settings.agc = false;
+        a.set_channel("11D");
+        a.handle_event(&Event::GainChanged { lna: 40, vga: 40, amp: false, agc: false }, now);
+        a.handle_event(&Event::GainChanged { lna: 40, vga: 44, amp: false, agc: false }, now);
         assert_eq!(a.settings.gain_for("hackrf", "11D"), Some(Gain { lna: 40, vga: 44, amp: false }));
         assert_eq!(a.settings.gain_for("hackrf", "5C"), None);
         // Beim naechsten Wechsel auf 11D geht der gespeicherte Wert voraus
@@ -894,7 +915,7 @@ mod tests {
         a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
         a.state.scan.active = true;
         a.state.channel = Some("7B".into());
-        a.handle_event(&Event::GainChanged { lna: 40, vga: 20, amp: true, agc: true }, now);
+        a.handle_event(&Event::GainChanged { lna: 40, vga: 20, amp: true, agc: false }, now);
         assert_eq!(a.settings.gain_for("hackrf", "7B"), None);
     }
 

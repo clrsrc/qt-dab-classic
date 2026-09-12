@@ -4,8 +4,9 @@
 // QSettings gestrichen (Gain kommt ueber setGain, Persistenz liegt in der
 // App), Warten per Condition-Variable statt usleep-Polling. Unveraendert:
 // 4,096 MS/s mit Boxcar-Mittelung 2:1 im Callback, Bandbreite 1,536 MHz,
-// toSkip nach dem Umschalten, Normierung /128, adjustGain (SNR < 8: VGA+2,
-// SNR > 18: VGA-2), AMP-Schalter, ppm-Korrektur ueber die Frequenz.
+// toSkip nach dem Umschalten, Normierung /128, AMP-Schalter, ppm-Korrektur
+// ueber die Frequenz. Die v1-Nachfuehrung adjustGain (SNR < 8: VGA+2,
+// SNR > 18: VGA-2) ist durch den AgcController ersetzt (setGainStep).
 #
 /*
  *    Copyright (C) 2014 .. 2025
@@ -96,7 +97,15 @@ public:
 
     DeviceGain setGain(const DeviceGain& g) override;
     bool hasAmp() const override { return true; }
-    bool adjustGain(float snr) override;
+    // AGC-Stufen: VGA 0..62 in 2er-Schritten -> Stufe 0..31; AMP getrennt
+    int gainStepCount() const override { return 32; }
+    int gainStep() const override { return gain_.vga / 2; }
+    int gainAcqIncrement() const override { return 4; }     // VGA +8
+    int gainDefaultStep() const override { return 20; }     // VGA 40
+    // VGA +-4 je Probe: die SNR-EMA des ofdmHandlers (0,85) daempft kleine
+    // Schritte, +-2 laege unter der Nachweisschwelle (0,25 dB)
+    int gainTrackStep() const override { return 2; }
+    void setGainStep(int step, bool amp) override;
     void setPpm(int ppm) override;
 
     bool startDump(const std::string& path, std::string& error) override;

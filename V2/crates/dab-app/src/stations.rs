@@ -329,7 +329,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{PresetStatus, DEFAULT_HACKRF_GAIN};
+    use crate::app::PresetStatus;
     use crate::{DataDirs, Presets, Settings};
     use dab_api::{Command, ServiceSlot};
 
@@ -487,9 +487,9 @@ mod tests {
         let fx = a.tune_station("5C", 0x10BC, 0xD220, 0, now).unwrap();
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xD220, scids: 0, slot: ServiceSlot::Primary }]);
         assert!(matches!(fx.events[0], AppEvent::PresetStatus { slot: None, status: PresetStatus::Selected, .. }));
-        // Anderer Kanal: Gain, Kanalwechsel, warten, dann select_service
+        // Anderer Kanal: Kanalwechsel (AGC an: kein Gain vorgeben), warten, dann select_service
         let fx = a.tune_station("11D", 0x1E1C, 0xE1C0, 0, now).unwrap();
-        assert_eq!(fx.commands, vec![Command::SetGain { gain: DEFAULT_HACKRF_GAIN }, Command::SetChannel { channel: "11D".into() }]);
+        assert_eq!(fx.commands, vec![Command::SetChannel { channel: "11D".into() }]);
         assert!(matches!(&fx.events[0], AppEvent::PresetStatus { slot: None, status: PresetStatus::Tuning, name, channel } if name == "WDR 5" && channel == "11D"));
         assert!(a.is_pending());
         a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into() }, now);

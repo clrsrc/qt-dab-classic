@@ -185,20 +185,23 @@ bool HackRfSource::applyGain() {
     return ok;
 }
 
-// v1 hackrfHandler::adjustGain
-bool HackRfSource::adjustGain(float snr) {
-    if (!running_.load()) return false;
-    int currentVga = gain_.vga;
-    int newVga = currentVga;
-    if (snr < 8.0f && currentVga < 58)
-        newVga = currentVga + 2;
-    else if (snr > 18.0f && currentVga > 6)
-        newVga = currentVga - 2;
-    if (newVga == currentVga) return false;
-    gain_.vga = newVga;
-    int rc = hackrf_set_vga_gain(theDevice_, static_cast<uint32_t>(newVga));
-    if (rc != HACKRF_SUCCESS) std::fprintf(stderr, "hackrf vgaGain: %s\n", errName(rc).c_str());
-    return true;
+// AGC-Stufe (VGA/2) und AMP; nur geaenderte Register schreiben
+void HackRfSource::setGainStep(int step, bool amp) {
+    int vga = (step < 0 ? 0 : step > 31 ? 31 : step) * 2;
+    if (vga != gain_.vga) {
+        gain_.vga = vga;
+        if (theDevice_ != nullptr) {
+            int rc = hackrf_set_vga_gain(theDevice_, static_cast<uint32_t>(vga));
+            if (rc != HACKRF_SUCCESS) std::fprintf(stderr, "hackrf vgaGain: %s\n", errName(rc).c_str());
+        }
+    }
+    if (amp != gain_.amp) {
+        gain_.amp = amp;
+        if (theDevice_ != nullptr) {
+            int rc = hackrf_set_amp_enable(theDevice_, amp ? 1 : 0);
+            if (rc != HACKRF_SUCCESS) std::fprintf(stderr, "hackrf amp: %s\n", errName(rc).c_str());
+        }
+    }
 }
 
 // v1: das si5351-Register laesst sich nicht beschreiben, deshalb wird die

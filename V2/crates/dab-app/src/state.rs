@@ -154,6 +154,8 @@ pub struct AppState {
     pub debug: crate::tii::DebugState,
     /// Senderliste ueber alle Ensembles, sortiert Kanal/Ensemble/Name (crate::stations).
     pub stations: Vec<crate::stations::StationEntry>,
+    /// Timeshift-Puffer des Primary-Slots (crate::timeshift, Entscheidung 4).
+    pub timeshift: crate::timeshift::TimeshiftInfo,
 }
 
 pub fn unix_now() -> i64 {
@@ -172,6 +174,8 @@ impl AppState {
         self.fic_total = 0;
         self.ensemble = None;
         self.services.clear();
+        // Kanalwechsel/Geraet zu: der Kern leert den Timeshift-Ring (Entscheidung 4).
+        self.timeshift.reset();
         self.clear_service();
     }
 

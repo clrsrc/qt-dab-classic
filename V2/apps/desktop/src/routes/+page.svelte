@@ -21,6 +21,7 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import Transport from "$lib/components/Transport.svelte";
+  import TimeshiftBar from "$lib/components/TimeshiftBar.svelte";
 
   const onKey = makeKeyHandler({
     recallPreset: (slot) => void recallPreset(slot),
@@ -48,6 +49,7 @@
   <AlarmBanner />
   <Display />
   <Transport />
+  <TimeshiftBar />
   {#if panels?.presets}<PresetBar />{/if}
   <ChannelBar />
   <nav class="tabs">

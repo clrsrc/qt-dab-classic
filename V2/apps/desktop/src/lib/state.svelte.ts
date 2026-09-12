@@ -8,6 +8,7 @@ import { applyDebugAppEvent, emptyDebugState, feedScopeEvent } from "./debug";
 import { emitEpgEvent } from "./epg";
 import { setLang, t } from "./i18n.svelte";
 import { applyRecordingState, applyTimerAppEvent, initTimers } from "./timers.svelte";
+import { emptyTimeshift } from "./timeshift";
 
 export function emptyState(): AppState {
   return {
@@ -48,6 +49,7 @@ export function emptyState(): AppState {
     tii: [],
     debug: emptyDebugState(),
     stations: [],
+    timeshift: emptyTimeshift(),
   };
 }
 
@@ -70,6 +72,8 @@ export const ui = $state({
   presetStatus: null as { slot: number | null; status: string; name: string; channel: string; at: number } | null,
   /** Sekundentakt fuer Uhr/MOT-Frische. */
   now: Date.now(),
+  /** Kern hat fuer den aktuellen Kanal `no_signal` gemeldet (bis zum naechsten Sync). */
+  noSignal: false,
   ready: false,
 });
 
@@ -144,13 +148,21 @@ function clearService() {
   s.now_next = null;
 }
 
+/** Spiegelt dab-app::timeshift: Kern leert den Ring, Anzeige zurueck auf live. */
+function resetTimeshift() {
+  if (s.timeshift.demo) return;
+  s.timeshift = { ...s.timeshift, mode: "live", buffered_s: 0, offset_s: 0, live_unix: 0 };
+}
+
 function clearReception() {
   s.synced = false;
+  ui.noSignal = false;
   s.snr = 0;
   s.fic_ok = 0;
   s.fic_total = 0;
   s.ensemble = null;
   s.services = [];
+  resetTimeshift();
   clearService();
 }
 
@@ -190,10 +202,12 @@ export function applyCoreEvent(ev: CoreEvent) {
       break;
     case "synced":
       s.synced = e.synced;
+      if (e.synced) ui.noSignal = false;
       break;
     case "no_signal":
       s.synced = false;
       s.channel = e.channel;
+      ui.noSignal = true;
       break;
     case "snr":
       s.snr = e.db;
@@ -228,12 +242,16 @@ export function applyCoreEvent(ev: CoreEvent) {
     case "service_started":
       if (e.slot === "primary") {
         const same = s.current && s.current.sid === e.sid && s.current.scids === e.scids;
+        resetTimeshift();
         if (!same) clearService();
         s.current = { sid: e.sid, scids: e.scids, codec: e.codec, stereo: e.stereo };
       }
       break;
     case "service_stopped":
-      if (e.slot === "primary" && s.current?.sid === e.sid) clearService();
+      if (e.slot === "primary") {
+        resetTimeshift();
+        if (s.current?.sid === e.sid) clearService();
+      }
       break;
     case "dls":
       if (e.slot === "primary") s.dls = e.text;
@@ -274,6 +292,19 @@ export function applyCoreEvent(ev: CoreEvent) {
       if (e.slot === "primary") {
         s.recording = e.active;
         applyRecordingState(e);
+      }
+      break;
+    // Timeshift (lib/timeshift.ts): Zustand kommt nur vom Kern
+    case "timeshift_state":
+      if (!s.timeshift.demo) {
+        s.timeshift = {
+          mode: e.mode,
+          buffered_s: e.buffered_s,
+          offset_s: e.offset_s,
+          capacity_s: e.capacity_s > 0 ? e.capacity_s : s.timeshift.capacity_s,
+          live_unix: e.live_unix ?? 0,
+          demo: false,
+        };
       }
       break;
     case "scan_progress":
@@ -355,6 +386,11 @@ export function applyAppEvent(ev: AppEvent) {
     // Senderliste (lib/stations.ts)
     case "stations_changed":
       s.stations = ev.stations;
+      break;
+    // Timeshift (lib/timeshift.ts): Puffer verworfen (Alarm, Dienstwechsel)
+    case "timeshift_notice":
+      s.timeshift = { ...s.timeshift, mode: "live", buffered_s: 0, offset_s: 0, live_unix: 0 };
+      notify("info", t(`ts.notice.${ev.notice}`), 8000);
       break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:
