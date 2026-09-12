@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { startBeep, stopBeep } from "$lib/alarm";
   import { api } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { alertActive, notify, s } from "$lib/state.svelte";
@@ -11,11 +10,8 @@
     const svc = s.services.find((x) => x.sub_ch === a.sub_ch) ?? (s.current ? s.services.find((x) => x.sid === s.current!.sid) : undefined);
     return svc?.name.trim() ?? `SubCh ${a.sub_ch}`;
   });
-  $effect(() => {
-    if (visible) startBeep();
-    else stopBeep();
-    return stopBeep;
-  });
+  // Warnton kommt aus dem Alarmfenster (AlarmWindow.svelte, Entscheidung 10),
+  // damit er nicht doppelt spielt und in den Einstellungen abschaltbar ist.
   function dismiss() {
     api.ewsDismiss().catch((e) => notify("warn", tError(e)));
     if (s.alert) s.alert.dismissed = true;

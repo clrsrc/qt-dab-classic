@@ -2,6 +2,7 @@
 // M4), Esc (live), R/E/T sind vorerst Platzhalter bzw. Panel-Umschalter.
 
 import { api } from "./core";
+import { toggleRecording } from "./recording";
 import { s, togglePanel } from "./state.svelte";
 
 export interface HotkeyActions {
@@ -55,17 +56,25 @@ export function makeKeyHandler(actions: HotkeyActions) {
       case "E":
         void togglePanel("epg");
         break;
+      case "d":
+      case "D":
+        // Debug-Panel (lib/debug.ts, Entscheidung 25)
+        void togglePanel("debug");
+        break;
       case "t":
       case "T":
         void togglePanel("timer");
         break;
       case "r":
       case "R":
+        ev.preventDefault();
+        void toggleRecording();
+        break;
       case " ":
       case "ArrowLeft":
       case "ArrowRight":
       case "Escape":
-        // Aufnahme (M3), Timeshift (M4): noch ohne Funktion
+        // Timeshift (M4): noch ohne Funktion
         ev.preventDefault();
         break;
     }

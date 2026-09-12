@@ -1,0 +1,325 @@
+<epg system="DAB">
+ <defaultLanguage>en</defaultLanguage>
+ <schedule creationTime="2026-4-14T08:22" originator="DLR" version="1">
+  <scope startTime="2026-4-13T22:02" stopTime="2026-4-14T22:02">
+   <serviceScope id="e0:10bc:d220"/>
+  </scope>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1364222" recommendation="no" shortId="1364222">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-13T22:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363880" recommendation="no" shortId="1363880">
+   <mediumName>Neue Musik</mediumName>
+   <location>
+    <time duration="PT55M" time="2026-4-13T22:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Der Mann hinterm SofaEine radiofone BildbeschreibungVon Stefan FrickeDer Komponist, Bratscher und Verleger Johannes Fritsch in seinem "Feedback"-Studio im Belgische</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.KediaTupeCS.FormatCS.IntendedAudienceCS.">Neue Musik</genre>
+   <genre href="OriginationCS.KediaTupeCS.">Musik</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1364225" recommendation="no" shortId="1364225">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-13T23:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363881" recommendation="no" shortId="1363881">
+   <mediumName>Tonart</mediumName>
+   <longName>Tonart</longName>
+   <location>
+    <time duration="PT03H55M" time="2026-4-13T23:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>02:00-02:05 Nachrichten03:00-03:05 Nachrichten04:00-04:05 NachrichtenJazzModeration: Manuela Krause</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.KediaTupeCS.ContentCS.">Jazz</genre>
+   <genre href="OriginationCS.KediaTupeCS.">Musik</genre>
+   <genre href="OriginationCS.FormatCS.&#x9;">Konzert</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1364239" recommendation="no" shortId="1364239">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T03:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363882" recommendation="no" shortId="1363882">
+   <mediumName>Studio 9</mediumName>
+   <longName>Studio 9</longName>
+   <location>
+    <time duration="PT03H55M" time="2026-4-14T03:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>05:50-05:54 Aus den Feuilletons06:00-06:05 Nachrichten06:20-06:23 Wort zum TagePfarrer Steffen Madloch, BerlinEvangelische Kirche06:30-06:33 Nachrichten07:00-07:05 Na ...</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363893" recommendation="no" shortId="1363893">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T07:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363894" recommendation="no" shortId="1363894">
+   <mediumName>Im Gespräch</mediumName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T07:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Schauspieler und Musiker Robert Stadlober im Gespräch mit Ulrike TimmâBei Tucholsky sind viele Antworten und Fragen zu findenâ(Wdh. vom 15.04.2025)</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentAlertCS.">Gespräch</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="OriginationCS.FormatCS.AtmosphereCS.ContentCS.">Gesellschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363895" recommendation="no" shortId="1363895">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T08:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363896" recommendation="no" shortId="1363896">
+   <mediumName>Lesart</mediumName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T08:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Das LiteraturmagazinDas LiteraturmagazinModeration: Andrea GerkThe Joy of AgingGespräch mit Chirstiane RÃ¶singerScharfe Kritik: Literaturhausleiterin Ã¼ber Wolfram WeimerGes</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.KediaTupeCS.">Literatur/Lesung</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363897" recommendation="no" shortId="1363897">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T09:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363898" recommendation="no" shortId="1363898">
+   <mediumName>Tonart</mediumName>
+   <longName>Tonart</longName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T09:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>11:30-11:35 Musiktipps11:40-11:43 Chor der WocheGrundhofer GesangvereinVon Nicolas HansenDas Musikmagazin am VormittagModeration: Oliver SchwesigHeimlich aufgenommen:  ...</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.KediaTupeCS.">Musik</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363901" recommendation="no" shortId="1363901">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T10:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363902" recommendation="no" shortId="1363902">
+   <mediumName>Studio 9 - Der T</mediumName>
+   <longName>Studio 9 - Der Tag mit ...</longName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T10:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Veit Medick, SternModeration: Korbinian Frenzel</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363903" recommendation="no" shortId="1363903">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T11:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363904" recommendation="no" shortId="1363904">
+   <mediumName>Länderreport</mediumName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T11:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Moderation: Nana Brink</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.ContentCS.OriginationCS.">Reportage</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Regionale Information</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363905" recommendation="no" shortId="1363905">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T12:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363906" recommendation="no" shortId="1363906">
+   <mediumName>Kompressor</mediumName>
+   <longName>Kompressor</longName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T12:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>14:30-14:33 KulturnachrichtenDas PopkulturmagazinModeration: Gesa Ufer"Der Vampir ist nicht der Blutsauger"Gespräch mit AndÃ© BreinbauerGeopolitik &amp;#38; Kolonialismus: D ...</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363908" recommendation="no" shortId="1363908">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T13:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363909" recommendation="no" shortId="1363909">
+   <mediumName>Tonart</mediumName>
+   <longName>Tonart</longName>
+   <location>
+    <time duration="PT01H55M" time="2026-4-14T13:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>15:30-15:35 Musiktipps15:40-15:45 Live SessionGigi Girls16:00-16:05 Nachrichten16:30-16:33 KulturnachrichtenDas Musikmagazin am NachmittagModeration: Andreas Müller ...</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.KediaTupeCS.">Musik</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363914" recommendation="no" shortId="1363914">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T15:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363915" recommendation="no" shortId="1363915">
+   <mediumName>Studio 9</mediumName>
+   <longName>Studio 9</longName>
+   <location>
+    <time duration="PT01H25M" time="2026-4-14T15:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>17:30-17:33 Kulturnachrichten18:00-18:05 NachrichtenKultur und Politik am AbendModeration: Julius Stucke</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363918" recommendation="no" shortId="1363918">
+   <mediumName>Weltzeit</mediumName>
+   <location>
+    <time duration="PT30M" time="2026-4-14T16:32"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Moderation: Yana AduTourismus in Laos Zwischen kultureller Tradition und AusverkaufVon Felix Lill</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.AtmosphereCS.ContentCS.">Gesellschaft</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Regionale Information</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363919" recommendation="no" shortId="1363919">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T17:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363920" recommendation="no" shortId="1363920">
+   <mediumName>Zeitfragen</mediumName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T17:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Wirtschaft und Umwelt - MagazinWirtschaft und Umwelt - MagazinModeration: Ulrike Köppchen</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.">Feature</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.OriginationCS.">Wirtschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363921" recommendation="no" shortId="1363921">
+   <mediumName>Zeitfragen. Feat</mediumName>
+   <longName>Zeitfragen. Feature</longName>
+   <location>
+    <time duration="PT30M" time="2026-4-14T17:32"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Business as usual?Wie Unternehmen mit Trauer umgehenVon Anna Goretzki(Wdh. v. 20.05.2025)</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.">Feature</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.OriginationCS.">Wirtschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363922" recommendation="no" shortId="1363922">
+   <mediumName>Konzert</mediumName>
+   <location>
+    <time duration="PT02H00M" time="2026-4-14T18:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Hörprobe - Konzertreihe mit deutschen Musikhochschulen Live aus dem Konzertsaal der Hochschule für Musik und Darstellende Kunst StuttgartAlbert BeckerZwei Psalmen f</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.&#x9;">Konzert</genre>
+   <genre href="OriginationCS.KediaTupeCS.FormatCS.">Ernste Musik</genre>
+   <genre href="OriginationCS.KediaTupeCS.">Musik</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1364305" recommendation="no" shortId="1364305">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T20:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363923" recommendation="no" shortId="1363923">
+   <mediumName>Feature</mediumName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T20:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Long Covid - und jetzt?! (3-4/4)Von Sebastian MeissnerDeutschlandfunk 2026 Sebastian lebt mit ME/CFS - einer Krankheit, die viele als Long Covid kennen und gegen di</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.">Feature</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363924" recommendation="no" shortId="1363924">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T21:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfkultur/1363925" recommendation="no" shortId="1363925">
+   <mediumName>Fazit</mediumName>
+   <longName>Fazit</longName>
+   <location>
+    <time duration="PT54M" time="2026-4-14T21:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>23:30-23:33 Kulturnachrichten23:50-23:54 KulturpresseschauVon Gregor SanderKultur vom TageModeration: Eckhard RoelckeNeue Serien: "Margo’s Got Money Troubles" &amp;#38; "Be ...</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+  </programme>
+ </schedule>
+</epg>

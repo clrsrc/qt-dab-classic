@@ -10,8 +10,10 @@
   import ChannelBar from "$lib/components/ChannelBar.svelte";
   import Dialogs from "$lib/components/Dialogs.svelte";
   import Display from "$lib/components/Display.svelte";
-  import Placeholder from "$lib/components/Placeholder.svelte";
+  import EpgPanel from "$lib/components/EpgPanel.svelte";
   import PresetBar from "$lib/components/PresetBar.svelte";
+  import TimerPanel from "$lib/components/TimerPanel.svelte";
+  import DebugPanel from "$lib/components/DebugPanel.svelte";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
   import ServiceList from "$lib/components/ServiceList.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
@@ -30,7 +32,7 @@
     return dispose;
   });
   const panels = $derived(ui.settings?.panels);
-  const tabs = ["presets", "services", "scan", "settings", "epg", "timer"] as const;
+  const tabs = ["presets", "services", "scan", "settings", "epg", "timer", "debug"] as const;
 </script>
 
 <!-- Nach einer Auswahl den Fokus abgeben, damit die Tastenkuerzel (Ziffern, M, +/-) wieder greifen. -->
@@ -56,8 +58,9 @@
     {#if panels?.services}<ServiceList />{/if}
     {#if panels?.scan}<ScanPanel />{/if}
     {#if panels?.settings}<SettingsPanel />{/if}
-    {#if panels?.epg}<Placeholder title={t("panel.epg")} />{/if}
-    {#if panels?.timer}<Placeholder title={t("panel.timer")} />{/if}
+    {#if panels?.epg}<EpgPanel />{/if}
+    {#if panels?.timer}<TimerPanel />{/if}
+    {#if panels?.debug}<DebugPanel />{/if}
   </div>
   <StatusBar />
 </div>

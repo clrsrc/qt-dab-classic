@@ -3,6 +3,7 @@
   import { t } from "$lib/i18n.svelte";
   import { clearPreset, importFavorites, recallPreset, storePreset } from "$lib/presets";
   import { activePresetSlot, s, ui } from "$lib/state.svelte";
+  import Logo from "./Logo.svelte";
 
   const LONG_PRESS_MS = 500;
   let pressTimer: ReturnType<typeof setTimeout> | undefined;
@@ -74,7 +75,10 @@
         ondrop={(e) => drop(i, e)}
       >
         <span class="num">{i === 9 ? 0 : i + 1}</span>
-        <span class="name">{p ? p.name : t("preset.empty")}</span>
+        <span class="name">
+          {#if p}<Logo src={p.logo_data_url ?? null} eid={p.eid} sid={p.sid} size="small" name={p.name} px={14} />{/if}
+          {p ? p.name : t("preset.empty")}
+        </span>
         <span class="ch">{p ? p.channel : ""}</span>
       </button>
     {/each}
@@ -86,7 +90,7 @@
   .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 3px 4px; }
   .slot { display: flex; flex-direction: column; align-items: stretch; padding: 2px 4px; min-height: 30px; gap: 0; position: relative; }
   .slot .num { position: absolute; left: 3px; top: 1px; font-size: 8px; color: #6a7280; }
-  .slot .name { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; padding: 0 8px; }
+  .slot .name { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; padding: 0 8px; display: flex; align-items: center; justify-content: center; gap: 3px; }
   .slot .ch { font-size: 8px; color: #6a7280; text-align: center; font-family: var(--mono); min-height: 10px; }
   .slot.empty .name { color: #4a5060; font-weight: normal; }
   .slot.on { color: var(--green-hi); border-style: inset; background: #0a1a10; }

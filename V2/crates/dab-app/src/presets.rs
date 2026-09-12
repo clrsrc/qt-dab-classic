@@ -17,6 +17,9 @@ pub struct Preset {
     pub name: String,
     #[serde(default)]
     pub logo_path: Option<PathBuf>,
+    /// Kleines Logo (32x32) als `data:`-URL fuer die Speicherleiste (Entscheidung 8).
+    #[serde(default)]
+    pub logo_data_url: Option<String>,
     /// Unix-Zeit (UTC) der Belegung.
     #[serde(default)]
     pub stored_at: i64,
@@ -99,7 +102,7 @@ mod tests {
     use super::*;
 
     fn p(sid: u32) -> Preset {
-        Preset { channel: "5C".into(), eid: 0x10BC, sid, scids: 0, name: "Dlf".into(), logo_path: None, stored_at: 0 }
+        Preset { channel: "5C".into(), eid: 0x10BC, sid, scids: 0, name: "Dlf".into(), logo_path: None, logo_data_url: None, stored_at: 0 }
     }
 
     #[test]

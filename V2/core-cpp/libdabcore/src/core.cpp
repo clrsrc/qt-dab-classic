@@ -46,7 +46,14 @@ struct RunningService {
     std::unique_ptr<descriptorType> descriptor;   // audiodata / packetdata
     Backend* backend = nullptr;                    // gehoert dem mscHandler
     bool started = false;
+    // Letzter Anzeigezustand fuer state_snapshot (geschrieben im Backend-
+    // bzw. Audio-Thread, gelesen im Kommandothread -> padM).
+    std::mutex padM;
     std::string lastDls;
+    json lastDlPlus;                               // {item_toggle, item_running, tags} oder null
+    json lastSlide;                                // {mime, name, data_b64} oder null
+    json codec;                                    // wie service_started.codec oder null
+    bool stereo = false;
     std::unique_ptr<epgCompiler> epg;              // Paketdienste: Binaer-EPG -> XML
     bool autoEpg = false;                          // vom Kern gestarteter SPI-Dienst
     // Das SPI-Karussell liefert jedes Objekt mit jeder neuen Verzeichnis-
@@ -115,6 +122,7 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
         {"volume_percent", 70}, {"muted", false}, {"timeshift", nullptr},
         {"recording", false}, {"ews_enabled", true}, {"ews_autoswitch", true},
         {"epg_enabled", options.epg},
+        {"clock_time", nullptr}, {"ppm", 0},
     };
     epgEnabled_.store(options.epg);
 #ifdef __ARCH_X86__
@@ -161,9 +169,31 @@ DabCore::~DabCore() {
     stopFrameDump();
 }
 
+// audio_devices kommt nach ready, auf get_state und nach set_audio_device;
+// ohne Audio-Ausgabe (--no-audio) mit leerer Liste und current = null.
 void DabCore::emitAudioDevices() {
-    if (!opt_.audio) return;
     sink_(events::audioDevices(audioSink_->devices(), audioSink_->currentDevice()));
+}
+
+void DabCore::applyScopes() {
+    if (ofdm_) ofdm_->setScopes(spectrumOn_.load(), iqOn_.load(), scopeRateHz_.load());
+}
+
+// v1 meldete jede TII-Auswertung (alle 3 TII-Nullsymbole, ~1,7/s). Hier
+// hoechstens 1x/s und nur, wenn sich die Liste (IDs oder Staerke auf 0,01
+// gerundet) geaendert hat; eine leer gewordene Liste wird einmal gemeldet.
+void DabCore::onTii(const std::vector<std::tuple<uint8_t, uint8_t, float>>& tx) {
+    std::vector<std::tuple<uint8_t, uint8_t, int>> key;
+    for (auto& [m, s, st] : tx) key.emplace_back(m, s, static_cast<int>(std::lround(st * 100.0f)));
+    {
+        std::lock_guard<std::mutex> lk(tiiM_);
+        auto now = std::chrono::steady_clock::now();
+        if (key == lastTii_) return;
+        if (now - lastTiiTime_ < 1000ms) return;
+        lastTii_ = key;
+        lastTiiTime_ = now;
+    }
+    sink_(events::tii(tx));
 }
 
 std::string DabCore::currentChannel() const {
@@ -205,11 +235,12 @@ void DabCore::wireCallbacks() {
         sink_(events::frequencyOffset(coarse + static_cast<int32_t>(fine)));
     };
     cb.tii = [this](const std::vector<tiiData>& v) {
-        if (v.empty()) return;
         std::vector<std::tuple<uint8_t, uint8_t, float>> tx;
         for (auto& t : v) tx.emplace_back(t.mainId, t.subId, t.strength);
-        sink_(events::tii(tx));
+        onTii(tx);
     };
+    cb.spectrum = [this](const std::vector<uint8_t>& bins) { sink_(events::spectrum(bins)); };
+    cb.iqSamples = [this](const std::vector<int8_t>& iq) { sink_(events::iqSamples(iq)); };
     cb.ficQuality = [this](int ok, int scaler) {
         auto now = std::chrono::steady_clock::now();
         if (now - lastFicQuality_ < 1000ms) return;   // 1 Hz
@@ -259,6 +290,10 @@ void DabCore::wireCallbacks() {
     cb.clockTime = [this](uint32_t mjd, int h, int m, int s, int ltoMinutes,
                           int, int, int, int, int) {
         int64_t unix = (static_cast<int64_t>(mjd) - 40587) * 86400 + h * 3600 + m * 60 + s;
+        {
+            std::lock_guard<std::mutex> lk(stateM_);
+            state_["clock_time"] = {{"unix_utc", unix}, {"lto_minutes", ltoMinutes}};
+        }
         sink_(events::clockTime(unix, static_cast<int16_t>(ltoMinutes)));
     };
     cb.alarmFlag = [this](bool active) {
@@ -521,7 +556,7 @@ bool DabCore::handle(const json& c) {
         sink_(events::exiting("shutdown"));
         return false;
     }
-    if (type == "get_state") { emitState(); return true; }
+    if (type == "get_state") { emitState(); emitAudioDevices(); return true; }
     if (type == "open_device") { openDevice(c.value("source", json::object())); return true; }
     if (type == "close_device") { closeDevice(); return true; }
     if (type == "set_channel") {
@@ -599,11 +634,20 @@ bool DabCore::handle(const json& c) {
         state_["ews_autoswitch"] = c.value("autoswitch", true);
         return true;
     }
-    if (type == "set_scopes") { spectrumOn_ = c.value("spectrum", false); return true; }
+    if (type == "set_scopes") {
+        spectrumOn_ = c.value("spectrum", false);
+        iqOn_ = c.value("iq", false);
+        scopeRateHz_ = std::clamp(c.value("rate_hz", 5), 1, 10);
+        applyScopes();
+        return true;
+    }
     if (type == "set_tii") {
         params_->tiiEnabled = c.value("enabled", true);
         params_->tiiThreshold = static_cast<int16_t>(c.value("threshold", 6));
-        if (ofdm_) ofdm_->setTIIThreshold(params_->tiiThreshold);
+        // dx_mode: in v1 ein Anzeigemodus (mehr Sender, Abstandsberechnung);
+        // im Kern heute ohne Wirkung, wird nur gemerkt (state.tii_dx_mode).
+        params_->dxMode = c.value("dx_mode", false);
+        if (ofdm_) { ofdm_->setTIIThreshold(params_->tiiThreshold); ofdm_->setDXMode(params_->dxMode); }
         return true;
     }
 
@@ -612,10 +656,48 @@ bool DabCore::handle(const json& c) {
     return true;
 }
 
+// state_snapshot: der gemerkte Zustand plus alles, was eine neu verbundene
+// App zum Wiederaufbau der Anzeige braucht (je laufendem Dienst der letzte
+// DLS/DL+/Slide-Stand, Codec, Aufnahme; Scopes, TII, SNR, Uhrzeit).
+// Sperrreihenfolge wie ueberall: serviceM_ vor stateM_.
 void DabCore::emitState() {
+    std::lock_guard<std::mutex> sl(serviceM_);
+    json running = json::array();
+    for (auto& rs : services_) {
+        json e = {{"slot", slotName(rs->slot)}, {"sid", rs->sid}, {"scids", rs->scids},
+                  {"name", rs->name}, {"is_audio", rs->isAudio}};
+        {
+            std::lock_guard<std::mutex> pl(rs->padM);
+            e["codec"] = rs->codec.is_null() ? json(nullptr) : rs->codec;
+            e["stereo"] = rs->stereo;
+            e["dls"] = rs->lastDls.empty() ? json(nullptr) : json(rs->lastDls);
+            e["dl_plus"] = rs->lastDlPlus.is_null() ? json(nullptr) : rs->lastDlPlus;
+            e["slide"] = rs->lastSlide.is_null() ? json(nullptr) : rs->lastSlide;
+        }
+        json rec = {{"active", false}, {"path", nullptr}, {"bytes", 0}, {"seconds", 0.0}};
+        if (rs->audio && rs->audio->recording()) {
+            rec["active"] = true;
+            rec["path"] = rs->audio->recordingPath();
+            rec["bytes"] = rs->audio->recordingBytes();
+            rec["seconds"] = rs->audio->recordingSeconds();
+        }
+        e["recording"] = rec;
+        running.push_back(e);
+    }
     std::lock_guard<std::mutex> lk(stateM_);
-    json j = {{"type", "state_snapshot"}, {"state", state_}};
-    sink_(j);
+    json st = state_;
+    // dab-api CoreState.ensemble ist Option<(u16, String)> -> [eid, name]
+    if (state_["ensemble"].is_object())
+        st["ensemble"] = json::array({state_["ensemble"]["eid"], state_["ensemble"]["name"]});
+    st["running"] = running;
+    st["tii_enabled"] = params_->tiiEnabled;
+    st["tii_threshold"] = params_->tiiThreshold;
+    st["tii_dx_mode"] = params_->dxMode;
+    st["scopes"] = {{"spectrum", spectrumOn_.load()}, {"iq", iqOn_.load()}, {"rate_hz", scopeRateHz_.load()}};
+    st["snr"] = lastSnrDb_.load();
+    st["scanning"] = scanning_.load();
+    st["ppm"] = ppm_;
+    sink_(json{{"type", "state_snapshot"}, {"state", st}});
 }
 
 // --- Dienste ----------------------------------------------------------------
@@ -655,12 +737,20 @@ void DabCore::wireBackend(RunningService* rs) {
     };
     // dls nur bei Aenderung (v1: dl-cache in der GUI); DL+ kommt je Kommando
     cb.dls = [this, slot, sid, rs](const std::string& t) {
-        if (t == rs->lastDls) return;
-        rs->lastDls = t;
+        {
+            std::lock_guard<std::mutex> pl(rs->padM);
+            if (t == rs->lastDls) return;
+            rs->lastDls = t;
+        }
         sink_(events::dls(slot, sid, t));
     };
-    cb.dlPlus = [this, slot, sid](bool it, bool ir, const std::vector<std::pair<uint8_t, std::string>>& tags) {
-        sink_(events::dlPlus(slot, sid, it, ir, tags));
+    cb.dlPlus = [this, slot, sid, rs](bool it, bool ir, const std::vector<std::pair<uint8_t, std::string>>& tags) {
+        json ev = events::dlPlus(slot, sid, it, ir, tags);
+        {
+            std::lock_guard<std::mutex> pl(rs->padM);
+            rs->lastDlPlus = {{"item_toggle", ev["item_toggle"]}, {"item_running", ev["item_running"]}, {"tags", ev["tags"]}};
+        }
+        sink_(std::move(ev));
     };
     cb.motObject = [this, slot, rs](const std::vector<uint8_t>& data, const std::string& name,
                                     int contentType, bool dirElement, uint32_t objSid) {
@@ -668,8 +758,14 @@ void DabCore::wireBackend(RunningService* rs) {
         // X-PAD-Slides eines Audiodienstes -> mot_slide; alles aus
         // Paketdiensten (SPI: Logos, EPG) -> onMotObject.
         if (rs->isAudio) {
-            if (((contentType >> 8) & 0x3F) == MOTBaseTypeImage)
-                sink_(events::motSlide(slot, rs->sid, motMimeType(contentType), name, data));
+            if (((contentType >> 8) & 0x3F) == MOTBaseTypeImage) {
+                json ev = events::motSlide(slot, rs->sid, motMimeType(contentType), name, data);
+                {
+                    std::lock_guard<std::mutex> pl(rs->padM);
+                    rs->lastSlide = {{"mime", ev["mime"]}, {"name", ev["name"]}, {"data_b64", ev["data_b64"]}};
+                }
+                sink_(std::move(ev));
+            }
             return;
         }
         onMotObject(rs, data, name, contentType, objSid);
@@ -684,9 +780,15 @@ void DabCore::wireBackend(RunningService* rs) {
             if (frameDump_) std::fwrite(loas, 1, static_cast<size_t>(len), frameDump_);
         };
         rs->audio->setFormatHandler([this, rs, slot, sid, scids](int rate, bool ps, bool sbr, bool stereo, bool first) {
+            json ev = events::serviceStarted(slot, sid, scids, true, sbr, ps, static_cast<uint32_t>(rate), stereo);
+            {
+                std::lock_guard<std::mutex> pl(rs->padM);
+                rs->codec = ev["codec"];
+                rs->stereo = stereo;
+            }
             if (first) {
                 rs->started = true;
-                sink_(events::serviceStarted(slot, sid, scids, true, sbr, ps, static_cast<uint32_t>(rate), stereo));
+                sink_(std::move(ev));
             }
             sink_(events::audioFormat(static_cast<uint32_t>(rate), 2));
         });
@@ -766,6 +868,7 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
     }
     if (!rs->isAudio) {
         rs->started = true;
+        rs->codec = {{"codec", "data"}};
         sink_(events::serviceStartedData(slot, sid, scids));
     }
     RunningService* raw = rs.get();
@@ -922,6 +1025,7 @@ void DabCore::attachDevice(std::unique_ptr<ISampleSource> src, const std::string
     autoCandidates_.clear();
     autoWavStarted_ = false;
     ofdm_ = std::make_unique<ofdmHandler>(source_.get(), params_.get(), msc_.get(), callbacks_.get(), cpuSupport_);
+    applyScopes();
     std::string ch = currentChannel();
     if (!ch.empty()) tuneChannel(ch, false);
 }
@@ -1018,6 +1122,7 @@ void DabCore::setAgc(bool enabled) {
 
 void DabCore::setPpm(int ppm) {
     ppm_ = ppm;
+    { std::lock_guard<std::mutex> lk(stateM_); state_["ppm"] = ppm; }
     if (source_ && !source_->isFileInput()) source_->setPpm(ppm);
     sink_(events::log("info", "ppm-Korrektur " + std::to_string(ppm)));
 }
@@ -1162,6 +1267,7 @@ void DabCore::openFile(const std::string& path, bool loop, bool fast) {
     autoCandidates_.clear();
     autoWavStarted_ = false;
     ofdm_ = std::make_unique<ofdmHandler>(source_.get(), params_.get(), msc_.get(), callbacks_.get(), cpuSupport_);
+    applyScopes();
     source_->restart(freq);
     ofdm_->start();
 }

@@ -29,6 +29,7 @@
  */
 #include	<vector>
 #include	<cmath>
+#include	<algorithm>
 #include	"ofdm-decoder.h"
 #include	"freq-interleaver.h"
 #include	"dab-params.h"
@@ -237,6 +238,8 @@ DABFLOAT sum	= 0;
 //	From time to time we report the quality of symbol 2
 //	(v1: Konstellation/IQ-Puffer entfallen hier).
 	if (blkno == 2) {
+	   if (iqOn. load () && iqHook)
+	      emitIq ();
 	   if (++cnt > repetitionCounter) {
 	      if (qualityCb) {
 	         float freqOffset = compute_frequencyOffset (fft_buffer. data (),
@@ -303,6 +306,49 @@ Complex theta = Complex (0, 0);
 
 void	ofdmDecoder::handle_decoderSelector	(int decoder) {
 	this	-> decoder	= decoder;
+}
+
+void	ofdmDecoder::setIq	(bool on, int rateHz) {
+	if (rateHz < 1) rateHz = 1;
+	if (rateHz > 10) rateHz = 10;
+	iqIntervalMs. store (1000 / rateHz);
+	if (on && !iqOn. load ())
+	   iqNext = std::chrono::steady_clock::time_point {};
+	iqOn. store (on);
+}
+
+//	Konstellation von Symbol 2 aus conjVector (Decoder 3 legt dort die auf
+//	den Einheitskreis normierten Differenzwerte ab, Decoder 1/2/4 die
+//	unnormierten; v1 teilte durch die groesste Amplitude – hier je Traeger
+//	normiert, damit alle Decoder dasselbe Bild liefern).
+void	ofdmDecoder::emitIq	() {
+//	Symbol 2 kommt alle 96 ms; die Deadline wird fortgeschrieben (nicht
+//	"jetzt + Intervall"), damit die mittlere Rate rateHz erreicht und nicht
+//	durch die Rahmenquantisierung unterschritten wird. Nach einer Pause
+//	(kein Sync) kein Nachholen.
+	auto now = std::chrono::steady_clock::now ();
+	if (now < iqNext)
+	   return;
+	const auto interval = std::chrono::milliseconds (iqIntervalMs. load ());
+	if (iqNext + interval < now)
+	   iqNext = now;
+	iqNext += interval;
+	iqOut. resize (2 * carriers);
+	int n = 0;
+	for (int k = - carriers / 2; k <= carriers / 2; k ++) {
+	   if (k == 0)
+	      continue;
+	   int index = k < 0 ? k + T_u : k;
+	   Complex v = conjVector [index];
+	   DABFLOAT a = jan_abs (v);
+	   if (a > 1.0e-6f)
+	      v = v / a;
+	   else
+	      v = Complex (0, 0);
+	   iqOut [n ++] = (int8_t)std::lround (std::clamp (real (v) * 127.0f, -127.0f, 127.0f));
+	   iqOut [n ++] = (int8_t)std::lround (std::clamp (imag (v) * 127.0f, -127.0f, 127.0f));
+	}
+	iqHook (iqOut);
 }
 //
 //	The various actual decoders

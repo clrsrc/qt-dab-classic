@@ -97,6 +97,9 @@ json scanFinished();
 
 json tii(const std::vector<std::tuple<uint8_t, uint8_t, float>>& transmitters);
 json spectrum(const std::vector<uint8_t>& binsDb);
+// Konstellation eines OFDM-Symbols (1536 Traeger nach der Differenz-
+// demodulation) als int8-Paare I,Q (127 = 1,0), Base64.
+json iqSamples(const std::vector<int8_t>& iq);
 json log(const char* level, const std::string& text);
 json exiting(const std::string& reason);
 } // namespace events

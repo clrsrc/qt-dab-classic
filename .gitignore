@@ -74,3 +74,6 @@ V2/apps/desktop/src-tauri/resources/core/
 V2/dist-portable/
 V2/tests/data/*.uff
 V2/tests/data/*.iq
+
+# V2 Dev-Shell-Sperre der Agenten
+V2/.dev-shell.lock

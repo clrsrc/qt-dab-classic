@@ -42,6 +42,10 @@ public:
     bool startWav(const std::string& path, std::string& error);
     void stopWav();
     bool recording() const { return recording_.load(); }
+    // Stand der laufenden Aufnahme (fuer state_snapshot)
+    std::string recordingPath() { std::lock_guard<std::mutex> lk(wavM_); return wav_.path(); }
+    uint64_t recordingBytes() { std::lock_guard<std::mutex> lk(wavM_); return wav_.bytes(); }
+    double recordingSeconds() { std::lock_guard<std::mutex> lk(wavM_); return wav_.seconds(); }
 
     void stop();
 

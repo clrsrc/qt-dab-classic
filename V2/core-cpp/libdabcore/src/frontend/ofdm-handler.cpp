@@ -53,7 +53,8 @@
 	                                    theOfdmDecoder (p -> dabMode,
 	                                                 inputDevice -> bitDepth()),
 	                                    theTable (p -> dabMode),
-	                                    theEstimator (p, &theTable) {
+	                                    theEstimator (p, &theTable),
+	                                    scopeFft (params. get_T_u (), false) {
 	this	-> p			= p;
 	this	-> theMscSink		= mscSink;
 	this	-> cb			= callbacks;
@@ -90,8 +91,41 @@
 	tiiCollision	= p -> tiiCollision;
 	theOfdmDecoder. handle_decoderSelector (decoder);
 	theReader. set_dcRemoval (p -> dcRemoval);
+//	Scopes: Hooks liegen fest, ein-/ausgeschaltet wird per setScopes
+	theReader. setSpectrumHook ([this] (const Complex *v, int n) {
+	   onSpectrumSamples (v, n);
+	});
+	theOfdmDecoder. setIqHook ([this] (const std::vector<int8_t> &iq) {
+	   emitCb (cb -> iqSamples, iq);
+	});
 
 	this	-> snr		= 10;	// until we know better
+}
+
+void	ofdmHandler::setScopes	(bool spectrum, bool iq, int rateHz) {
+	theReader. setSpectrum (spectrum, rateHz);
+	theOfdmDecoder. setIq (iq, rateHz);
+}
+
+//	Spektrum der Eingangssamples (OFDM-Thread): 2048-Punkt-FFT, Leistung je
+//	Bin in dBFS (|X|^2 / T_u^2), fftshift, Abbildung auf 0..255 mit 0,5 dB
+//	je Stufe: Wert = 2 * (dBFS + 120), also 0 = -120 dBFS, 240 = 0 dBFS.
+void	ofdmHandler::onSpectrumSamples	(const Complex *v, int n) {
+	if (n != T_u)
+	   return;
+	scopeBuf. assign (v, v + n);
+	scopeFft. fft (scopeBuf);
+	scopeBins. resize (T_u);
+	const float norm = 1.0f / ((float)T_u * (float)T_u);
+	for (int i = 0; i < T_u; i ++) {
+	   int src = (i + T_u / 2) % T_u;		// fftshift
+	   float pwr = norm * (real (scopeBuf [src]) * real (scopeBuf [src]) +
+	                       imag (scopeBuf [src]) * imag (scopeBuf [src]));
+	   float db = 10.0f * log10f (pwr + 1.0e-12f);
+	   float val = 2.0f * (db + 120.0f);
+	   scopeBins [i] = (uint8_t)(val < 0 ? 0 : val > 255 ? 255 : val);
+	}
+	emitCb (cb -> spectrum, scopeBins);
 }
 
 	ofdmHandler::~ofdmHandler () {

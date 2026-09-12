@@ -188,8 +188,11 @@ pub enum Command {
     // beendet den vom Kern gestarteten Dienst.
     SetEpg { enabled: bool },
 
-    // Diagnose
+    // Diagnose. Scopes: `spectrum` und `iq` getrennt schaltbar, gemeinsame
+    // Rate 1..10 Hz (Standard 5; der Kern klemmt); beide aus = kein Aufwand.
     SetScopes { spectrum: bool, iq: bool, rate_hz: u8 },
+    // TII: Standard an, Schwelle 6; `dx_mode` wird gemerkt, hat im Kern
+    // heute keine Wirkung. `Tii` kommt hoechstens 1x/s und nur bei Aenderung.
     SetTii { enabled: bool, threshold: i16, dx_mode: bool },
     GetState,
     Shutdown,
@@ -279,8 +282,16 @@ pub enum Event {
 
     // TII / Diagnose
     Tii { transmitters: Vec<TiiEntry> },
-    /// dB-Werte 0..255 je Bin, Base64.
+    /// Spektrum der Eingangssamples: 2048 Bins als u8, Base64. fftshift
+    /// (Bin 0 = -1,024 MHz, Bin 1024 = Traegermitte), 0,5 dB je Stufe:
+    /// dBFS = Wert / 2 - 120 (0 = -120 dBFS, 240 = 0 dBFS). Nur mit
+    /// `SetScopes { spectrum: true }`, hoechstens `rate_hz`-mal je Sekunde.
     Spectrum { bins_b64: String },
+    /// Konstellation eines OFDM-Symbols (Symbol 2, wie das v1-IQ-Scope):
+    /// 1536 Traeger nach der Differenzdemodulation, in Frequenzreihenfolge
+    /// (k = -768..-1, 1..768), auf den Einheitskreis normiert, als 3072
+    /// int8-Werte I0,Q0,I1,Q1,... (127 = 1,0), Base64 (4096 Zeichen). Nur
+    /// mit `SetScopes { iq: true }`, hoechstens `rate_hz`-mal je Sekunde.
     IqSamples { iq_b64: String },
     Log { level: LogLevel, text: String },
     /// Antwort auf `GetState` oder nach Neustart des Kerns.
@@ -289,7 +300,75 @@ pub enum Event {
     Exiting { reason: String },
 }
 
-/// Vollstaendiger Zustand des Kerns, wie er ihn selbst kennt.
+/// Scope-Einstellungen (`SetScopes`), wie der Kern sie gerade haelt.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScopeSettings {
+    pub spectrum: bool,
+    pub iq: bool,
+    /// 1..10, Standard 5
+    pub rate_hz: u8,
+}
+
+impl Default for ScopeSettings {
+    fn default() -> Self { ScopeSettings { spectrum: false, iq: false, rate_hz: 5 } }
+}
+
+/// Zuletzt empfangene Ensemble-Uhrzeit (FIG 0/10 + 0/9), wie `ClockTime`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct ClockTimeState {
+    pub unix_utc: i64,
+    pub lto_minutes: i16,
+}
+
+/// Aufnahmestand eines laufenden Dienstes (Felder wie `RecordingState`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct RecordingInfo {
+    pub active: bool,
+    pub path: Option<PathBuf>,
+    pub bytes: u64,
+    pub seconds: f64,
+}
+
+/// Letztes DL+-Kommando eines Dienstes (Felder wie `DlPlus`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct DlPlusState {
+    pub item_toggle: bool,
+    pub item_running: bool,
+    pub tags: Vec<(u8, String)>,
+}
+
+/// Letztes Slideshow-Bild eines Dienstes (Felder wie `MotSlide`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct SlideState {
+    pub mime: String,
+    pub name: String,
+    pub data_b64: String,
+}
+
+/// Ein laufender Dienst (alle Slots) mit dem letzten Anzeigezustand, damit
+/// eine neu verbundene App DLS, DL+, Slide, Codec und Aufnahme sofort hat.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RunningServiceState {
+    pub slot: ServiceSlot,
+    pub sid: u32,
+    pub scids: u8,
+    pub name: String,
+    pub is_audio: bool,
+    /// `None`, solange bei Audio noch kein Block dekodiert wurde.
+    pub codec: Option<Codec>,
+    pub stereo: bool,
+    pub dls: Option<String>,
+    pub dl_plus: Option<DlPlusState>,
+    pub slide: Option<SlideState>,
+    pub recording: RecordingInfo,
+}
+
+fn default_true() -> bool { true }
+fn default_tii_threshold() -> i16 { 6 }
+
+/// Vollstaendiger Zustand des Kerns, wie er ihn selbst kennt. Die mit
+/// `#[serde(default)]` markierten Felder kamen additiv hinzu (Protokoll 1,
+/// M3); aeltere Kerne senden sie nicht.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct CoreState {
     pub source: Option<SourceKind>,
@@ -307,6 +386,31 @@ pub struct CoreState {
     pub recording: bool,
     pub ews_enabled: bool,
     pub ews_autoswitch: bool,
+    // --- additiv (M3) ---
+    /// SPI/EPG-Hintergrunddienst automatisch starten (`SetEpg`).
+    #[serde(default = "default_true")]
+    pub epg_enabled: bool,
+    #[serde(default = "default_true")]
+    pub tii_enabled: bool,
+    #[serde(default = "default_tii_threshold")]
+    pub tii_threshold: i16,
+    /// Gemerkt, im Kern heute ohne Wirkung.
+    #[serde(default)]
+    pub tii_dx_mode: bool,
+    #[serde(default)]
+    pub scopes: ScopeSettings,
+    /// Letzter SNR-Wert in dB (0, solange keiner vorliegt).
+    #[serde(default)]
+    pub snr: f32,
+    #[serde(default)]
+    pub clock_time: Option<ClockTimeState>,
+    #[serde(default)]
+    pub ppm: i32,
+    #[serde(default)]
+    pub scanning: bool,
+    /// Alle laufenden Dienste (Primary und alle Background-Dienste).
+    #[serde(default)]
+    pub running: Vec<RunningServiceState>,
 }
 
 impl Event {
@@ -417,6 +521,43 @@ mod tests {
         assert!(!ev.is_latest_wins());
         let s = serde_json::to_string(&Command::SetGain { gain: Gain { lna: 40, vga: 24, amp: false } }).unwrap();
         assert_eq!(s, r#"{"type":"set_gain","gain":{"lna":40,"vga":24,"amp":false}}"#);
+    }
+
+    #[test]
+    fn core_state_roundtrip_and_defaults() {
+        // Alter Snapshot (ohne die additiven Felder) bleibt lesbar
+        let old = r#"{"type":"state_snapshot","state":{"source":null,"channel":"5C","gain":{"lna":40,"vga":24,"amp":false},"agc":true,"synced":true,"ensemble":[4284,"DR Deutschland"],"services":[],"primary":[53776,0],"background":null,"volume_percent":70,"muted":false,"timeshift":null,"recording":false,"ews_enabled":true,"ews_autoswitch":true}}"#;
+        let ev: Event = serde_json::from_str(old).unwrap();
+        let Event::StateSnapshot { state } = ev else { panic!("kein state_snapshot") };
+        assert_eq!(state.ensemble, Some((0x10BC, "DR Deutschland".into())));
+        assert!(state.epg_enabled && state.tii_enabled);
+        assert_eq!(state.tii_threshold, 6);
+        assert_eq!(state.scopes, ScopeSettings::default());
+        assert!(state.running.is_empty());
+        // Neuer Snapshot (C++-Seite emitState) mit laufendem Dienst
+        let new = r#"{"state":{"agc":true,"background":[3771797692,0],"channel":"5C","clock_time":{"lto_minutes":120,"unix_utc":1789194000},"ensemble":[4284,"DR Deutschland"],"epg_enabled":true,"ews_autoswitch":true,"ews_enabled":true,"gain":{"amp":false,"lna":40,"vga":24},"muted":false,"ppm":0,"primary":[53776,0],"recording":false,"running":[{"codec":{"codec":"he_aac","ps":false,"sample_rate":48000,"sbr":true},"dl_plus":{"item_running":true,"item_toggle":false,"tags":[[1,"Titel"],[4,"Autor"]]},"dls":"Nachrichten","is_audio":true,"name":"Dlf","recording":{"active":true,"bytes":192000,"path":"C:/rec/dlf.wav","seconds":1.0},"scids":0,"sid":53776,"slide":{"data_b64":"/9j/","mime":"image/jpeg","name":"a.jpg"},"slot":"primary","stereo":true},{"codec":{"codec":"data"},"dl_plus":null,"dls":null,"is_audio":false,"name":"EPG Deutschland","recording":{"active":false,"bytes":0,"path":null,"seconds":0.0},"scids":0,"sid":3771797692,"slide":null,"slot":"background","stereo":false}],"scanning":false,"scopes":{"iq":true,"rate_hz":5,"spectrum":false},"services":[],"snr":14.5,"source":{"kind":"hack_rf","serial":null},"synced":true,"tii_dx_mode":false,"tii_enabled":true,"tii_threshold":6,"timeshift":null,"volume_percent":70},"type":"state_snapshot"}"#;
+        let ev: Event = serde_json::from_str(new).unwrap();
+        let Event::StateSnapshot { state } = ev else { panic!("kein state_snapshot") };
+        assert_eq!(state.running.len(), 2);
+        let dlf = &state.running[0];
+        assert_eq!(dlf.slot, ServiceSlot::Primary);
+        assert_eq!(dlf.codec, Some(Codec::HeAac { sbr: true, ps: false, sample_rate: 48000 }));
+        assert_eq!(dlf.dls.as_deref(), Some("Nachrichten"));
+        assert_eq!(dlf.dl_plus.as_ref().unwrap().tags[1], (4, "Autor".to_string()));
+        assert_eq!(dlf.slide.as_ref().unwrap().mime, "image/jpeg");
+        assert!(dlf.recording.active);
+        assert_eq!(state.running[1].codec, Some(Codec::Data));
+        assert_eq!(state.clock_time, Some(ClockTimeState { unix_utc: 1789194000, lto_minutes: 120 }));
+        assert_eq!(state.scopes, ScopeSettings { spectrum: false, iq: true, rate_hz: 5 });
+        // Roundtrip
+        let s = serde_json::to_string(&Event::StateSnapshot { state: state.clone() }).unwrap();
+        let back: Event = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, Event::StateSnapshot { state });
+        // Scopes-Kommando und iq_samples-Ereignis
+        assert_eq!(serde_json::to_string(&Command::SetScopes { spectrum: true, iq: true, rate_hz: 5 }).unwrap(),
+                   r#"{"type":"set_scopes","spectrum":true,"iq":true,"rate_hz":5}"#);
+        let ev: Event = serde_json::from_str(r#"{"iq_b64":"f4EAAA==","type":"iq_samples"}"#).unwrap();
+        assert!(ev.is_latest_wins());
     }
 
     #[test]

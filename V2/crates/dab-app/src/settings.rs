@@ -40,6 +40,18 @@ pub struct Settings {
     pub rtlsdr_index: u32,
     /// Sichtbarkeit der ein-/ausklappbaren Panels (Entscheidung 9).
     pub panels: Panels,
+    /// Zielordner fuer Aufnahmen; None = `data/recordings` (crate::recording).
+    pub recording_dir: Option<PathBuf>,
+    /// Warnton im Alarmfenster (crate::timer / Alarm, Entscheidung 5).
+    pub alarm_beep: bool,
+    /// TII / Debug-Panel (crate::tii, Entscheidung 25): Heimatkoordinaten fuer
+    /// Entfernung/Azimut, TII-Detektor, DX-Protokoll `tii-files.csv`, Scope-Rate 1..10.
+    pub home_lat: Option<f64>,
+    pub home_lon: Option<f64>,
+    pub tii_enabled: bool,
+    pub tii_threshold: i16,
+    pub tii_dx_mode: bool,
+    pub scope_rate_hz: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -51,11 +63,13 @@ pub struct Panels {
     pub scan: bool,
     pub epg: bool,
     pub timer: bool,
+    /// Debug-Panel (crate::tii): offen = Kern liefert Spektrum/IQ.
+    pub debug: bool,
 }
 
 impl Default for Panels {
     fn default() -> Self {
-        Self { presets: true, services: true, settings: false, scan: false, epg: false, timer: false }
+        Self { presets: true, services: true, settings: false, scan: false, epg: false, timer: false, debug: false }
     }
 }
 
@@ -86,6 +100,14 @@ impl Default for Settings {
             file_loop: true,
             rtlsdr_index: 0,
             panels: Panels::default(),
+            recording_dir: None,
+            alarm_beep: true,
+            home_lat: None,
+            home_lon: None,
+            tii_enabled: true,
+            tii_threshold: crate::tii::TII_THRESHOLD_DEFAULT,
+            tii_dx_mode: false,
+            scope_rate_hz: crate::tii::SCOPE_RATE_DEFAULT,
         }
     }
 }

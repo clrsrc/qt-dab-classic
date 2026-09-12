@@ -1,7 +1,9 @@
 <script lang="ts">
   import { channelMhz } from "$lib/core";
   import { t } from "$lib/i18n.svelte";
-  import { currentService, dlPlusTitle, s, slideUrl } from "$lib/state.svelte";
+  import { currentService, dlPlusTitle, s, slideUrl, ui } from "$lib/state.svelte";
+  import { fmtClock, remainingMin } from "$lib/epg";
+  import Logo from "./Logo.svelte";
 
   const svc = $derived(currentService());
   const codec = $derived(s.current?.codec);
@@ -41,10 +43,21 @@
     <span class="dim">{s.fic_total ? `FIC ${s.fic_ok}/${s.fic_total}` : ""}</span>
     <span class="dim">{fileText}</span>
   </div>
-  {#if slide}
+  {#if slide || s.logo_data_url}
     <div class="media">
-      <div class="logo dim">{svc ? svc.name.trim().slice(0, 12) : ""}</div>
-      <img src={slide} alt={s.slide?.name ?? "slide"} />
+      <Logo src={s.logo_data_url} name={svc?.name ?? ""} size="medium" px={slide ? 84 : 48} />
+      {#if slide}<img src={slide} alt={s.slide?.name ?? "slide"} />{/if}
+    </div>
+  {/if}
+  {#if s.now_next && (s.now_next.now || s.now_next.next)}
+    <div class="epgline" title={s.now_next.now?.legacy_time || s.now_next.next?.legacy_time ? t("epg.legacy_hint") : ""}>
+      {#if s.now_next.now}
+        <span class="dim">{t("epg.now")}</span> <span class="hi">{fmtClock(s.now_next.now.start_unix)} {s.now_next.now.title}</span>
+        <span class="amber">· {t("epg.remaining", { min: remainingMin(s.now_next.now.start_unix, s.now_next.now.duration_min, ui.now) })}</span>
+      {/if}
+      {#if s.now_next.next}
+        <span class="dim"> {t("epg.next")}</span> <span>{fmtClock(s.now_next.next.start_unix)} {s.now_next.next.title}</span>
+      {/if}
     </div>
   {/if}
   <div class="dlp">
@@ -71,9 +84,10 @@
   .tech span { min-width: 56px; }
   .name { font-size: 16px; font-weight: bold; color: var(--green-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
   .name.pending { color: var(--amber); animation: blink 1s steps(2, start) infinite; }
-  .media { display: flex; gap: 6px; align-items: center; height: 84px; }
-  .logo { width: 84px; height: 84px; border: 1px solid #14261a; display: flex; align-items: center; justify-content: center; font-size: 10px; text-align: center; flex: none; }
+  .media { display: flex; gap: 6px; align-items: center; }
   .media img { height: 84px; max-width: calc(100% - 90px); object-fit: contain; }
+  .epgline { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .epgline .amber { color: var(--amber); }
   .dlp { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ticker { font-size: 11px; height: 16px; overflow: hidden; white-space: nowrap; position: relative; border-top: 1px solid #0f2a16; }
   .ticker span { display: inline-block; }

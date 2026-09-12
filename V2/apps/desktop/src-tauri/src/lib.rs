@@ -11,6 +11,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+/// EPG/Logo-Kommandos (eigenes Modul, Registrierung unten).
+mod epg_cmds;
+/// Timer/Aufnahme/Sleep/Alarmfenster (eigenes Modul, Registrierung unten).
+mod timer_cmds;
+/// TII/Debug-Panel (eigenes Modul, Registrierung unten).
+mod debug_cmds;
+
 /// Gemeinsamer Zustand (Tauri-managed).
 pub struct Shared {
     pub app: Arc<Mutex<App>>,
@@ -60,7 +67,7 @@ fn run_effects(handle: &AppHandle, shared: &Shared, fx: Effects) {
 }
 
 /// Aktion unter dem App-Lock ausfuehren und die Effekte anschliessend (ohne Lock) anwenden.
-fn act<T>(handle: &AppHandle, shared: &Shared, f: impl FnOnce(&mut App) -> Result<(T, Effects), dab_app::AppError>) -> R<T> {
+pub(crate) fn act<T>(handle: &AppHandle, shared: &Shared, f: impl FnOnce(&mut App) -> Result<(T, Effects), dab_app::AppError>) -> R<T> {
     let (out, fx) = {
         let mut app = lock_app(shared)?;
         f(&mut app).map_err(|e| e.to_string())?
@@ -248,6 +255,7 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
                             log::warn!("emit: {e}");
                         }
                     }
+                    timer_cmds::on_core_event(&app, &shared, &ev);
                     if let Event::Exiting { reason } = &ev {
                         exit_reason = reason.clone();
                         fx.commands.clear();
@@ -328,6 +336,7 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
+            debug_cmds::load_database(&handle, &handle.state::<Shared>());
             if let Err(e) = spawn_core(&handle, "start") {
                 log::error!("Kern konnte nicht gestartet werden: {e}");
                 let _ = handle.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: format!("core: {e}") });
@@ -335,7 +344,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
+            // Nur das Hauptfenster beendet die App; das Alarmfenster (timer_cmds) darf zugehen.
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
+                timer_cmds::close_alarm(window.app_handle());
                 if let Some(shared) = window.try_state::<Shared>() {
                     stop_all(&shared);
                 }
@@ -358,7 +369,33 @@ pub fn run() {
             presets_import,
             favorites_path,
             active_preset_slot,
-            data_dir
+            data_dir,
+            epg_cmds::epg_days,
+            epg_cmds::epg_services,
+            epg_cmds::epg_programmes,
+            epg_cmds::epg_now_next,
+            epg_cmds::logo_data_url,
+            epg_cmds::logo_sizes,
+            timer_cmds::timers_list,
+            timer_cmds::timer_add,
+            timer_cmds::timer_update,
+            timer_cmds::timer_delete,
+            timer_cmds::timer_toggle_active,
+            timer_cmds::timer_add_from_epg,
+            timer_cmds::recording_start,
+            timer_cmds::recording_stop,
+            timer_cmds::recording_toggle,
+            timer_cmds::recording_status,
+            timer_cmds::sleep_set,
+            timer_cmds::sleep_cancel,
+            timer_cmds::sleep_status,
+            timer_cmds::alarm_close,
+            debug_cmds::debug_set_open,
+            debug_cmds::debug_set_rate,
+            debug_cmds::debug_state,
+            debug_cmds::tii_set,
+            debug_cmds::tii_list,
+            debug_cmds::home_set
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");

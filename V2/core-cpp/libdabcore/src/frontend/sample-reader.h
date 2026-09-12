@@ -34,6 +34,8 @@
 #include	"dab-constants.h"
 #include	<cstdint>
 #include	<atomic>
+#include	<chrono>
+#include	<functional>
 #include	<vector>
 #include	"isample-source.h"
 #include	"equalizer.h"
@@ -50,7 +52,21 @@ public:
 	                                 int32_t n, int32_t phase,  bool saving);
 	      void	set_dcRemoval	(bool);
 	      float	dcOffsetIndicator () const { return dcIndicator; }
+//	Spektrum-Scope (V3, Ersatz fuer den v1-spectrumBuffer): solange
+//	eingeschaltet, werden hoechstens rateHz-mal je Sekunde T_u = 2048
+//	aufeinanderfolgende Eingangssamples (nach Frequenzkorrektur) gesammelt
+//	und an den Hook uebergeben (im OFDM-Thread). Aus: kein Mehraufwand.
+	      void	setSpectrumHook	(std::function<void(const Complex *, int)> h) {
+	         spectrumHook = std::move (h);
+	      }
+	      void	setSpectrum	(bool on, int rateHz);
 private:
+	      std::function<void(const Complex *, int)> spectrumHook;
+	      std::atomic<bool>	spectrumOn {false};
+	      std::atomic<int>	spectrumIntervalMs {200};
+	      std::vector<Complex>	spectrumBuf;
+	      int		spectrumFill = 0;
+	      std::chrono::steady_clock::time_point spectrumNext {};
 	      equalizer		theEqualizer;
 	      ISampleSource	*theRig;
 	      int32_t		currentPhase;

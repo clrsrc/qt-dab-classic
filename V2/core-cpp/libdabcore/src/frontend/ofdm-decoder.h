@@ -30,6 +30,8 @@
 #include	"dab-constants.h"
 #include	<vector>
 #include	<cstdint>
+#include	<atomic>
+#include	<chrono>
 #include	<functional>
 #include	"phasetable.h"
 #include	"freq-interleaver.h"
@@ -60,7 +62,21 @@ public:
 	void	setQualityCallback	(std::function<void(float, float, float)> cb) {
 	   qualityCb = std::move (cb);
 	}
+//	IQ-Scope (V3, Ersatz fuer den v1-iqBuffer): Konstellation von Symbol 2,
+//	1536 Traeger in Frequenzreihenfolge (k = -768..-1, 1..768) nach der
+//	Differenzdemodulation, auf den Einheitskreis normiert, als int8-Paare
+//	I,Q (127 = 1,0). Hoechstens rateHz-mal je Sekunde; aus: kein Aufwand.
+	void	setIqHook		(std::function<void(const std::vector<int8_t> &)> h) {
+	   iqHook = std::move (h);
+	}
+	void	setIq			(bool on, int rateHz);
 private:
+	std::function<void(const std::vector<int8_t> &)> iqHook;
+	std::atomic<bool>	iqOn {false};
+	std::atomic<int>	iqIntervalMs {200};
+	std::chrono::steady_clock::time_point iqNext {};
+	std::vector<int8_t>	iqOut;
+	void	emitIq			();
 	dabParams		params;
 	phaseTable		theTable;
 	interLeaver		myMapper;

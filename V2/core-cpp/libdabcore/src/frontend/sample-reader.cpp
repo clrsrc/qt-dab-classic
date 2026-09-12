@@ -25,6 +25,7 @@
 #
 #include	"sample-reader.h"
 #include	"dab-constants.h"
+#include	<algorithm>
 
 static
 Complex oscillatorTable [SAMPLERATE];
@@ -132,6 +133,28 @@ auto *buffer	= dynVec (std::complex<float>, nrSamples);
 	   sLevel = 0.00001 * jan_abs (v_out [index + i]) + (1 - 0.00001) * sLevel;
 	}
 
+//	Spektrum-Scope: 2048 Samples einsammeln, dann (rate-begrenzt) melden
+	if (spectrumOn. load () && spectrumHook) {
+	   auto now = std::chrono::steady_clock::now ();
+	   if (now >= spectrumNext) {
+	      if (spectrumBuf. size () != 2048)
+	         spectrumBuf. resize (2048);
+	      int take = std::min (nrSamples, 2048 - spectrumFill);
+	      for (int i = 0; i < take; i ++)
+	         spectrumBuf [spectrumFill + i] = v_out [index + i];
+	      spectrumFill += take;
+	      if (spectrumFill >= 2048) {
+	         spectrumFill = 0;
+//	Deadline fortschreiben (mittlere Rate = rateHz), ohne Nachholen nach Pausen
+	         const auto interval = std::chrono::milliseconds (spectrumIntervalMs. load ());
+	         if (spectrumNext + interval < now)
+	            spectrumNext = now;
+	         spectrumNext += interval;
+	         spectrumHook (spectrumBuf. data (), 2048);
+	      }
+	   }
+	}
+
 	if (doDcRemoval) {
 	   dcDisplayCounter += nrSamples;
 	   if (dcDisplayCounter >= SAMPLERATE) {
@@ -143,6 +166,17 @@ auto *buffer	= dynVec (std::complex<float>, nrSamples);
 	}
 
 	sampleCount	+= nrSamples;
+}
+
+void	sampleReader::setSpectrum	(bool on, int rateHz) {
+	if (rateHz < 1) rateHz = 1;
+	if (rateHz > 10) rateHz = 10;
+	spectrumIntervalMs. store (1000 / rateHz);
+	if (on && !spectrumOn. load ()) {
+	   spectrumFill = 0;
+	   spectrumNext = std::chrono::steady_clock::time_point {};
+	}
+	spectrumOn. store (on);
 }
 
 void	sampleReader::set_dcRemoval	(bool b) {

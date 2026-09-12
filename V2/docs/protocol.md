@@ -45,9 +45,9 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 | `set_ews` | `enabled`, `autoswitch` |
 | `ews_dismiss` | |
 | `set_epg` | `enabled` (Standard an). Der Kern startet den SPI/EPG-Paketdienst des Ensembles (FIG 0/13 Appl-Type 7, DSCTy 60, im Bundesmux „EPG Deutschland“) selbst als Background-Slot, sobald die FIC ihn meldet – auch ohne Primary-Dienst (z. B. nach dem Scan); Kanalwechsel/`close_device` beenden ihn, `enabled: false` beendet nur die vom Kern gestarteten Dienste. `service_started{slot: background, codec: {codec: data}}` wie bei `select_service`; `state.epg_enabled` |
-| `set_scopes` | `spectrum`, `iq`, `rate_hz` |
-| `set_tii` | `enabled`, `threshold`, `dx_mode` |
-| `get_state` | → `state_snapshot` |
+| `set_scopes` | `spectrum`, `iq` (getrennt schaltbar), `rate_hz` (1–10, Standard 5, gemeinsame Rate; der Kern klemmt). Wirkt sofort und bleibt über `open_device`/`set_channel` erhalten. Beide aus (Standard): kein Datenfluss und kein Rechenaufwand |
+| `set_tii` | `enabled` (Standard an), `threshold` (Standard 6), `dx_mode` (wird gemerkt, `state.tii_dx_mode`; im Kern heute **ohne Wirkung** – in v1 war es ein Anzeigemodus des TII-Fensters) |
+| `get_state` | → `state_snapshot`, danach `audio_devices` |
 | `shutdown` | |
 
 ## Ereignisse (Kern → App)
@@ -80,12 +80,12 @@ und die App bei Überlast verwerfen darf.
 | `dl_plus` | `slot`, `sid`, `item_toggle`, `item_running`, `tags: [[content_type, text], ...]` – je DL+-Kommando (TS 102 980), alle Content-Types 0..63, Text = Ausschnitt des letzten vollständigen Labels |
 | `mot_slide` | `slot`, `sid`, `mime`, `name`, `data_b64` (X-PAD-Slideshow eines Audiodienstes) |
 | `mot_object` | `eid`, `sid`, `content_type`, `name`, `data_b64` – Objekt aus dem SPI-Paketdienst (Logos PNG `0x0203`/JPEG `0x0201`, selten Text). `sid` = Dienst, dem das Logo gilt: die Hex-SId vor dem ersten `_` des Namens (`d210_Dlf_320x240.png`, `10c4_ASA DE_320x240.png`), wenn sie ein Dienst des Ensembles ist, sonst 0. Jedes Objekt kommt einmal; Wiederholungen des Karussells (neue MOT-Verzeichnisversion, Bundesmux alle ~25 min) meldet der Kern nur bei geändertem Inhalt. Cache (App): `data/logos/<eid>/<name>`, größtes PNG je SId; die Zuordnung Logo→Dienst steht außerdem in der Service-Information (`epg_object` mit `sid` 0) |
-| `epg_object` | `eid`, `sid`, `date_yyyymmdd`, `name`, `xml` – XML-Text des portierten epg-compilers (TS 102 371 → Format wie v1 `Qt-DAB-files/<EId>/<yyyyMMdd>_<SId>_SI.xml`, Wurzel `<epg system="DAB">`, Zeiten `yyyy-M-dTHH:mm`, Dauer `PTnnHnnM`). Sendeplan: `sid`/`date_yyyymmdd` aus dem MOT-Namen (`w20260914dd230c0.EHB` → 20260914 / 0xD230, wie v1 `extractName`), Cache (App): `data/epg/<eid>/<yyyymmdd>_<SID>_SI.xml`. Service-Information (Logo-Zuordnung, Wurzel `<serviceInformation>`, v1 `list.xml`): `sid` = 0, `date_yyyymmdd` = 0. Im Bundesmux senden nur die Deutschlandradio-Dienste (Dlf, Dlf Kultur, Dlf Nova) EPG, je Tag eine Datei, heute bis +5 Tage; ein Karussell-Umlauf dauert einige Minuten |
+| `epg_object` | `eid`, `sid`, `date_yyyymmdd`, `name`, `xml` – XML-Text des portierten epg-compilers (TS 102 371 → Format wie v1 `Qt-DAB-files/<EId>/<yyyyMMdd>_<SId>_SI.xml`, Wurzel `<epg system="DAB" tz="local">`, Zeiten `yyyy-M-dTHH:mm` in der **Ortszeit des Kern-Systems** (Sendezeit ist UTC, Umrechnung per `localtime` inkl. Sommerzeit), Dauer `PTnnHnnM`). Das Attribut `tz="local"` unterscheidet neue Dateien von v1-Dateien ohne Attribut, deren Zeiten UTC + LTO-*Minuten* waren (v1-Fehler: `mktime` als Ortszeit plus `lto` Stunden als Minuten addiert – am Bundesmux UTC + 2 min). Steuerzeichen (< 0x20 außer Tab/LF/CR) werden beim Serialisieren entfernt, alles andere (z. B. `width="257"`) bleibt wie v1. Sendeplan: `sid`/`date_yyyymmdd` aus dem MOT-Namen (`w20260914dd230c0.EHB` → 20260914 / 0xD230, wie v1 `extractName`), Cache (App): `data/epg/<eid>/<yyyymmdd>_<SID>_SI.xml`. Service-Information (Logo-Zuordnung, Wurzel `<serviceInformation>`, v1 `list.xml`): `sid` = 0, `date_yyyymmdd` = 0. Im Bundesmux senden nur die Deutschlandradio-Dienste (Dlf, Dlf Kultur, Dlf Nova) EPG, je Tag eine Datei, heute bis +5 Tage; ein Karussell-Umlauf dauert einige Minuten |
 | `announcement` | `kind`, `sub_ch`, `active` |
 | `audio_format` | `rate`, `channels` (nach `service_started` und bei Wechsel; PCM ist immer als L/R-Paare unterwegs, `channels` = 2) |
 | `audio_level` **LW** | `left`, `right` |
 | `audio_underrun` | `missed` |
-| `audio_devices` | `names[]`, `current?` |
+| `audio_devices` | `names[]`, `current?` – nach `ready` (als drittes Ereignis, nach der Viterbi-Log-Zeile), nach `get_state` (direkt nach `state_snapshot`) und nach `set_audio_device`; mit `--no-audio` leere Liste und `current: null` |
 | `ews_present` | |
 | `ews_alert` | `phase: pre_trigger\|trigger\|sustain\|end`, `sub_ch`, `stage`, `iid`, `locations[]`, `is_test` |
 | `ews_alive` | `sub_ch?` (Unterkanal des aktiven Alarms, höchstens 1/s Ensemble-Zeit; `null` = Heartbeat ohne Alarm, 1/s) |
@@ -96,11 +96,11 @@ und die App bei Überlast verwerfen darf.
 | `scan_progress` | `channel`, `index`, `total` |
 | `scan_result` | `channel`, `eid?`, `ensemble?`, `services[]`, `snr` |
 | `scan_finished` | |
-| `tii` | `transmitters: [{main_id, sub_id, strength}]` |
-| `spectrum` **LW** | `bins_b64` (dB 0..255 je Bin) |
-| `iq_samples` **LW** | `iq_b64` |
+| `tii` | `transmitters: [{main_id, sub_id, strength}]` – Sender im Nullsymbol (v1 TII-Detector, Auswertung alle 3 TII-Nullsymbole). Der Kern sendet **höchstens 1×/s und nur bei geänderter Liste** (IDs oder Stärke auf 0,01 gerundet); eine leer gewordene Liste kommt einmal als `[]`. 5C in Langenberg-Reichweite: mainId 20 mit subIds 4 (Langenberg), 2 (Düsseldorf), 1 (Köln), Stärken ~0,3/0,25/0,12 |
+| `spectrum` **LW** | `bins_b64` – 2048 Bins (u8) der Eingangssamples nach Frequenzkorrektur, fftshift (Bin 0 = −1,024 MHz, Bin 1024 = Trägermitte), 0,5 dB je Stufe: `dBFS = Wert / 2 − 120` (0 = −120 dBFS, 240 = 0 dBFS). Nur mit `set_scopes{spectrum:true}`, höchstens `rate_hz`/s; kommt auch ohne Sync (Antennenausrichtung) |
+| `iq_samples` **LW** | `iq_b64` – Konstellation von OFDM-Symbol 2 (wie das v1-IQ-Scope): 1536 Träger nach der Differenzdemodulation in Frequenzreihenfolge (k = −768…−1, 1…768), je Träger auf den Einheitskreis normiert, als 3072 int8-Werte `I0,Q0,I1,Q1,…` (127 = 1,0), Base64 (4096 Zeichen, ~4,1 kB je Ereignis). Nur mit `set_scopes{iq:true}` und nur bei Sync, höchstens `rate_hz`/s |
 | `log` | `level: error\|warn\|info\|debug`, `text` |
-| `state_snapshot` | `state: {...}` (siehe `CoreState`; zusätzlich `epg_enabled`) |
+| `state_snapshot` | `state: {...}` (siehe `CoreState`). Neben Quelle/Kanal/Gain/Diensten: `ensemble: [eid, name]`, `epg_enabled`, `tii_enabled`, `tii_threshold`, `tii_dx_mode`, `scopes{spectrum,iq,rate_hz}`, `snr` (letzter Wert), `clock_time{unix_utc,lto_minutes}?` (letztes `clock_time`), `ppm`, `scanning` und `running[]` – je laufendem Dienst (alle Slots): `slot`, `sid`, `scids`, `name`, `is_audio`, `codec?` (wie `service_started`, `null` bis zum ersten dekodierten Block), `stereo`, `dls?` (letzter Text), `dl_plus?` (`item_toggle`, `item_running`, `tags`), `slide?` (`mime`, `name`, `data_b64` der letzten `mot_slide`), `recording{active,path?,bytes,seconds}`. Damit kann eine neu verbundene App die Anzeige ohne Warten auf neue Ereignisse aufbauen |
 | `exiting` | `reason` |
 
 ## Beispiel

@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "alarm",
+  "description": "Alarmfenster (Entscheidung 5/10): Ereignisse empfangen, quittieren, schliessen, verschieben",
+  "windows": [
+    "alarm"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top"
+  ]
+}

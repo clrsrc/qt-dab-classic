@@ -2,6 +2,7 @@
   import { api } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, s, togglePanel, ui } from "$lib/state.svelte";
+  import RecButton from "./RecButton.svelte";
 
   let volTimer: ReturnType<typeof setTimeout> | undefined;
   function onVolume(e: Event) {
@@ -26,7 +27,7 @@
   <button class="btn feat" class:on={ui.settings?.panels.epg} title={t("transport.epg")} onclick={() => togglePanel("epg")}>EPG</button>
   <button class="btn feat" class:on={s.ews_present} title={t("transport.ewf")}>EWF</button>
   <button class="btn feat" class:on={ui.settings?.panels.timer} title={t("transport.timer")} onclick={() => togglePanel("timer")}>TMR</button>
-  <button class="btn feat rec" class:on={s.recording} title={t("transport.rec")} disabled>REC</button>
+  <RecButton />
   <span class="sep"></span>
   <span class="vol">VOL</span>
   <input type="range" min="0" max="100" value={s.volume} oninput={onVolume} title={t("transport.volume")} />

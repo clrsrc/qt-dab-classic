@@ -2,6 +2,7 @@
   import { api, type ServiceInfo } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, s } from "$lib/state.svelte";
+  import Logo from "./Logo.svelte";
 
   function select(svc: ServiceInfo) {
     if (!svc.is_audio) return;
@@ -31,6 +32,7 @@
         onclick={() => select(svc)}
         ondblclick={() => select(svc)}
       >
+        {#if svc.is_audio}<Logo eid={s.ensemble?.eid ?? null} sid={svc.sid} size="small" name={svc.name} px={16} />{/if}
         <span class="grow">{svc.name.trim()}{svc.scids ? ` (${svc.scids})` : ""}</span>
         <span class="meta">{svc.is_audio ? `${svc.bitrate_kbps} kbps` : t("services.data")}</span>
         <span class="meta">{svc.sid.toString(16).toUpperCase().padStart(4, "0")}</span>

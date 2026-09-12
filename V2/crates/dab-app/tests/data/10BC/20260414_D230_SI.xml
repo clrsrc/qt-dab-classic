@@ -1,0 +1,108 @@
+<epg system="DAB">
+ <defaultLanguage>en</defaultLanguage>
+ <schedule creationTime="2026-4-14T08:22" originator="DLR" version="1">
+  <scope startTime="2026-4-13T22:02" stopTime="2026-4-14T22:02">
+   <serviceScope id="e0:10bc:d230"/>
+  </scope>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366898" recommendation="no" shortId="1366898">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Nova</longName>
+   <location>
+    <time duration="PT06H00M" time="2026-4-13T22:02"/>
+   </location>
+   <genre href="OriginationCS.KediaTupeCS.">Musik</genre>
+   <genre href="OriginationCS.KediaTupeCS.IntendedAudienceCS.FormatCS.">Popmusik</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366899" recommendation="no" shortId="1366899">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Nova</longName>
+   <location>
+    <time duration="PT04H00M" time="2026-4-14T04:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>06:00-06:03 Nachrichten06:30-06:33 Nachrichten07:00-07:03 Nachrichten07:30-07:33 Nachrichten08:00-08:03 Nachrichten08:30-08:33 Nachrichten09:00-09:03 Nachrichten0 ...</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366908" recommendation="no" shortId="1366908">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Nova</longName>
+   <location>
+    <time duration="PT04H00M" time="2026-4-14T08:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>10:00-10:03 Nachrichten10:30-10:33 Nachrichten11:00-11:03 Nachrichten11:30-11:33 Nachrichten12:00-12:03 Nachrichten12:30-12:33 Nachrichten13:00-13:03 Nachrichten1 ...</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366917" recommendation="no" shortId="1366917">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Nova</longName>
+   <location>
+    <time duration="PT04H00M" time="2026-4-14T12:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>14:00-14:03 Nachrichten14:30-14:33 Nachrichten15:00-15:03 Nachrichten15:30-15:33 Nachrichten16:00-16:03 Nachrichten16:30-16:33 Nachrichten17:00-17:03 Nachrichten1 ...</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366926" recommendation="no" shortId="1366926">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Nova</longName>
+   <location>
+    <time duration="PT01H30M" time="2026-4-14T16:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>18:00-18:03 Nachrichten18:30-18:33 Nachrichten19:00-19:03 Nachrichten</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366930" recommendation="no" shortId="1366930">
+   <mediumName>Unboxing News</mediumName>
+   <location>
+    <time duration="PT30M" time="2026-4-14T17:32"/>
+   </location>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366931" recommendation="no" shortId="1366931">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Nova</longName>
+   <location>
+    <time duration="PT01H00M" time="2026-4-14T18:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>20:00-20:03 Nachrichten</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366933" recommendation="no" shortId="1366933">
+   <mediumName>Über Schlafen</mediumName>
+   <longName>Über Schlafen</longName>
+   <location>
+    <time duration="PT01H00M" time="2026-4-14T19:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>21:00-21:03 Nachrichten</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlfnova/1366935" recommendation="no" shortId="1366935">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Nova</longName>
+   <location>
+    <time duration="PT01H59M" time="2026-4-14T20:02"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>22:00-22:03 Nachrichten23:00-23:03 Nachrichten</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.KediaTupeCS.">Musik</genre>
+   <genre href="OriginationCS.KediaTupeCS.IntendedAudienceCS.FormatCS.">Popmusik</genre>
+  </programme>
+ </schedule>
+</epg>

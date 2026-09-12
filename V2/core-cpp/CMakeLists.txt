@@ -130,4 +130,11 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-epg.ps1)
+    # state_snapshot (running[] mit dls/codec, ensemble als [eid, name]),
+    # audio_devices nach ready/get_state, set_scopes (spectrum + iq_samples
+    # mit Rate und Groesse), stdin-EOF bei laufendem Dienst -> Ende < 1 s
+    add_test(NAME dabcored_snapshot
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-snapshot.ps1)
 endif()

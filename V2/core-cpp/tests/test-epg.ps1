@@ -84,7 +84,7 @@ $epgs = @($ev | Where-Object { $_.type -eq 'epg_object' })
 $epgKeys = @{}
 foreach ($e in $epgs) {
     if ($e.sid -eq 0) { continue }   # Service-Information (list.xml)
-    if (-not $e.xml.StartsWith('<epg system="DAB">')) { $fail += "epg_object ohne <epg system=""DAB""> ($($e.name))" }
+    if (-not $e.xml.StartsWith('<epg system="DAB" tz="local">')) { $fail += "epg_object ohne <epg system=""DAB"" tz=""local""> ($($e.name))" }
     if ($e.date_yyyymmdd -lt 20260901 -or $e.date_yyyymmdd -gt 20261231) { $fail += "epg_object Datum $($e.date_yyyymmdd) unplausibel ($($e.name))" }
     if ($e.eid -ne 4284) { $fail += "epg_object eid $($e.eid), erwartet 4284" }
     $epgKeys[("{0}_{1:X4}" -f $e.date_yyyymmdd, $e.sid)] += 1

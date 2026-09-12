@@ -73,7 +73,9 @@ public:
 	void		setDXMode		(bool);
 	void		set_dcRemoval		(bool);
 	void		handleDecoderSelector	(int);
-private:
+//	Scopes (set_scopes): Spektrum aus dem sampleReader, Konstellation aus
+//	dem ofdmDecoder; beide nur aktiv, wenn eingeschaltet (kein Aufwand sonst).
+	void		setScopes		(bool spectrum, bool iq, int rateHz);
 	processParams		*p;
 	dabParams		params;
 	IMscSink		*theMscSink;
@@ -116,4 +118,9 @@ private:
 	std::thread		theThread;
 	std::atomic<bool>	threadRunning;
 	void			run		();
+//	Spektrum-Scope (nach params deklariert: Initialisierung mit T_u)
+	fftHandler		scopeFft;
+	std::vector<Complex>	scopeBuf;
+	std::vector<uint8_t>	scopeBins;
+	void			onSpectrumSamples (const Complex *, int);
 };

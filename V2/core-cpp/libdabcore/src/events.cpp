@@ -142,6 +142,11 @@ json tii(const std::vector<std::tuple<uint8_t, uint8_t, float>>& tx) {
     j["transmitters"] = arr; return j;
 }
 json spectrum(const std::vector<uint8_t>& bins) { auto j = ev("spectrum"); j["bins_b64"] = base64Encode(bins); return j; }
+json iqSamples(const std::vector<int8_t>& iq) {
+    auto j = ev("iq_samples");
+    j["iq_b64"] = base64Encode(reinterpret_cast<const uint8_t*>(iq.data()), iq.size());
+    return j;
+}
 json log(const char* level, const std::string& t) { auto j = ev("log"); j["level"] = level; j["text"] = t; return j; }
 json exiting(const std::string& r) { auto j = ev("exiting"); j["reason"] = r; return j; }
 } // namespace events

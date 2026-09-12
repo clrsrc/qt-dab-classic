@@ -2,6 +2,25 @@
   import { api } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, patchSettings, s, ui } from "$lib/state.svelte";
+  import SleepTimer from "./SleepTimer.svelte";
+  import { debugApi } from "$lib/debug";
+
+  // TII / Debug-Panel (lib/debug.ts): Heimatkoordinaten, Detektor, DX, Scope-Rate
+  const numOrNull = (e: Event) => {
+    const v = (e.target as HTMLInputElement).value.trim().replace(",", ".");
+    return v === "" || isNaN(Number(v)) ? null : Number(v);
+  };
+  const setHome = (e: Event, which: "lat" | "lon") => {
+    const v = numOrNull(e);
+    const lat = which === "lat" ? v : (ui.settings?.home_lat ?? null);
+    const lon = which === "lon" ? v : (ui.settings?.home_lon ?? null);
+    run(debugApi.homeSet(lat, lon));
+  };
+  const setTii = (patch: { enabled?: boolean; threshold?: number; dx_mode?: boolean }) => {
+    const st = ui.settings;
+    if (!st) return;
+    run(debugApi.tiiSet(patch.enabled ?? st.tii_enabled, patch.threshold ?? st.tii_threshold, patch.dx_mode ?? st.tii_dx_mode));
+  };
 
   let lna = $state(40);
   let vga = $state(40);
@@ -59,6 +78,43 @@
       <span class="lbl">{t("settings.autostart")}</span>
       <span><input type="checkbox" checked={ui.settings.autostart} onchange={(e) => patchSettings({ autostart: chk(e) })} /></span>
 
+      <!-- Timer/Aufnahme/Sleep/Alarm (lib/timers.ts) -->
+      <span class="lbl">{t("sleep.label")}</span>
+      <span><SleepTimer /></span>
+
+      <span class="lbl">{t("rec.dir")}</span>
+      <span class="gain">
+        <input type="text" class="dir" value={ui.settings.recording_dir ?? ""} placeholder={t("rec.dir_default")} onchange={(e) => patchSettings({ recording_dir: (e.target as HTMLInputElement).value.trim() || null })} />
+        <span class="k">{t("rec.pre")}</span><input type="number" class="ppm" value={Math.round(ui.settings.record_pre_s / 60)} min="0" max="60" onchange={(e) => patchSettings({ record_pre_s: Math.max(0, Number((e.target as HTMLInputElement).value)) * 60 })} />
+        <span class="k">{t("rec.post")}</span><input type="number" class="ppm" value={Math.round(ui.settings.record_post_s / 60)} min="0" max="120" onchange={(e) => patchSettings({ record_post_s: Math.max(0, Number((e.target as HTMLInputElement).value)) * 60 })} />
+      </span>
+
+      <span class="lbl">{t("alarm.beep")}</span>
+      <span><input type="checkbox" checked={ui.settings.alarm_beep} onchange={(e) => patchSettings({ alarm_beep: chk(e) })} /></span>
+
+      <!-- TII / Debug-Panel (lib/debug.ts, lib/tii.ts) -->
+      <span class="lbl">{t("tii.home")}</span>
+      <span class="gain">
+        <span class="k">{t("tii.home_lat")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-90" max="90" value={ui.settings.home_lat ?? ""} placeholder="51.2180" onchange={(e) => setHome(e, "lat")} />
+        <span class="k">{t("tii.home_lon")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-180" max="180" value={ui.settings.home_lon ?? ""} placeholder="6.7617" onchange={(e) => setHome(e, "lon")} />
+        <span class="k">{t("tii.home_hint")}</span>
+      </span>
+
+      <span class="lbl">{t("tii.enabled")}</span>
+      <span class="gain">
+        <input type="checkbox" checked={ui.settings.tii_enabled} onchange={(e) => setTii({ enabled: chk(e) })} />
+        <span class="k">{t("tii.threshold")}</span><input type="number" class="ppm" min="1" max="30" value={ui.settings.tii_threshold} onchange={(e) => setTii({ threshold: Math.max(1, Math.min(30, Number((e.target as HTMLInputElement).value))) })} />
+        <label class="inl"><input type="checkbox" checked={ui.settings.tii_dx_mode} onchange={(e) => setTii({ dx_mode: chk(e) })} />{t("tii.dx_mode")}</label>
+      </span>
+
+      <span class="lbl">{t("debug.scope_rate")}</span>
+      <span class="gain">
+        <select value={ui.settings.scope_rate_hz} onchange={(e) => run(debugApi.setRate(Number(sel(e))))}>
+          {#each [1, 2, 3, 5, 8, 10] as r (r)}<option value={r}>{r} Hz</option>{/each}
+        </select>
+        <span class="k">{t("debug.scope_rate_hint")}</span>
+      </span>
+
       <span class="lbl">{t("settings.data_dir")}</span>
       <span class="mono" title={ui.dataDir}>{ui.dataDir} <span class="k">({ui.portable ? t("settings.portable") : t("settings.profile")})</span></span>
 
@@ -75,6 +131,7 @@
   .gain { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .gain input[type="number"] { width: 48px; }
   .ppm { width: 60px; }
+  .dir { flex: 1 1 160px; min-width: 120px; }
   .k { color: var(--text-dim); font-size: 9px; }
   .inl { display: inline-flex; align-items: center; margin-left: 6px; }
   .mono { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

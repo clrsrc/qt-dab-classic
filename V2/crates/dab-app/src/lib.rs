@@ -7,14 +7,26 @@
 //! ohne Fenster testbar und wird auch vom Headless-Treiber `dab-cli` genutzt.
 
 pub mod app;
+pub mod epg;
 pub mod favorites;
+pub mod logos;
 pub mod paths;
 pub mod presets;
+pub mod recording;
 pub mod settings;
+pub mod sleep;
 pub mod state;
+pub mod tii;
+pub mod timer;
 
 pub use app::{App, AppError, AppEvent, Effects, NoticeLevel, PresetStatus, StoreResult, DEFAULT_HACKRF_GAIN, PRESET_TIMEOUT};
+pub use epg::{EpgCache, NowNext, Programme, ProgrammeBrief};
+pub use logos::{LogoCache, LogoSize};
 pub use paths::DataDirs;
 pub use presets::{Preset, Presets, PRESET_SLOTS};
+pub use recording::RecordingInfo;
 pub use settings::{Panels, Settings};
+pub use sleep::{SleepAction, SleepState};
 pub use state::AppState;
+pub use tii::{DebugState, TiiDatabase, TiiSeen, Transmitter};
+pub use timer::{AddOutcome, Conflict, EpgTimerRequest, Timer, TimerFireStatus, TimerKind, Timers};

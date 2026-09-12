@@ -219,6 +219,9 @@ int	index	= 0;
 	if (tag == EPG_TAG) {
 	   XmlNode epg ("epg");
 	   epg. setAttribute ("system", "DAB");
+//	V3: Zeiten stehen in der Ortszeit des Systems (process_474); v1-Dateien
+//	ohne dieses Attribut tragen UTC + LTO-Minuten.
+	   epg. setAttribute ("tz", "local");
 	   while (index < endPoint) {
 	      switch (at (v, index)) {
 	         case 0x04:		// process tokenTable
@@ -1599,8 +1602,12 @@ std::string	twoDigits (int16_t v) {
 }
 //
 //	ETSI TS 102 371: 4.7.4 time point
-//	v1: QDateTime (lokale Zeit) -> Sekunden seit Epoche -> + lto Minuten
-//	-> QDateTime (lokale Zeit); hier mit mktime/localtime nachgebildet.
+//	Die uebertragenen Stunden/Minuten sind UTC. v1 nahm sie per mktime als
+//	Ortszeit und addierte dann noch den LTO (Stunden!) als Minuten – am
+//	Bundesmux ergab das UTC + 2 min statt Ortszeit. V3: Sendezeit als UTC
+//	(timegm/_mkgmtime), keine LTO-Addition, Ausgabe in der Ortszeit des
+//	Systems (localtime, inkl. Sommerzeit); Format yyyy-M-dTHH:mm wie v1.
+//	Die Wurzel <epg> traegt dafuer tz="local" (Unterscheidung zu v1-Dateien).
 std::string epgCompiler::process_474 (const std::vector<uint8_t> &v, int &index) {
 int endPoint = setLength (v, index);
 	uint32_t mjd	= getBits (v, 8 * index + 1, 17);
@@ -1623,10 +1630,12 @@ int endPoint = setLength (v, index);
 	tmIn. tm_hour	= hours;
 	tmIn. tm_min	= minutes;
 	tmIn. tm_sec	= 0;
-	tmIn. tm_isdst	= -1;
-	int64_t tt = (int64_t)mktime (&tmIn);
-	int64_t epochMinutes = tt / 60 + this -> lto;
-	time_t t2 = (time_t)(epochMinutes * 60);
+	tmIn. tm_isdst	= 0;
+#ifdef _WIN32
+	time_t t2 = _mkgmtime (&tmIn);
+#else
+	time_t t2 = timegm (&tmIn);
+#endif
 	struct tm tmOut;
 #ifdef _WIN32
 	localtime_s (&tmOut, &t2);

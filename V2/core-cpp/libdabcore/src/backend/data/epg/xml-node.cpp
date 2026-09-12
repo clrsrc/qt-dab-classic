@@ -6,12 +6,16 @@ namespace {
 
 // qdom.cpp encodeText: '<' -> &lt;, '&' -> &amp;, '"' -> &quot; (nur
 // Attribute), "]]>" -> ]]&gt;, in Attributen \n \r \t als &#xa; &#xd; &#x9;,
-// in Textknoten \r als &#xd;.
+// in Textknoten \r als &#xd;. Abweichend von v1 werden Steuerzeichen
+// (< 0x20 ausser Tab/LF/CR, die in XML 1.0 nicht erlaubt sind) verworfen,
+// damit das Ergebnis wohlgeformt bleibt (v1 schrieb sie ungefiltert).
 std::string encodeText(const std::string& str, bool encodeQuotes, bool performAVN, bool encodeEOLs) {
     std::string out;
     out.reserve(str.size() + 16);
     for (size_t i = 0; i < str.size(); ++i) {
         const char c = str[i];
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (uc < 0x20 && c != '\t' && c != '\n' && c != '\r') continue;
         if (c == '<') out += "&lt;";
         else if (encodeQuotes && c == '"') out += "&quot;";
         else if (c == '&') out += "&amp;";

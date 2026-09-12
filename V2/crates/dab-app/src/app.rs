@@ -27,6 +27,20 @@ pub enum AppEvent {
     SettingsChanged { settings: Settings },
     CoreRestarted { reason: String, attempt: u32 },
     Notice { level: NoticeLevel, text: String },
+    /// EPG/Logos (crate::epg, crate::logos): neue Sendeplan-Datei, neues Logo,
+    /// Logo + Now/Next des aktuellen Dienstes geaendert.
+    EpgUpdated { eid: u16, sid: u32, day: u32 },
+    LogoUpdated { eid: u16, sid: u32 },
+    CurrentMedia { logo_data_url: Option<String>, now_next: Option<crate::epg::NowNext> },
+    /// Timer/Aufnahme/Sleep (crate::timer, crate::recording, crate::sleep).
+    TimersChanged { timers: crate::timer::Timers },
+    TimerStatus { id: u32, kind: crate::timer::TimerKind, service: String, title: String, status: crate::timer::TimerFireStatus },
+    RecordingChanged { recording: crate::recording::RecordingInfo },
+    SleepChanged { sleep: Option<crate::sleep::SleepState> },
+    SleepElapsed { action: crate::sleep::SleepAction },
+    /// TII / Debug-Panel (crate::tii): Senderliste geaendert, Zaehler (1 Hz bei offenem Panel).
+    TiiUpdated { tii: Vec<crate::tii::TiiSeen> },
+    DebugStats { debug: crate::tii::DebugState },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,6 +122,15 @@ pub struct App {
     pub state: AppState,
     pub settings: Settings,
     pub presets: Presets,
+    /// Logo- und EPG-Cache (crate::logos, crate::epg).
+    pub logos: crate::logos::LogoCache,
+    pub epg: crate::epg::EpgCache,
+    /// Timer-Scheduler, Aufnahme, Sleep-Timer (crate::timer, crate::recording, crate::sleep).
+    pub sched: crate::timer::Scheduler,
+    pub rec: crate::recording::Recording,
+    pub sleep: crate::sleep::Sleep,
+    /// TII-Datenbank und Debug-Zeitgeber (crate::tii).
+    pub tii: crate::tii::TiiCtl,
     pending: Option<Pending>,
 }
 
@@ -122,7 +145,15 @@ impl App {
         let mut state = AppState::default();
         state.volume = settings.volume_percent;
         state.agc = settings.agc;
-        Self { dirs, state, settings, presets, pending: None }
+        let (logos, epg) = crate::epg::open_caches(&dirs);
+        let sched = crate::timer::Scheduler::load(&dirs, settings.record_pre_s as i64, settings.record_post_s as i64);
+        Self { dirs, state, settings, presets, logos, epg, sched, rec: Default::default(), sleep: Default::default(), tii: Default::default(), pending: None }
+    }
+
+    /// Laufenden Preset-Aufruf verwerfen (Timer-Scheduler uebernimmt die Dienstwahl).
+    pub(crate) fn pending_clear(&mut self) {
+        self.pending = None;
+        self.state.pending = None;
     }
 
     // -----------------------------------------------------------------------
@@ -136,6 +167,7 @@ impl App {
             .cmd(Command::SetVolume { percent: s.volume_percent })
             .cmd(Command::SetAgc { enabled: s.agc })
             .cmd(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch });
+        fx.append(self.debug_startup());
         if s.ppm != 0 {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
         }
@@ -194,7 +226,7 @@ impl App {
         Effects::default().ev(AppEvent::SettingsChanged { settings: self.settings.clone() })
     }
 
-    fn save_presets(&self) -> Effects {
+    pub(crate) fn save_presets(&self) -> Effects {
         if let Err(e) = self.presets.save(&self.dirs.presets_file()) {
             log::warn!("presets.json: {e}");
         }
@@ -208,7 +240,7 @@ impl App {
     /// Wendet ein Kern-Ereignis an und fuehrt die Preset-Zustandsmaschine weiter.
     pub fn handle_event(&mut self, ev: &Event, now: Instant) -> Effects {
         self.state.apply(ev);
-        let mut fx = Effects::default();
+        let mut fx = self.media_on_event(ev);
         match ev {
             Event::GainChanged { lna, vga, amp, agc: _ } => {
                 if let (Some(dev), Some(ch)) = (self.state.device_kind(), self.state.channel.clone()) {
@@ -245,18 +277,25 @@ impl App {
             }
             _ => {}
         }
+        fx.append(self.recording_on_event(ev));
+        fx.append(self.sched_on_event(ev));
+        fx.append(self.debug_on_event(ev, now));
         fx.append(self.tick(now));
         fx
     }
 
     /// Zeitgeber: Timeout des laufenden Preset-Aufrufs.
     pub fn tick(&mut self, now: Instant) -> Effects {
+        let mut fx = Effects::default();
         if let Some(p) = self.pending.clone() {
             if now >= p.deadline {
-                return self.pending_failed(p);
+                fx = self.pending_failed(p);
             }
         }
-        Effects::default()
+        fx.append(self.media_tick(now));
+        fx.append(self.timer_tick_all(crate::state::unix_now()));
+        fx.append(self.debug_tick(now));
+        fx
     }
 
     fn pending_matches(&self, p: &Pending, s: &ServiceInfo) -> bool {
@@ -306,8 +345,16 @@ impl App {
     pub fn command(&mut self, cmd: Command) -> Result<Effects, AppError> {
         Ok(match cmd {
             Command::OpenDevice { source } => self.open_device(source),
-            Command::SetChannel { channel } => self.set_channel(&channel),
+            Command::SetChannel { channel } => {
+                if self.state.recording {
+                    return Err(AppError::Recording);
+                }
+                self.set_channel(&channel)
+            }
             Command::SelectService { sid, scids, slot: ServiceSlot::Primary } => self.select_service(sid, scids)?,
+            Command::StopService { slot: ServiceSlot::Primary, .. } if self.state.recording => return Err(AppError::Recording),
+            Command::StartRecording { slot: ServiceSlot::Primary, .. } => self.recording_start(None, None)?,
+            Command::StopRecording { slot: ServiceSlot::Primary, .. } => self.recording_stop()?,
             Command::SetVolume { percent } => self.set_volume(percent),
             Command::SetMute { muted } => self.set_mute(muted),
             Command::SetAgc { enabled } => {
@@ -466,6 +513,7 @@ impl App {
         if old.audio_device != s.audio_device {
             fx = fx.cmd(Command::SetAudioDevice { index: s.audio_device });
         }
+        fx.append(self.debug_on_settings(&old));
         fx.append(self.save_settings());
         fx
     }
@@ -547,15 +595,17 @@ impl App {
         if self.presets.is_occupied(slot) && !force {
             return Ok((StoreResult { stored: false, previous: self.presets.get(slot).cloned() }, Effects::default()));
         }
-        let preset = Preset {
+        let mut preset = Preset {
             channel,
             eid,
             sid: svc.sid,
             scids: svc.scids,
             name: svc.name.trim().to_string(),
             logo_path: None,
+            logo_data_url: None,
             stored_at: crate::state::unix_now(),
         };
+        self.decorate_preset(&mut preset);
         let previous = self.presets.set(slot, preset);
         let fx = self.save_presets();
         Ok((StoreResult { stored: true, previous }, fx))
@@ -605,7 +655,7 @@ impl App {
             let Some(slot) = self.presets.first_free() else { break };
             self.presets.set(
                 slot,
-                Preset { channel: fav.channel, eid: 0, sid: 0, scids: 0, name: fav.name, logo_path: None, stored_at: crate::state::unix_now() },
+                Preset { channel: fav.channel, eid: 0, sid: 0, scids: 0, name: fav.name, logo_path: None, logo_data_url: None, stored_at: crate::state::unix_now() },
             );
             n += 1;
         }
@@ -652,7 +702,7 @@ mod tests {
     }
 
     fn preset(channel: &str, sid: u32, name: &str) -> Preset {
-        Preset { channel: channel.into(), eid: 0x10BC, sid, scids: 0, name: name.into(), logo_path: None, stored_at: 0 }
+        Preset { channel: channel.into(), eid: 0x10BC, sid, scids: 0, name: name.into(), logo_path: None, logo_data_url: None, stored_at: 0 }
     }
 
     #[test]

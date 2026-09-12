@@ -19,6 +19,11 @@ struct ReceiverCallbacks {
     std::function<void(int)>                  clockError;      // showClockError
     std::function<void(int, float)>           corrector;       // showCorrector(coarse, fine)
     std::function<void(const std::vector<tiiData>&)> tii;      // showTIIData
+    // Scopes (nur aktiv nach set_scopes): Spektrum der Eingangssamples als
+    // 2048 Bins (dB-Skala 0..255, fftshift: Bin 0 = -1,024 MHz) und die
+    // Konstellation von Symbol 2 (1536 Traeger als int8-Paare I,Q).
+    std::function<void(const std::vector<uint8_t>&)> spectrum;
+    std::function<void(const std::vector<int8_t>&)>  iqSamples;
     // ficHandler
     std::function<void(int, int)>             ficQuality;      // showFICQuality(ok, total)
     std::function<void(float)>                ficBer;          // showFICBER

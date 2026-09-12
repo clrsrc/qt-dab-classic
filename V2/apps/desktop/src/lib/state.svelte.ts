@@ -4,7 +4,10 @@
 // hieraus und rufen `api` fuer Aktionen.
 
 import { api, type AppEvent, type AppState, type CoreEvent, type Presets, type ServiceInfo, type Settings } from "./core";
-import { setLang } from "./i18n.svelte";
+import { applyDebugAppEvent, emptyDebugState, feedScopeEvent } from "./debug";
+import { emitEpgEvent } from "./epg";
+import { setLang, t } from "./i18n.svelte";
+import { applyRecordingState, applyTimerAppEvent, initTimers } from "./timers.svelte";
 
 export function emptyState(): AppState {
   return {
@@ -40,6 +43,10 @@ export function emptyState(): AppState {
     pending: null,
     clock_utc: null,
     log_tail: [],
+    logo_data_url: null,
+    now_next: null,
+    tii: [],
+    debug: emptyDebugState(),
   };
 }
 
@@ -132,6 +139,8 @@ function clearService() {
   s.dl_plus = null;
   s.slide = null;
   s.level = [0, 0];
+  s.logo_data_url = null;
+  s.now_next = null;
 }
 
 function clearReception() {
@@ -248,6 +257,8 @@ export function applyCoreEvent(ev: CoreEvent) {
       break;
     case "ews_alert":
       if (e.phase === "end") {
+        // Alarmfenster (timer_cmds) geht zu; Hinweis im Hauptfenster (Entscheidung 5)
+        if (s.alert && s.alert.phase !== "pre_trigger") notify("info", t("alarm.ended"), 8000);
         s.alert = null;
         s.ews_switched_from = null;
       } else {
@@ -259,7 +270,10 @@ export function applyCoreEvent(ev: CoreEvent) {
       s.ews_switched_from = e.from_sid ?? null;
       break;
     case "recording_state":
-      if (e.slot === "primary") s.recording = e.active;
+      if (e.slot === "primary") {
+        s.recording = e.active;
+        applyRecordingState(e);
+      }
       break;
     case "scan_progress":
       if (!s.scan.active) s.scan.results = [];
@@ -278,6 +292,11 @@ export function applyCoreEvent(ev: CoreEvent) {
       break;
     case "scan_finished":
       s.scan.active = false;
+      break;
+    // Scope-Rohdaten (lib/debug.ts): nicht in den Store, direkt an die Canvas-Komponenten
+    case "spectrum":
+    case "iq_samples":
+      feedScopeEvent(ev);
       break;
     case "log":
       if (e.level === "error" || e.level === "warn") {
@@ -317,6 +336,25 @@ export function applyAppEvent(ev: AppEvent) {
     case "notice":
       notify(ev.level, ev.text, 6000);
       break;
+    // EPG/Logos (lib/epg.ts): Display-Felder spiegeln, Panels benachrichtigen
+    case "current_media":
+      s.logo_data_url = ev.logo_data_url;
+      s.now_next = ev.now_next;
+      emitEpgEvent(ev);
+      break;
+    case "epg_updated":
+    case "logo_updated":
+      emitEpgEvent(ev);
+      break;
+    // TII/Debug-Panel (lib/debug.ts)
+    case "tii_updated":
+    case "debug_stats":
+      applyDebugAppEvent(ev);
+      break;
+    // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
+    default:
+      applyTimerAppEvent(ev);
+      break;
   }
 }
 
@@ -342,6 +380,7 @@ export async function init() {
   ui.presets = presets;
   ui.dataDir = dir;
   ui.portable = portable;
+  await initTimers().catch((e) => notify("warn", String(e)));
   ui.ready = true;
   ticker = setInterval(() => (ui.now = Date.now()), 1000);
 }

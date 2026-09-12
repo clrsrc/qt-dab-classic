@@ -8,6 +8,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import type { EpgAppEvent, NowNext } from "./epg";
+import type { AddOutcome, EpgTimerRequest, RecordingInfo, SleepAction, SleepState, Timer, TimerAppEvent, Timers } from "./timers";
+import type { DebugAppEvent, DebugState, TiiSeen } from "./debug";
 
 // ---------------------------------------------------------------------------
 // Typen (spiegeln crates/dab-api und crates/dab-app; JSON snake_case)
@@ -96,6 +99,12 @@ export interface AppState {
   pending: { slot: number | null; channel: string; name: string } | null;
   clock_utc: number | null;
   log_tail: string[];
+  /** EPG/Logos (lib/epg.ts, lib/logos.ts): Logo des aktuellen Dienstes (128x128) und Now/Next. */
+  logo_data_url: string | null;
+  now_next: NowNext | null;
+  /** TII/Debug-Panel (lib/debug.ts, lib/tii.ts): Sender im Nullsymbol, Zaehler. */
+  tii: TiiSeen[];
+  debug: DebugState;
 }
 
 export interface ScanResult {
@@ -123,6 +132,7 @@ export interface Preset {
   scids: number;
   name: string;
   logo_path: string | null;
+  logo_data_url?: string | null;
   stored_at: number;
 }
 
@@ -138,6 +148,7 @@ export interface Panels {
   scan: boolean;
   epg: boolean;
   timer: boolean;
+  debug: boolean;
 }
 
 export interface Settings {
@@ -165,6 +176,16 @@ export interface Settings {
   file_loop: boolean;
   rtlsdr_index: number;
   panels: Panels;
+  /** Aufnahmeordner (null = data/recordings) und Warnton im Alarmfenster (lib/timers.ts). */
+  recording_dir: string | null;
+  alarm_beep: boolean;
+  /** TII/Debug-Panel (lib/debug.ts): Heimatkoordinaten, Detektor, DX-Protokoll, Scope-Rate 1..10. */
+  home_lat: number | null;
+  home_lon: number | null;
+  tii_enabled: boolean;
+  tii_threshold: number;
+  tii_dx_mode: boolean;
+  scope_rate_hz: number;
 }
 
 export interface StoreResult {
@@ -186,7 +207,10 @@ export type AppEvent =
   | { type: "presets_changed"; presets: Presets }
   | { type: "settings_changed"; settings: Settings }
   | { type: "core_restarted"; reason: string; attempt: number }
-  | { type: "notice"; level: "info" | "warn" | "error"; text: string };
+  | { type: "notice"; level: "info" | "warn" | "error"; text: string }
+  | EpgAppEvent
+  | TimerAppEvent
+  | DebugAppEvent;
 
 // ---------------------------------------------------------------------------
 // Schnittstelle
@@ -225,11 +249,43 @@ export interface Transport {
 
   /// Datei-Auswahldialog (null = abgebrochen).
   pickFile(): Promise<string | null>;
+
+  // Timer / Aufnahme / Sleep / Alarmfenster (lib/timers.ts, lib/recording.ts)
+  timersList(): Promise<Timers>;
+  timerAdd(timer: Timer, force?: boolean): Promise<AddOutcome>;
+  timerUpdate(timer: Timer, force?: boolean): Promise<AddOutcome>;
+  timerDelete(id: number): Promise<void>;
+  timerToggleActive(id: number): Promise<void>;
+  /// Vertrag mit dem EPG-Panel: Timer-Id oder Fehler/i18n-Schluessel `timer.conflict.*`.
+  timerAddFromEpg(req: EpgTimerRequest): Promise<number>;
+  recordingStart(): Promise<void>;
+  recordingStop(): Promise<void>;
+  recordingToggle(): Promise<void>;
+  recordingStatus(): Promise<RecordingInfo>;
+  sleepSet(minutes: number, action: SleepAction): Promise<void>;
+  sleepCancel(): Promise<void>;
+  sleepStatus(): Promise<SleepState | null>;
+  alarmClose(): Promise<void>;
+}
+
+/** Umschaltsperre (lib/recording.ts): wird bei "recording active" gefragt und darf die Aktion wiederholen. */
+export type RecordingGuard = (retry: () => Promise<void>) => Promise<void>;
+let recordingGuard: RecordingGuard | null = null;
+export function setRecordingGuard(g: RecordingGuard | null) {
+  recordingGuard = g;
+}
+async function guarded(run: () => Promise<void>): Promise<void> {
+  try {
+    await run();
+  } catch (e) {
+    if (recordingGuard && String(e) === "recording active") return recordingGuard(run);
+    throw e;
+  }
 }
 
 class TauriTransport implements Transport {
   send(cmd: Command) {
-    return invoke<void>("core_send", { command: cmd });
+    return guarded(() => invoke<void>("core_send", { command: cmd }));
   }
   async onEvent(handler: (ev: CoreEvent) => void) {
     return listen<CoreEvent>("dab://event", (e) => handler(e.payload));
@@ -265,7 +321,7 @@ class TauriTransport implements Transport {
     return this.send({ type: "select_service", sid, scids, slot: "primary" });
   }
   stepService(delta: number) {
-    return invoke<void>("step_service", { delta });
+    return guarded(() => invoke<void>("step_service", { delta }));
   }
   setVolume(percent: number) {
     return this.send({ type: "set_volume", percent: Math.round(percent) });
@@ -289,7 +345,7 @@ class TauriTransport implements Transport {
     return invoke<void>("restart_core");
   }
   presetRecall(slot: number) {
-    return invoke<void>("preset_recall", { slot });
+    return guarded(() => invoke<void>("preset_recall", { slot }));
   }
   presetStore(slot: number, force: boolean, service?: { sid: number; scids: number }) {
     return invoke<StoreResult>("preset_store", { slot, force, sid: service?.sid ?? null, scids: service?.scids ?? null });
@@ -302,6 +358,48 @@ class TauriTransport implements Transport {
   }
   favoritesPath() {
     return invoke<string | null>("favorites_path");
+  }
+  timersList() {
+    return invoke<Timers>("timers_list");
+  }
+  timerAdd(timer: Timer, force = false) {
+    return invoke<AddOutcome>("timer_add", { timer, force });
+  }
+  timerUpdate(timer: Timer, force = false) {
+    return invoke<AddOutcome>("timer_update", { timer, force });
+  }
+  timerDelete(id: number) {
+    return invoke<void>("timer_delete", { id });
+  }
+  timerToggleActive(id: number) {
+    return invoke<void>("timer_toggle_active", { id });
+  }
+  timerAddFromEpg(req: EpgTimerRequest) {
+    return invoke<number>("timer_add_from_epg", { req });
+  }
+  recordingStart() {
+    return invoke<void>("recording_start");
+  }
+  recordingStop() {
+    return invoke<void>("recording_stop");
+  }
+  recordingToggle() {
+    return invoke<void>("recording_toggle");
+  }
+  recordingStatus() {
+    return invoke<RecordingInfo>("recording_status");
+  }
+  sleepSet(minutes: number, action: SleepAction) {
+    return invoke<void>("sleep_set", { minutes, action });
+  }
+  sleepCancel() {
+    return invoke<void>("sleep_cancel");
+  }
+  sleepStatus() {
+    return invoke<SleepState | null>("sleep_status");
+  }
+  alarmClose() {
+    return invoke<void>("alarm_close");
   }
   async pickFile() {
     const r = await openDialog({

@@ -24,6 +24,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 class ISampleSource;
@@ -147,13 +148,20 @@ private:
     void startFrameDump(const std::string& path);
     void stopFrameDump();
     void emitAudioDevices();
+    // set_scopes auf den (neuen) ofdmHandler anwenden
+    void applyScopes();
+    // TII-Liste hoechstens 1x/s und nur bei Aenderung melden
+    void onTii(const std::vector<std::tuple<uint8_t, uint8_t, float>>& tx);
 
     EventSink sink_;
     CoreOptions opt_;
     mutable std::mutex stateM_;
     json state_;
     std::atomic<bool> spikeRunning_{false};
+    // set_scopes: Spektrum und Konstellation getrennt, gemeinsame Rate 1..10 Hz
     std::atomic<bool> spectrumOn_{false};
+    std::atomic<bool> iqOn_{false};
+    std::atomic<int> scopeRateHz_{5};
     std::thread spikeThread_;
     std::function<void()> fileEndedHandler_;
     std::function<void()> deviceLostHandler_;
@@ -195,6 +203,10 @@ private:
 
     // Drosselung latest-wins-Ereignisse
     std::chrono::steady_clock::time_point lastSnr_{}, lastFicQuality_{}, lastFreqOffset_{};
+    // TII: zuletzt gemeldete Liste (mainId, subId, Staerke auf 0,01 gerundet)
+    std::mutex tiiM_;
+    std::vector<std::tuple<uint8_t, uint8_t, int>> lastTii_;
+    std::chrono::steady_clock::time_point lastTiiTime_{};
 };
 
 } // namespace dabcore

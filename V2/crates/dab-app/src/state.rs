@@ -142,6 +142,14 @@ pub struct AppState {
     pub pending: Option<PendingState>,
     pub clock_utc: Option<i64>,
     pub log_tail: Vec<String>,
+    /// Logo des aktuellen Dienstes (128x128) als `data:`-URL (crate::logos).
+    pub logo_data_url: Option<String>,
+    /// Laufende/naechste Sendung des aktuellen Dienstes (crate::epg).
+    pub now_next: Option<crate::epg::NowNext>,
+    /// TII-Sender im Nullsymbol, nach Staerke sortiert (crate::tii).
+    pub tii: Vec<crate::tii::TiiSeen>,
+    /// Debug-Panel: SNR-Verlauf, Fehlerzaehler, Frequenzversatz (crate::tii).
+    pub debug: crate::tii::DebugState,
 }
 
 pub fn unix_now() -> i64 {
@@ -169,6 +177,8 @@ impl AppState {
         self.dl_plus = None;
         self.slide = None;
         self.level = (0.0, 0.0);
+        self.logo_data_url = None;
+        self.now_next = None;
     }
 
     pub fn service(&self, sid: u32, scids: u8) -> Option<&ServiceInfo> {

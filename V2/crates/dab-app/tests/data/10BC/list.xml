@@ -1,0 +1,94 @@
+<serviceInformation creationTime="2026-2-24T08:32" originator="Fraunhofer">
+ <defaultLanguage>de</defaultLanguage>
+ <ensemble Eid="10bc" ecc="e0">
+  <shortName>DR</shortName>
+  <mediumName>DR Deutschland</mediumName>
+  <mediaDescription>
+   <shortDescription>K5C Logo Channel</shortDescription>
+  </mediaDescription>
+  <service>
+   <bearer id="e0:10bc:100d"/>
+   <shortName>Schwarzw</shortName>
+   <mediumName>Schwarzwaldradio</mediumName>
+   <longName>Schwarzwaldradio</longName>
+   <mediaDescription>
+    <shortDescription>Schwarzwaldradio</shortDescription>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_square" url="100D_Schwarzw_32x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_rectangle" url="100D_Schwarzw_112x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="100D_Schwarzw_128x128.png" width="0"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="100D_Schwarzw_320x240.png" width="257"/>
+   </mediaDescription>
+  </service>
+  <service>
+   <bearer id="e0:10bc:d210"/>
+   <shortName>Dlf</shortName>
+   <mediumName>Dlf</mediumName>
+   <longName>Dlf</longName>
+   <mediaDescription>
+    <shortDescription>Deutschlandfunk. Alles von Relevanz.</shortDescription>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_square" url="d210_Dlf_32x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_rectangle" url="d210_Dlf_112x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="d210_Dlf_128x128.png" width="0"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="d210_Dlf_320x240.png" width="257"/>
+   </mediaDescription>
+  </service>
+  <service>
+   <bearer id="e0:10bc:d220"/>
+   <shortName>Dlf Kult</shortName>
+   <mediumName>Dlf Kultur</mediumName>
+   <longName>Dlf Kultur</longName>
+   <mediaDescription>
+    <shortDescription>Deutschlandfunk Kultur. Das Feuilleton im Radio.</shortDescription>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_square" url="d220_Dlf_Kult_32x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_rectangle" url="d220_Dlf_Kult_112x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="d220_Dlf_Kult_128x128.png" width="0"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="d220_Dlf_Kult_320x240.png" width="257"/>
+   </mediaDescription>
+  </service>
+  <service>
+   <bearer id="e0:10bc:d230"/>
+   <shortName>Dlf Nova</shortName>
+   <mediumName>Dlf Nova</mediumName>
+   <longName>Dlf Nova</longName>
+   <mediaDescription>
+    <shortDescription>Deutschlandfunk Nova: Es ist kompliziert. Dazu guter Pop.</shortDescription>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_square" url="d230_Dlf_Nova_32x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia type="logo_colour_rectangle" url="d230_Dlf_Nova_112x32.png"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="d230_Dlf_Nova_128x128.png" width="0"/>
+   </mediaDescription>
+   <mediaDescription>
+    <multimedia height="0" mime_value="image/png" type="logo unrestricted" url="d230_Dlf_Nova_320x240.png" width="257"/>
+   </mediaDescription>
+  </service>
+   </ensemble>
+</serviceInformation>

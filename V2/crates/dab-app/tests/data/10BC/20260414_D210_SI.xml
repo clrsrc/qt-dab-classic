@@ -1,0 +1,439 @@
+<epg system="DAB">
+ <defaultLanguage>en</defaultLanguage>
+ <schedule creationTime="2026-4-14T07:32" originator="DLR" version="1">
+  <scope startTime="2026-4-13T22:02" stopTime="2026-4-14T22:02">
+   <serviceScope id="e0:10bc:d210"/>
+  </scope>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364222" recommendation="no" shortId="1364222">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-13T22:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364223" recommendation="no" shortId="1364223">
+   <mediumName>Deutschlandfunk</mediumName>
+   <longName>Deutschlandfunk Radionacht</longName>
+   <location>
+    <time duration="PT04H55M" time="2026-4-13T22:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>00:05-01:00 FazitKultur vom Tage(Wdh.)01:00-01:05 Nachrichten01:05-01:10 Kalenderblatt01:10-01:30 Hintergrund(Wdh.)01:30-02:00 Tag für TagAus Religion und Gesellsch ...</shortDescription>
+   </mediaDescription>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364239" recommendation="no" shortId="1364239">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T03:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364240" recommendation="no" shortId="1364240">
+   <mediumName>Informationen am</mediumName>
+   <longName>Informationen am Morgen</longName>
+   <location>
+    <time duration="PT03H55M" time="2026-4-14T03:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>05:30-05:35 Nachrichten05:35-05:40 PresseschauAus deutschen Zeitungen06:00-06:10 Nachrichten06:30-06:35 Nachrichten06:35-06:40 MorgenandachtPfarrer Detlef Ziegler, Mü ...</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364259" recommendation="no" shortId="1364259">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T07:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364260" recommendation="no" shortId="1364260">
+   <mediumName>Kalenderblatt</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T07:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Vor 40 Jahren: Die Philosophin und Feministin Simone de Beauvoir gestorben</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.OriginationCS.">Geschichte</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364261" recommendation="no" shortId="1364261">
+   <mediumName>Europa heute</mediumName>
+   <location>
+    <time duration="PT20M" time="2026-4-14T07:12"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Blaupause Polen? - Kai-Olaf Lang (SWP) über Ungarns Rückkehr zum RechtsstaatNach Orbáns Abwahl - Die Stimmung in BudapestAm Mikrofon: Andreas Noll</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.AtmosphereCS.ContentCS.">Gesellschaft</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Regionale Information</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364262" recommendation="no" shortId="1364262">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T07:32"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364263" recommendation="no" shortId="1364263">
+   <mediumName>Tag für Tag</mediumName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T07:37"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Aus Religion und GesellschaftAus Religion und Gesellschaft Der erste Papst in Algerien - Der Auftakt der Afrika-Reise von Leo XIV.Papst Leo ist zur ersten Afrika-Reise seiner</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.ContentCS.FormatCS.">Kirche/Religion</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364264" recommendation="no" shortId="1364264">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT08M" time="2026-4-14T08:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364265" recommendation="no" shortId="1364265">
+   <mediumName>Sprechstunde</mediumName>
+   <longName>Sprechstunde</longName>
+   <location>
+    <time duration="PT01H22M" time="2026-4-14T08:10"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>10:30-10:35 Nachrichten11:00-11:05 NachrichtenFamiliäre Krebserkrankungen: Risiko über Generationen hinwegGäste: Prof. Dr. Kerstin Rhiem, Leiterin Zentrum Familiärer Br ...</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.KediaTupeCS.">Wissenschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364268" recommendation="no" shortId="1364268">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T09:32"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364269" recommendation="no" shortId="1364269">
+   <mediumName>Umwelt und Verbr</mediumName>
+   <longName>Umwelt und Verbraucher</longName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T09:37"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Service (Verbraucherthemen)</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.OriginationCS.">Wirtschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364270" recommendation="no" shortId="1364270">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT10M" time="2026-4-14T10:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364271" recommendation="no" shortId="1364271">
+   <mediumName>Informationen am</mediumName>
+   <longName>Informationen am Mittag</longName>
+   <location>
+    <time duration="PT01H20M" time="2026-4-14T10:12"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>12:30-12:35 Nachrichten12:45-12:48 Sport12:50-13:00 Internationale Presseschau13:00-13:10 NachrichtenBerichte, Interviews, Musik</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364276" recommendation="no" shortId="1364276">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T11:32"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364277" recommendation="no" shortId="1364277">
+   <mediumName>Wirtschaft am Mi</mediumName>
+   <longName>Wirtschaft am Mittag</longName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T11:37"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>13:56-14:00 Wirtschaftspresseschau</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.OriginationCS.">Wirtschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364279" recommendation="no" shortId="1364279">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT10M" time="2026-4-14T12:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364280" recommendation="no" shortId="1364280">
+   <mediumName>Deutschland heut</mediumName>
+   <longName>Deutschland heute</longName>
+   <location>
+    <time duration="PT20M" time="2026-4-14T12:12"/>
+   </location>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364281" recommendation="no" shortId="1364281">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T12:32"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364282" recommendation="no" shortId="1364282">
+   <mediumName>Campus &amp; Karrier</mediumName>
+   <longName>Campus &amp; Karriere</longName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T12:37"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Das BildungsmagazinDas Bildungsmagazin</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.KediaTupeCS.">Wissenschaft</genre>
+   <genre href="FormatCS.OriginationCS.">Bildung</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364283" recommendation="no" shortId="1364283">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T13:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364284" recommendation="no" shortId="1364284">
+   <mediumName>Corso - Kunst &amp;</mediumName>
+   <longName>Corso - Kunst &amp; Pop</longName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T13:07"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="FormatCS.OriginationCS.">Bildung</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364285" recommendation="no" shortId="1364285">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T13:32"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364286" recommendation="no" shortId="1364286">
+   <mediumName>@mediasres</mediumName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T13:37"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Das MedienmagazinDas Medienmagazin</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.AtmosphereCS.ContentCS.">Gesellschaft</genre>
+   <genre href="ContentCS.FormatCS.ContentCS.">Magazin</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364287" recommendation="no" shortId="1364287">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT10M" time="2026-4-14T14:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364288" recommendation="no" shortId="1364288">
+   <mediumName>Büchermarkt</mediumName>
+   <location>
+    <time duration="PT20M" time="2026-4-14T14:12"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>u.a.Maximilian Krah: „Reise nach Europa“(Castrum Verlag)Ein Beitrag von Nils SchniederjannAm Mikrofon: Dirk Fuhrig</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.FormatCS.KediaTupeCS.">Literatur/Lesung</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364289" recommendation="no" shortId="1364289">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T14:32"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364290" recommendation="no" shortId="1364290">
+   <mediumName>Forschung aktuel</mediumName>
+   <longName>Forschung aktuell</longName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T14:37"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Dr. Chatbot: Die Rolle von KI bei der medizinischen ErstberatungWeltweit bei Rindern verbreitet: Ist Influenza D auch eine Gefahr für Menschen?Wissenschafts</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.KediaTupeCS.">Wissenschaft</genre>
+   <genre href="FormatCS.OriginationCS.">Bildung</genre>
+   <link mime_value="application/rss+xml"/>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364291" recommendation="no" shortId="1364291">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T15:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364292" recommendation="no" shortId="1364292">
+   <mediumName>Wirtschaft und G</mediumName>
+   <longName>Wirtschaft und Gesellschaft</longName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T15:07"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.OriginationCS.OriginationCS.">Wirtschaft</genre>
+   <genre href="OriginationCS.FormatCS.AtmosphereCS.ContentCS.">Gesellschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364293" recommendation="no" shortId="1364293">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T15:32"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364294" recommendation="no" shortId="1364294">
+   <mediumName>Kultur heute</mediumName>
+   <location>
+    <time duration="PT25M" time="2026-4-14T15:37"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Berichte, Meinungen, RezensionenBerichte, Meinungen, Rezensionen</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.IntendedAudienceCS.">Kultur</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364295" recommendation="no" shortId="1364295">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT10M" time="2026-4-14T16:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364296" recommendation="no" shortId="1364296">
+   <mediumName>Informationen am</mediumName>
+   <longName>Informationen am Abend</longName>
+   <location>
+    <time duration="PT30M" time="2026-4-14T16:12"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.OriginationCS.">Wirtschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364297" recommendation="no" shortId="1364297">
+   <mediumName>Hintergrund</mediumName>
+   <location>
+    <time duration="PT20M" time="2026-4-14T16:42"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Private Krisenvorsorge - Wie die Bevölkerung resilienter werden kann</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364298" recommendation="no" shortId="1364298">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T17:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364299" recommendation="no" shortId="1364299">
+   <mediumName>Kommentar</mediumName>
+   <location>
+    <time duration="PT10M" time="2026-4-14T17:07"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364300" recommendation="no" shortId="1364300">
+   <mediumName>Feature</mediumName>
+   <location>
+    <time duration="PT45M" time="2026-4-14T17:17"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Herr Gammer gibt nicht aufEine Psychiatrie-Geschichte aus der DDRVon Jörn KlareRegie: Eva SollochTon und Technik: Gunther Rose und Marcell ChristmannRedaktion:</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.">Feature</genre>
+   <genre href="OriginationCS.FormatCS.ContentAlertCS.OriginationCS.">Geschichte</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+   <genre href="OriginationCS.FormatCS.AtmosphereCS.ContentCS.">Gesellschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364301" recommendation="no" shortId="1364301">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T18:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364302" recommendation="no" shortId="1364302">
+   <mediumName>Hörspiel</mediumName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T18:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>absolute zero!Von Klaus BuhlertRegie: der AutorMit: Bibiana Beglau, Jens Harzer, Wolfram Koch, Franz Pätzold, Stefan Wilkening und Klaus BuhlertMusik: Klaus Buhlert</shortDescription>
+   </mediaDescription>
+   <genre href="ContentCS.ContentCS.">Hörspiel</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364303" recommendation="no" shortId="1364303">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T19:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364304" recommendation="no" shortId="1364304">
+   <mediumName>Jazz Live</mediumName>
+   <location>
+    <time duration="PT55M" time="2026-4-14T19:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Hommage an die VogelweltDavid Murray Quartet: „Birdly Serenade“David Murray, Tenorsaxofon, BassklarinetteMarta Sánchez, KlavierLuke Stewart, KontrabassChris Bec</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.KediaTupeCS.ContentCS.">Jazz</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364305" recommendation="no" shortId="1364305">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT05M" time="2026-4-14T20:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364306" recommendation="no" shortId="1364306">
+   <mediumName>Musikszene</mediumName>
+   <location>
+    <time duration="PT45M" time="2026-4-14T20:07"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>Was krabbelt und summt denn da?Über lebendige Insekten in der Musik und bedrohte in der NaturVon Mascha Drost(Wdh. v. 14.5.2019)</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.KediaTupeCS.FormatCS.">Ernste Musik</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364307" recommendation="no" shortId="1364307">
+   <mediumName>Sport aktuell</mediumName>
+   <location>
+    <time duration="PT10M" time="2026-4-14T20:52"/>
+   </location>
+   <genre href="OriginationCS.ContentCS.">Sport</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364308" recommendation="no" shortId="1364308">
+   <mediumName>Nachrichten</mediumName>
+   <location>
+    <time duration="PT10M" time="2026-4-14T21:02"/>
+   </location>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Nachrichten</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364309" recommendation="no" shortId="1364309">
+   <mediumName>Das war der Tag</mediumName>
+   <longName>Das war der Tag</longName>
+   <location>
+    <time duration="PT47M" time="2026-4-14T21:12"/>
+   </location>
+   <mediaDescription>
+    <shortDescription>23:53-23:56 PresseschauJournal vor Mitternacht</shortDescription>
+   </mediaDescription>
+   <genre href="OriginationCS.FormatCS.OriginationCS.FormatCS.">Politik</genre>
+   <genre href="OriginationCS.FormatCS.FormatCS.">Zeitgeschehen</genre>
+   <genre href="OriginationCS.FormatCS.OriginationCS.OriginationCS.">Wirtschaft</genre>
+  </programme>
+  <programme broadcast="on-air" id="crid://dradio.de/dlf/1364311" recommendation="no" shortId="1364311">
+   <mediumName>National- und Eu</mediumName>
+   <longName>National- und Europahymne</longName>
+   <location>
+    <time duration="PT02M" time="2026-4-14T21:59"/>
+   </location>
+  </programme>
+ </schedule>
+</epg>
