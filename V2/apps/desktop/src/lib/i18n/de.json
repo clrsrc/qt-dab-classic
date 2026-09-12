@@ -40,6 +40,7 @@
   "panel.epg": "EPG",
   "panel.timer": "Timer",
   "panel.debug": "Debug",
+  "panel.music": "Musik",
   "panel.placeholder": "Kommt in M3.",
 
   "preset.empty": "–",
@@ -352,5 +353,19 @@
   "tii.dx_mode": "DX-Modus (tii-files.csv)",
   "tii.strength": "Stärke",
   "tii.distance": "Entfernung",
-  "tii.azimuth": "Azimut"
+  "tii.azimuth": "Azimut",
+  "music.auto_save": "automatisch speichern",
+  "music.auto_save_hint": "Erkannte Titel sofort als MP3 in den Aufnahmeordner schneiden, statt sie hier vorzuschlagen.",
+  "music.take": "übernehmen",
+  "music.take_all": "alle übernehmen",
+  "music.clear": "Liste leeren",
+  "music.empty": "Noch keine Titel erkannt – DL+ oder DLS des laufenden Dienstes abwarten.",
+  "music.empty_auto": "Automatisches Speichern ist an: erkannte Titel gehen direkt in den Aufnahmeordner.",
+  "music.unknown": "(ohne Titel)",
+  "music.ago": "vor {time}",
+  "music.from_dls": "aus DLS geraten (Dienst ohne DL+)",
+  "music.taken": "übernommen",
+  "music.exported": "Titel wird geschnitten: {file}",
+  "music.hint": "Schnitt aus dem Timeshift-Puffer als MP3 mit Titel, Interpret, Sender und Cover.",
+  "error.slot out of range": "Eintrag nicht gefunden"
 }

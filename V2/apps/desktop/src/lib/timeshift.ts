@@ -18,6 +18,8 @@ export interface TimeshiftInfo {
   capacity_s: number;
   /** Ensemble-Uhrzeit am Schreibzeiger (0 = unbekannt). */
   live_unix: number;
+  /** Schreibzeiger in Logikrahmen (24 ms); Bezug der Musik-Trennung (lib/music.ts). */
+  frame_index: number;
   /** Nur mit DABCLASSIC_TS_DEMO: Leiste ohne Kern-Funktion anzeigen. */
   demo: boolean;
 }
@@ -33,7 +35,7 @@ export const CAPACITY_MIN_MIN = 1;
 export const CAPACITY_MAX_MIN = 240;
 
 export function emptyTimeshift(): TimeshiftInfo {
-  return { mode: "live", buffered_s: 0, offset_s: 0, capacity_s: 0, live_unix: 0, demo: false };
+  return { mode: "live", buffered_s: 0, offset_s: 0, capacity_s: 0, live_unix: 0, frame_index: 0, demo: false };
 }
 
 export interface TimeshiftTransport {

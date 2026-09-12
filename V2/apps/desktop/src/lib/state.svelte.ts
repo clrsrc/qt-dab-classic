@@ -50,6 +50,7 @@ export function emptyState(): AppState {
     debug: emptyDebugState(),
     stations: [],
     timeshift: emptyTimeshift(),
+    music_candidates: [],
   };
 }
 
@@ -303,6 +304,7 @@ export function applyCoreEvent(ev: CoreEvent) {
           offset_s: e.offset_s,
           capacity_s: e.capacity_s > 0 ? e.capacity_s : s.timeshift.capacity_s,
           live_unix: e.live_unix ?? 0,
+          frame_index: e.frame_index || s.timeshift.frame_index,
           demo: false,
         };
       }
@@ -391,6 +393,10 @@ export function applyAppEvent(ev: AppEvent) {
     case "timeshift_notice":
       s.timeshift = { ...s.timeshift, mode: "live", buffered_s: 0, offset_s: 0, live_unix: 0 };
       notify("info", t(`ts.notice.${ev.notice}`), 8000);
+      break;
+    // Musik-Trennung (lib/music.ts): Vorschlagsliste geaendert
+    case "music_candidates":
+      s.music_candidates = ev.candidates;
       break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:

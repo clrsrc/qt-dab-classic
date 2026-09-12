@@ -45,6 +45,8 @@ pub enum AppEvent {
     StationsChanged { stations: Vec<crate::stations::StationEntry> },
     /// Timeshift (crate::timeshift): Puffer verworfen (Alarm, Dienstwechsel).
     TimeshiftNotice { notice: crate::timeshift::TimeshiftNotice },
+    /// Musik-Trennung (crate::music): Vorschlagsliste geaendert.
+    MusicCandidates { candidates: Vec<dab_music::TrackCandidate> },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -137,6 +139,8 @@ pub struct App {
     pub tii: crate::tii::TiiCtl,
     /// Senderliste ueber alle Ensembles (crate::stations).
     pub stations_ctl: crate::stations::StationsCtl,
+    /// Titelerkennung der Musik-Trennung (crate::music, Entscheidungen 6, 7).
+    pub music: crate::music::MusicDetector,
     pending: Option<Pending>,
 }
 
@@ -165,6 +169,7 @@ impl App {
             sleep: Default::default(),
             tii: Default::default(),
             stations_ctl: Default::default(),
+            music: Default::default(),
             pending: None,
         };
         app.stations_load();
@@ -319,6 +324,7 @@ impl App {
         fx.append(self.debug_on_event(ev, now));
         fx.append(self.stations_on_event(ev, now));
         fx.append(self.timeshift_on_event(ev));
+        fx.append(self.music_on_event(ev, crate::state::unix_now()));
         fx.append(self.tick(now));
         fx
     }

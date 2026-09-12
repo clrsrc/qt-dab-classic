@@ -34,6 +34,32 @@ namespace dabcore {
 
 using namespace std::chrono_literals;
 
+namespace {
+// `format` aus start_recording / export_timeshift_range (dab-api RecFormat):
+// {"format":"wav"} | {"format":"mp3","kbps":192,"id3":{...}}. Fehlende Felder
+// bleiben auf den Vorgaben (Entscheidung 6: MP3 mit 192 kbit/s).
+std::string jsonStr(const json& j, const char* key) {
+    return j.contains(key) && j[key].is_string() ? j[key].get<std::string>() : std::string();
+}
+
+RecFormat recFormatFromJson(const json& f) {
+    RecFormat fmt;
+    if (!f.is_object()) return fmt;
+    fmt.kind = f.value("format", std::string("wav"));
+    if (f.contains("kbps") && f["kbps"].is_number())
+        fmt.kbps = static_cast<uint16_t>(std::clamp(f["kbps"].get<int>(), 32, 320));
+    if (f.contains("id3") && f["id3"].is_object()) {
+        const json& t = f["id3"];
+        fmt.id3.title = jsonStr(t, "title");
+        fmt.id3.artist = jsonStr(t, "artist");
+        fmt.id3.album = jsonStr(t, "album");
+        fmt.id3.date = jsonStr(t, "date");
+        fmt.id3.coverPngB64 = jsonStr(t, "cover_png_b64");
+    }
+    return fmt;
+}
+} // namespace
+
 // Ein laufender Dienst: Backend (eigener Thread im mscHandler), seine
 // Callbacks (muessen das Backend ueberleben) und bei Audiodiensten die
 // AudioPipeline. Primary hat den Audio-Sink, Background keinen.
@@ -1043,9 +1069,10 @@ void DabCore::stopAllServicesLocked() {
 }
 
 bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, const json& format, double preS) {
-    std::string fmt = format.value("format", "wav");
-    if (fmt != "wav") {
-        sink_(events::log("error", "Aufnahmeformat " + fmt + " folgt spaeter (nur wav)"));
+    const RecFormat fmt = recFormatFromJson(format);
+    if (fmt.kind != "wav" && fmt.kind != "mp3") {
+        // aac_passthrough (Entscheidung 6) ist noch nicht umgesetzt
+        sink_(events::log("error", "Aufnahmeformat " + fmt.kind + " folgt spaeter (wav, mp3)"));
         return false;
     }
     {
@@ -1056,11 +1083,11 @@ bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, co
             return false;
         }
         std::string err;
-        if (!rs->audio->startWav(path, err)) { sink_(events::log("error", err)); return false; }
+        if (!rs->audio->startRec(path, fmt, err)) { sink_(events::log("error", err)); return false; }
         updateServiceState();
     }
-    // Vorlauf aus dem Ring (Entscheidung 18, Plan M4 1.6): der WAV-Schreiber
-    // kann nicht anhaengen, deshalb als eigene Datei <name>_vorlauf.wav.
+    // Vorlauf aus dem Ring (Entscheidung 18, Plan M4 1.6): die Schreiber
+    // koennen nicht anhaengen, deshalb als eigene Datei <name>_vorlauf.<ext>.
     if (preS > 0.0 && slot == Slot::Primary && timeshift_ && timeshift_->attached()) {
         const double have = timeshift_->buffer().bufferedSeconds();
         const double pre = std::min(preS, have);
@@ -1074,10 +1101,10 @@ bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, co
             if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
                 pv.insert(dot, "_vorlauf");
             else
-                pv += "_vorlauf.wav";
+                pv += "_vorlauf." + fmt.kind;
             sink_(events::log("info", "Aufnahme-Vorlauf: " + std::to_string(static_cast<int>(pre)) +
                                       " s aus dem Timeshift-Ring nach " + pv));
-            startExportThread(pre, 0.0, pv, false);
+            startExportThread(pre, 0.0, pv, fmt, false);
         }
     }
     return true;
@@ -1186,23 +1213,28 @@ void DabCore::joinExportThread() {
 
 // export_timeshift_range: from_s/to_s sind Sekunden hinter live (from_s > to_s).
 void DabCore::exportTimeshiftRange(double fromS, double toS, const std::string& path, const json& format) {
-    const std::string fmt = format.is_object() ? format.value("format", "wav") : "wav";
-    if (fmt != "wav")
-        sink_(events::log("warn", "export_timeshift_range: Format " + fmt +
-                                  " folgt in M4b, es wird WAV geschrieben"));
+    const RecFormat fmt = recFormatFromJson(format);
+    if (fmt.kind != "wav" && fmt.kind != "mp3") {
+        // aac_passthrough (Entscheidung 6) ist noch nicht umgesetzt
+        sink_(events::log("warn", "export_timeshift_range: Format " + fmt.kind +
+                                  " folgt spaeter, es wird WAV geschrieben"));
+    }
     if (path.empty()) { sink_(events::log("error", "export_timeshift_range ohne Pfad")); return; }
     if (!(fromS > toS) || toS < 0.0) {
         sink_(events::log("error", "export_timeshift_range: ungueltiger Bereich (from_s > to_s >= 0)"));
         return;
     }
-    startExportThread(fromS, toS, path, true);
+    RecFormat use = fmt;
+    if (use.kind != "mp3") use.kind = "wav";
+    startExportThread(fromS, toS, path, use, true);
 }
 
 // Rahmen kopieren (unter der Ringsperre) und in einem eigenen Thread
 // dekodieren. reportRecordingState: Ende als recording_state melden
 // (export_timeshift_range); der Aufnahme-Vorlauf meldet nur ins Log, damit
 // die laufende Aufnahme in der App nicht als beendet erscheint.
-void DabCore::startExportThread(double fromS, double toS, const std::string& path, bool reportRecordingState) {
+void DabCore::startExportThread(double fromS, double toS, const std::string& path,
+                                const RecFormat& format, bool reportRecordingState) {
     if (!timeshift_ || !timeshift_->attached()) {
         sink_(events::log("warn", "Timeshift-Export: kein Primary-Dienst"));
         return;
@@ -1224,6 +1256,7 @@ void DabCore::startExportThread(double fromS, double toS, const std::string& pat
     job.sid = sid;
     job.bitRate = bitRate;
     job.path = path;
+    job.format = format;
     if (job.frames == 0) {
         sink_(events::log("warn", "Timeshift-Export: im Bereich " + std::to_string(fromS) + ".." +
                                   std::to_string(toS) + " s liegen keine Rahmen"));
@@ -1234,8 +1267,8 @@ void DabCore::startExportThread(double fromS, double toS, const std::string& pat
                               std::to_string(static_cast<int>(job.frames * 24 / 1000)) + " s) nach " + path));
     exportBusy_.store(true);
     exportThread_ = std::thread([this, job = std::move(job), sid, reportRecordingState] {
-        auto res = timeshiftExportWav(job, aacKind_,
-                                      [this](const char* level, const std::string& t) { sink_(events::log(level, t)); });
+        auto res = timeshiftExport(job, aacKind_,
+                                   [this](const char* level, const std::string& t) { sink_(events::log(level, t)); });
         if (!res.ok) sink_(events::log("error", res.error));
         if (reportRecordingState)
             sink_(events::recordingState(Slot::Primary, sid, false, res.path, res.bytes, res.seconds));

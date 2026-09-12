@@ -69,11 +69,13 @@ pub struct Panels {
     pub timer: bool,
     /// Debug-Panel (crate::tii): offen = Kern liefert Spektrum/IQ.
     pub debug: bool,
+    /// Panel "Musik" (crate::music): Vorschlagsliste der Titel-Trennung.
+    pub music: bool,
 }
 
 impl Default for Panels {
     fn default() -> Self {
-        Self { presets: true, services: true, stations: true, settings: false, scan: false, epg: false, timer: false, debug: false }
+        Self { presets: true, services: true, stations: true, settings: false, scan: false, epg: false, timer: false, debug: false, music: false }
     }
 }
 

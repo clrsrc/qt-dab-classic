@@ -40,6 +40,7 @@
   "panel.epg": "EPG",
   "panel.timer": "Timer",
   "panel.debug": "Debug",
+  "panel.music": "Music",
   "panel.placeholder": "Coming in M3.",
 
   "preset.empty": "–",
@@ -352,5 +353,19 @@
   "tii.dx_mode": "DX mode (tii-files.csv)",
   "tii.strength": "Strength",
   "tii.distance": "Distance",
-  "tii.azimuth": "Azimuth"
+  "tii.azimuth": "Azimuth",
+  "music.auto_save": "save automatically",
+  "music.auto_save_hint": "Cut detected tracks to the recording folder as MP3 right away instead of listing them here.",
+  "music.take": "keep",
+  "music.take_all": "keep all",
+  "music.clear": "Clear list",
+  "music.empty": "No tracks detected yet – waiting for DL+ or DLS of the current service.",
+  "music.empty_auto": "Automatic saving is on: detected tracks go straight to the recording folder.",
+  "music.unknown": "(no title)",
+  "music.ago": "{time} ago",
+  "music.from_dls": "guessed from DLS (service without DL+)",
+  "music.taken": "kept",
+  "music.exported": "Cutting track: {file}",
+  "music.hint": "Cut from the timeshift buffer as MP3 with title, artist, station and cover.",
+  "error.slot out of range": "Entry not found"
 }

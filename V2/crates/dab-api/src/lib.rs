@@ -57,11 +57,30 @@ pub enum ServiceSlot {
     Background,
 }
 
+/// ID3v2.4-Tags fuer eine MP3-Aufnahme (Plan M4b 1.1). Der Kern schreibt nur
+/// die gesetzten Felder; das Cover liefert die App fertig als PNG (Slide oder
+/// Logo), der Kern kennt selbst keine Bilder.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct Id3Tags {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    /// z. B. Sendername ("Dlf")
+    pub album: Option<String>,
+    /// ISO yyyy-mm-dd
+    pub date: Option<String>,
+    pub cover_png_b64: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "format", rename_all = "snake_case")]
 pub enum RecFormat {
     Wav,
-    Mp3 { kbps: u16 },
+    /// `id3` kam additiv in M4b dazu; Aufrufe ohne das Feld bleiben gueltig.
+    Mp3 {
+        kbps: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id3: Option<Id3Tags>,
+    },
     /// Original-AAC-Zugriffseinheiten ohne Neucodierung (960-Sample-Frames).
     AacPassthrough,
 }

@@ -1,4 +1,4 @@
-// DAB Classic v3 – Export eines Ringausschnitts als WAV, siehe timeshift-export.h.
+// DAB Classic v3 – Export eines Ringausschnitts, siehe timeshift-export.h.
 #include "timeshift-export.h"
 
 #include "aac-decoder.h"
@@ -6,16 +6,17 @@
 #include "converter48k.h"
 #include "mp4processor.h"
 #include "timeshift-buffer.h"
-#include "wav-writer.h"
+#include "rec-format.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <memory>
 
 namespace dabcore {
 
-TimeshiftExportResult timeshiftExportWav(const TimeshiftExportJob& job, AacDecoderKind aacKind,
-                                         const std::function<void(const char*, const std::string&)>& log) {
+TimeshiftExportResult timeshiftExport(const TimeshiftExportJob& job, AacDecoderKind aacKind,
+                                      const std::function<void(const char*, const std::string&)>& log) {
     TimeshiftExportResult res;
     res.path = job.path;
     if (job.frames == 0 || job.frameBits == 0 || job.bitRate <= 0) {
@@ -28,9 +29,10 @@ TimeshiftExportResult timeshiftExportWav(const TimeshiftExportJob& job, AacDecod
         return res;
     }
 
-    WavWriter wav;
     std::string err;
-    if (!wav.open(job.path, 48000, 2, err)) { res.error = err; return res; }
+    // Bei MP3 steht der ID3v2-Tag danach schon in der Datei, vor den Rahmen.
+    std::unique_ptr<IPcmWriter> writer = makeRecWriter(job.format, job.path, 48000, 2, err);
+    if (!writer) { res.error = err; return res; }
 
     const auto t0 = std::chrono::steady_clock::now();
     {
@@ -51,7 +53,7 @@ TimeshiftExportResult timeshiftExportWav(const TimeshiftExportJob& job, AacDecod
                 const float v = out[static_cast<size_t>(i)] * 32768.0f;
                 pcm16[static_cast<size_t>(i)] = static_cast<int16_t>(std::clamp(v, -32768.0f, 32767.0f));
             }
-            wav.write(pcm16.data(), static_cast<uint32_t>(size / 2));
+            writer->write(pcm16.data(), static_cast<uint32_t>(size / 2));
         };
         mp4Processor proc(job.sid, job.bitRate, &cb, aacKind);
         std::vector<uint8_t> frame(job.frameBits);
@@ -62,9 +64,9 @@ TimeshiftExportResult timeshiftExportWav(const TimeshiftExportJob& job, AacDecod
         }
         proc.stop();
     }
-    res.bytes = wav.bytes();
-    res.seconds = wav.seconds();
-    wav.close();
+    writer->close();
+    res.bytes = writer->bytes();
+    res.seconds = writer->seconds();
     res.ok = res.bytes > 0;
     if (!res.ok) {
         res.error = "Timeshift-Export: kein Ton dekodiert (zu kurzer Bereich?)";
@@ -75,8 +77,9 @@ TimeshiftExportResult timeshiftExportWav(const TimeshiftExportJob& job, AacDecod
         const double material = static_cast<double>(job.frames) * TimeshiftBuffer::kFrameSeconds;
         char buf[256];
         std::snprintf(buf, sizeof buf,
-                      "%.1f s Material -> %.1f s WAV in %.1f s (%.0fx Echtzeit): %s",
-                      material, res.seconds, took, took > 0 ? material / took : 0.0, job.path.c_str());
+                      "%.1f s Material -> %.1f s %s in %.1f s (%.0fx Echtzeit): %s",
+                      material, res.seconds, job.format.kind == "mp3" ? "MP3" : "WAV",
+                      took, took > 0 ? material / took : 0.0, job.path.c_str());
         log("info", std::string("Timeshift-Export: ") + buf);
     }
     return res;

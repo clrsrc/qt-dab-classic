@@ -1,5 +1,5 @@
 // Tastenkuerzel (Entscheidung 21): Ziffern = Speicher, Strg+Ziffer = belegen,
-// Pfeil hoch/ab = Dienst, M/R/E/T/D, +/-, und fuer den Timeshift-Puffer
+// Pfeil hoch/ab = Dienst, M/R/E/T/D, Umschalt+M = Musik-Panel, +/-, und fuer den Timeshift-Puffer
 // (lib/timeshift.ts) Leertaste = Pause/Play, Pfeil links/rechts = ∓30 s,
 // Esc = live.
 
@@ -48,7 +48,13 @@ export function makeKeyHandler(actions: HotkeyActions) {
         break;
       case "m":
       case "M":
-        run(api.setMute(!s.muted));
+        // Umschalt+M: Panel "Musik" (lib/music.ts); M allein bleibt Stumm.
+        if (ev.shiftKey) {
+          ev.preventDefault();
+          void togglePanel("music");
+        } else {
+          run(api.setMute(!s.muted));
+        }
         break;
       case "+":
         run(api.setVolume(Math.min(100, s.volume + 5)));

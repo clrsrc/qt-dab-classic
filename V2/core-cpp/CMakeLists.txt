@@ -24,6 +24,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFTW3F REQUIRED IMPORTED_TARGET fftw3f)
 pkg_check_modules(FAAD2 IMPORTED_TARGET faad2)
+# MP3-Aufnahme/-Export (Plan M4b): MSYS2-Paket mingw-w64-ucrt-x86_64-lame,
+# pkg-config-Name ist "lame" (nicht mp3lame), die Bibliothek heisst -lmp3lame.
+pkg_check_modules(MP3LAME IMPORTED_TARGET lame)
 if(DABCORE_AUDIO_PORTAUDIO)
     pkg_check_modules(PORTAUDIO REQUIRED IMPORTED_TARGET portaudio-2.0)
 endif()
@@ -69,6 +72,13 @@ target_link_libraries(dabcore PUBLIC
 if(FAAD2_FOUND)
     target_compile_definitions(dabcore PUBLIC __WITH_FAAD__)
     target_link_libraries(dabcore PUBLIC PkgConfig::FAAD2)
+endif()
+if(MP3LAME_FOUND)
+    target_compile_definitions(dabcore PUBLIC DABCORE_WITH_MP3)
+    target_link_libraries(dabcore PUBLIC PkgConfig::MP3LAME)
+else()
+    message(WARNING "lame nicht gefunden - MP3-Aufnahme/-Export faellt aus "
+                    "(pacman -S mingw-w64-ucrt-x86_64-lame)")
 endif()
 if(DABCORE_AUDIO_PORTAUDIO)
     target_compile_definitions(dabcore PUBLIC DABCORE_AUDIO_PORTAUDIO)
@@ -147,6 +157,12 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-timeshift.ps1)
+    # Musik-Export (Plan M4b 1.5): export_timeshift_range als MP3 mit ID3
+    # -> Datei beginnt mit "ID3", danach ein MP3-Rahmen-Sync, Tags lesbar
+    add_test(NAME dabcored_music_export
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-music-export.ps1)
     # state_snapshot (running[] mit dls/codec, ensemble als [eid, name]),
     # audio_devices nach ready/get_state, set_scopes (spectrum + iq_samples
     # mit Rate und Groesse), stdin-EOF bei laufendem Dienst -> Ende < 1 s

@@ -13,6 +13,7 @@
   import EpgPanel from "$lib/components/EpgPanel.svelte";
   import PresetBar from "$lib/components/PresetBar.svelte";
   import TimerPanel from "$lib/components/TimerPanel.svelte";
+  import MusicPanel from "$lib/components/MusicPanel.svelte";
   import DebugPanel from "$lib/components/DebugPanel.svelte";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
   import ServiceList from "$lib/components/ServiceList.svelte";
@@ -34,7 +35,7 @@
     return dispose;
   });
   const panels = $derived(ui.settings?.panels);
-  const tabs = ["presets", "services", "stations", "scan", "settings", "epg", "timer", "debug"] as const;
+  const tabs = ["presets", "services", "stations", "scan", "settings", "epg", "timer", "music", "debug"] as const;
 </script>
 
 <!-- Nach einer Auswahl den Fokus abgeben, damit die Tastenkuerzel (Ziffern, M, +/-) wieder greifen. -->
@@ -64,6 +65,7 @@
     {#if panels?.settings}<SettingsPanel />{/if}
     {#if panels?.epg}<EpgPanel />{/if}
     {#if panels?.timer}<TimerPanel />{/if}
+    {#if panels?.music}<MusicPanel />{/if}
     {#if panels?.debug}<DebugPanel />{/if}
   </div>
   <StatusBar />

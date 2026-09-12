@@ -38,6 +38,7 @@ struct BackendCallbacks;
 class processParams;
 class IAudioSink;
 enum class AacDecoderKind;
+struct RecFormat;   // audio/rec-format.h, nur als Referenz gebraucht
 
 namespace dabcore {
 
@@ -147,7 +148,7 @@ private:
     bool epgNameParts(const std::string& name, uint32_t& date, uint32_t& sid) const;
     bool ensembleHasSid(uint32_t sid) const;
     void updateServiceState();
-    // pre_s > 0: Vorlauf aus dem Timeshift-Ring als <name>_vorlauf.wav
+    // pre_s > 0: Vorlauf aus dem Timeshift-Ring als <name>_vorlauf.<ext>
     // (Entscheidung 18, Plan M4 1.6)
     bool startRecording(Slot slot, int64_t sid, const std::string& path, const json& format, double preS);
     void stopRecording(Slot slot, int64_t sid);
@@ -169,7 +170,8 @@ private:
     bool primaryAudioParams(uint32_t& sid, int16_t& bitRate);
     void exportTimeshiftRange(double fromS, double toS, const std::string& path, const json& format);
     // Ergebnis eines Exports melden (recording_state, Plan 1.3)
-    void startExportThread(double fromS, double toS, const std::string& path, bool reportRecordingState);
+    void startExportThread(double fromS, double toS, const std::string& path,
+                           const RecFormat& format, bool reportRecordingState);
     void joinExportThread();
     // set_scopes auf den (neuen) ofdmHandler anwenden
     void applyScopes();

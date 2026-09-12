@@ -156,6 +156,9 @@ pub struct AppState {
     pub stations: Vec<crate::stations::StationEntry>,
     /// Timeshift-Puffer des Primary-Slots (crate::timeshift, Entscheidung 4).
     pub timeshift: crate::timeshift::TimeshiftInfo,
+    /// Vorschlagsliste der Musik-Trennung (crate::music, Entscheidungen 6, 7);
+    /// hoechstens `crate::music::MUSIC_MAX` Eintraege, aelteste zuerst raus.
+    pub music_candidates: Vec<dab_music::TrackCandidate>,
 }
 
 pub fn unix_now() -> i64 {

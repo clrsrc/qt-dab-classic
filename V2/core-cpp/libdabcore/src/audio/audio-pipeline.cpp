@@ -67,30 +67,33 @@ void AudioPipeline::setStarved(bool starved) {
     if (was && !starved && audio_) audio_->takeMissed();
 }
 
-bool AudioPipeline::startWav(const std::string& path, std::string& error) {
+bool AudioPipeline::startRec(const std::string& path, const RecFormat& format, std::string& error) {
     std::lock_guard<std::mutex> lk(wavM_);
-    if (!wav_.open(path, 48000, 2, error)) return false;
+    auto w = makeRecWriter(format, path, 48000, 2, error);
+    if (!w) return false;
+    rec_ = std::move(w);
     recording_ = true;
     lastRecState_ = std::chrono::steady_clock::now();
-    sink_(events::recordingState(slot_, sid_, true, wav_.path(), 0, 0.0));
+    sink_(events::recordingState(slot_, sid_, true, rec_->path(), 0, 0.0));
     return true;
 }
 
 void AudioPipeline::stopWav() {
     std::lock_guard<std::mutex> lk(wavM_);
-    if (!wav_.isOpen()) return;
-    std::string p = wav_.path();
-    uint64_t b = wav_.bytes();
-    double s = wav_.seconds();
-    wav_.close();
+    if (!rec_ || !rec_->isOpen()) return;
+    std::string p = rec_->path();
+    rec_->close();
+    uint64_t b = rec_->bytes();
+    double s = rec_->seconds();
+    rec_.reset();
     recording_ = false;
     sink_(events::recordingState(slot_, sid_, false, p, b, s));
 }
 
 void AudioPipeline::emitRecordingState(bool active) {
     std::lock_guard<std::mutex> lk(wavM_);
-    if (!wav_.isOpen()) return;
-    sink_(events::recordingState(slot_, sid_, active, wav_.path(), wav_.bytes(), wav_.seconds()));
+    if (!rec_ || !rec_->isOpen()) return;
+    sink_(events::recordingState(slot_, sid_, active, rec_->path(), rec_->bytes(), rec_->seconds()));
 }
 
 void AudioPipeline::run() {
@@ -125,7 +128,7 @@ void AudioPipeline::run() {
                     wavBuf[i] = static_cast<int16_t>(std::clamp(v, -32768.0f, 32767.0f));
                 }
                 std::lock_guard<std::mutex> lk(wavM_);
-                wav_.write(wavBuf.data(), static_cast<uint32_t>(size / 2));
+                if (rec_) rec_->write(wavBuf.data(), static_cast<uint32_t>(size / 2));
             }
             if (audio_) {
                 if (!sinkStarted_) {

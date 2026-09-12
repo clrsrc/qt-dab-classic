@@ -74,7 +74,7 @@
     if (p) void patchSettings({ recording_dir: p });
   }
 
-  const panelNames = ["presets", "services", "stations", "scan", "settings", "epg", "timer", "debug"] as const;
+  const panelNames = ["presets", "services", "stations", "scan", "settings", "epg", "timer", "music", "debug"] as const;
 </script>
 
 {#if ui.settings}

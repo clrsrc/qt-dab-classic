@@ -1,12 +1,15 @@
-// DAB Classic v3 – Export eines Ringausschnitts als WAV (Plan M4 1.3/1.6).
+// DAB Classic v3 – Export eines Ringausschnitts als WAV oder MP3
+// (Plan M4 1.3/1.6, Format M4b 1.4).
 //
 // Die kopierten (gepackten) Hardbit-Rahmen laufen durch eine ZWEITE
 // mp4Processor-Instanz – Firecode, Reed-Solomon, AAC wie im Empfang, aber
 // ohne Audio-Ausgabe und so schnell, wie die CPU mag. Senke ist der
-// 48-kHz-Konverter und der WAV-Schreiber.
+// 48-kHz-Konverter und der Schreiber des gewaehlten Formats.
 //
 // Der Aufrufer ruft dies in einem eigenen Thread auf (die Funktion blockiert).
 #pragma once
+
+#include "audio/rec-format.h"
 
 #include <cstdint>
 #include <functional>
@@ -24,6 +27,7 @@ struct TimeshiftExportJob {
     uint32_t sid = 0;
     int16_t bitRate = 0;
     std::string path;
+    RecFormat format;              // wav (Standard) oder mp3 inkl. ID3-Tags
 };
 
 struct TimeshiftExportResult {
@@ -34,7 +38,7 @@ struct TimeshiftExportResult {
     double seconds = 0.0;
 };
 
-TimeshiftExportResult timeshiftExportWav(const TimeshiftExportJob& job, AacDecoderKind aacKind,
-                                         const std::function<void(const char*, const std::string&)>& log);
+TimeshiftExportResult timeshiftExport(const TimeshiftExportJob& job, AacDecoderKind aacKind,
+                                      const std::function<void(const char*, const std::string&)>& log);
 
 } // namespace dabcore

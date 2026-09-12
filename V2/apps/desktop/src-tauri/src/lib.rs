@@ -21,6 +21,8 @@ mod debug_cmds;
 mod stations_cmds;
 /// Timeshift-Puffer (eigenes Modul, Registrierung unten).
 mod timeshift_cmds;
+/// Musik-Trennung (eigenes Modul, Registrierung unten).
+mod music_cmds;
 
 /// Gemeinsamer Zustand (Tauri-managed).
 pub struct Shared {
@@ -458,7 +460,10 @@ pub fn run() {
             timeshift_cmds::timeshift_seek,
             timeshift_cmds::timeshift_live,
             timeshift_cmds::timeshift_export,
-            timeshift_cmds::timeshift_status
+            timeshift_cmds::timeshift_status,
+            music_cmds::music_list,
+            music_cmds::music_export,
+            music_cmds::music_clear
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");

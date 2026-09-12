@@ -42,13 +42,16 @@ pub struct TimeshiftInfo {
     pub capacity_s: f64,
     /// Ensemble-Uhrzeit am Schreibzeiger (0 = unbekannt).
     pub live_unix: i64,
+    /// Schreibzeiger in Logikrahmen (24 ms). Bezugsgroesse der Musik-Trennung
+    /// (crate::music): daran haengen `start_frame`/`end_frame` der Kandidaten.
+    pub frame_index: u64,
     /// Nur mit [`DEMO_ENV`]: Leiste auch ohne Kern-Funktion anzeigen.
     pub demo: bool,
 }
 
 impl Default for TimeshiftInfo {
     fn default() -> Self {
-        Self { mode: TimeshiftMode::Live, buffered_s: 0.0, offset_s: 0.0, capacity_s: 0.0, live_unix: 0, demo: false }
+        Self { mode: TimeshiftMode::Live, buffered_s: 0.0, offset_s: 0.0, capacity_s: 0.0, live_unix: 0, frame_index: 0, demo: false }
     }
 }
 
@@ -146,7 +149,7 @@ impl App {
     pub fn timeshift_on_event(&mut self, ev: &Event) -> Effects {
         let mut fx = Effects::default();
         match ev {
-            Event::TimeshiftState { mode, buffered_s, offset_s, capacity_s, live_unix, .. } => {
+            Event::TimeshiftState { mode, buffered_s, offset_s, capacity_s, live_unix, frame_index } => {
                 if self.state.timeshift.demo {
                     return fx;
                 }
@@ -155,6 +158,9 @@ impl App {
                 ts.buffered_s = *buffered_s;
                 ts.offset_s = *offset_s;
                 ts.live_unix = *live_unix;
+                if *frame_index > 0 {
+                    ts.frame_index = *frame_index;
+                }
                 if *capacity_s > 0.0 {
                     ts.capacity_s = *capacity_s;
                 }

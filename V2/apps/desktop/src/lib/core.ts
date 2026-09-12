@@ -13,6 +13,7 @@ import type { AddOutcome, EpgTimerRequest, RecordingInfo, SleepAction, SleepStat
 import type { DebugAppEvent, DebugState, TiiSeen } from "./debug";
 import type { StationEntry, StationsAppEvent } from "./stations";
 import type { TimeshiftAppEvent, TimeshiftInfo } from "./timeshift";
+import type { MusicAppEvent, TrackCandidate } from "./music";
 
 // ---------------------------------------------------------------------------
 // Typen (spiegeln crates/dab-api und crates/dab-app; JSON snake_case)
@@ -111,6 +112,8 @@ export interface AppState {
   stations: StationEntry[];
   /** Timeshift-Puffer des laufenden Dienstes (lib/timeshift.ts, Entscheidung 4). */
   timeshift: TimeshiftInfo;
+  /** Vorschlagsliste der Musik-Trennung (lib/music.ts, Entscheidungen 6, 7). */
+  music_candidates: TrackCandidate[];
 }
 
 export interface ScanResult {
@@ -160,6 +163,8 @@ export interface Panels {
   epg: boolean;
   timer: boolean;
   debug: boolean;
+  /** Panel "Musik" (lib/music.ts). */
+  music: boolean;
 }
 
 export interface Settings {
@@ -224,7 +229,8 @@ export type AppEvent =
   | TimerAppEvent
   | DebugAppEvent
   | StationsAppEvent
-  | TimeshiftAppEvent;
+  | TimeshiftAppEvent
+  | MusicAppEvent;
 
 // ---------------------------------------------------------------------------
 // Schnittstelle

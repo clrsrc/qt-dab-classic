@@ -1,9 +1,9 @@
 # Timeshift-Test (Plan M4 1.7) am 60-s-Referenzmitschnitt in Echtzeit:
 #   timeshift_configure 120 s -> Dienst Dlf -> 10 s hoeren (live, offset 0,
 #   buffered ~10 s) -> pause -> 5 s -> play (offset ~5 s, mode playing) ->
-#   skip -3 (offset ~8 s) -> live (offset 0) -> export 8..2 s (Format mp3
-#   wird als WAV geschrieben, Warnung im Log) -> WAV ~6 s mit Ton ->
-#   stop_service leert den Ring (buffered 0).
+#   skip -3 (offset ~8 s) -> live (offset 0) -> export 8..2 s als WAV
+#   -> WAV ~6 s mit Ton -> stop_service leert den Ring (buffered 0).
+# Der MP3-Export mit ID3 haengt an test-music-export.ps1.
 # Geprueft wird ausserdem die Speichermeldung beim Anlegen des Rings.
 # Wird von ctest aufgerufen (DABCORED = Pfad zur EXE); fehlt die
 # Referenzdatei, wird der Test uebersprungen (Exit 0 mit Hinweis).
@@ -125,9 +125,9 @@ Send-Cmd '{"type":"timeshift_live"}'
 Start-Sleep -Milliseconds 800
 Check-Ts (Get-Timeshift) 'live' 'live' -0.01 0.1
 
-# --- Export 8..2 s (Format mp3 -> Warnung + WAV) ------------------------------
+# --- Export 8..2 s als WAV ----------------------------------------------------
 $wavJson = $wav.Replace('\', '\\')
-Send-Cmd "{`"type`":`"export_timeshift_range`",`"from_s`":8.0,`"to_s`":2.0,`"path`":`"$wavJson`",`"format`":{`"format`":`"mp3`",`"kbps`":192}}"
+Send-Cmd "{`"type`":`"export_timeshift_range`",`"from_s`":8.0,`"to_s`":2.0,`"path`":`"$wavJson`",`"format`":{`"format`":`"wav`"}}"
 $rec = $null
 for ($i = 0; $i -lt 60; $i++) {
     $ev = Get-Events
@@ -143,9 +143,6 @@ else {
     if ($rec.seconds -lt 5.7 -or $rec.seconds -gt 6.3) { $fail += ("Export seconds {0:N2}, erwartet ~6" -f $rec.seconds) }
 }
 $ev = Get-Events
-if (-not ($ev | Where-Object { $_.type -eq 'log' -and $_.level -eq 'warn' -and $_.text -like '*Format mp3*' })) {
-    $fail += 'keine Warnung zum Format mp3'
-}
 $mem = $ev | Where-Object { $_.type -eq 'log' -and $_.text -like 'Timeshift: Ring fuer den Primary-Dienst,*' } | Select-Object -Last 1
 if (-not $mem) { $fail += 'keine Speichermeldung des Rings beim Anlegen' }
 elseif ($mem.text -notlike '*120 s = 5000 Rahmen x 312 Byte*') { $fail += "Speichermeldung unerwartet: $($mem.text)" }

@@ -11,6 +11,7 @@
 #include "ringbuffer.h"
 #include "converter48k.h"
 #include "wav-writer.h"
+#include "rec-format.h"
 #include "audio-sink.h"
 
 #include <atomic>
@@ -48,13 +49,16 @@ public:
     // wird audio_underrun nicht gezaehlt.
     void setStarved(bool starved);
 
-    bool startWav(const std::string& path, std::string& error);
+    // Aufnahme im gewuenschten Format (Plan M4b 1.4); startWav ist der
+    // Sonderfall fuer den Headless-Schalter --wav.
+    bool startRec(const std::string& path, const RecFormat& format, std::string& error);
+    bool startWav(const std::string& path, std::string& error) { return startRec(path, RecFormat{}, error); }
     void stopWav();
     bool recording() const { return recording_.load(); }
     // Stand der laufenden Aufnahme (fuer state_snapshot)
-    std::string recordingPath() { std::lock_guard<std::mutex> lk(wavM_); return wav_.path(); }
-    uint64_t recordingBytes() { std::lock_guard<std::mutex> lk(wavM_); return wav_.bytes(); }
-    double recordingSeconds() { std::lock_guard<std::mutex> lk(wavM_); return wav_.seconds(); }
+    std::string recordingPath() { std::lock_guard<std::mutex> lk(wavM_); return rec_ ? rec_->path() : std::string(); }
+    uint64_t recordingBytes() { std::lock_guard<std::mutex> lk(wavM_); return rec_ ? rec_->bytes() : 0; }
+    double recordingSeconds() { std::lock_guard<std::mutex> lk(wavM_); return rec_ ? rec_->seconds() : 0.0; }
 
     void stop();
 
@@ -88,7 +92,7 @@ private:
 
     converter_48000 converter_;
     std::mutex wavM_;
-    WavWriter wav_;
+    std::unique_ptr<IPcmWriter> rec_;
     std::atomic<bool> recording_{false};
     std::chrono::steady_clock::time_point lastRecState_{};
     std::chrono::steady_clock::time_point lastLevel_{};
