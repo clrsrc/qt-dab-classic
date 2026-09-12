@@ -302,11 +302,11 @@ void DabCore::wireCallbacks() {
     cb.ewfAlarm = [this](bool active, int subChId) {
         sink_(events::ewfAlarm(active, static_cast<uint8_t>(subChId < 0 ? 0 : subChId)));
     };
-    cb.ewsAlert = [this](int phase, int subChId, int stage, int iid, const std::vector<std::string>& loc) {
+    cb.ewsAlert = [this](int phase, int subChId, int stage, int stageRaw, int iid, const std::vector<std::string>& loc) {
         EwsPhase p = phase == 0 ? EwsPhase::PreTrigger : phase == 1 ? EwsPhase::Trigger
                    : phase == 2 ? EwsPhase::Sustain : EwsPhase::End;
         sink_(events::ewsAlert(p, static_cast<uint8_t>(subChId), static_cast<uint8_t>(stage),
-                               static_cast<uint16_t>(iid), loc, false));
+                               static_cast<uint8_t>(stageRaw), static_cast<uint16_t>(iid), loc, false));
     };
     cb.ewsAlive = [this](int subChId) { sink_(events::ewsAlive(subChId)); };
     cb.ewsPresent = [this] { sink_(events::ewsPresent()); };

@@ -185,6 +185,7 @@ private:
 	   uint8_t	phase;
 	   uint8_t	subChId;
 	   uint8_t	stage;
+	   uint8_t	stageRaw;	// rohes Status-Byte (Last/Stage/IId) der ersten Trigger-Instanz, Warntag 2026: 0x01
 	   uint8_t	iid;
 	   std::vector<std::string>	locations;	// of the current alert set
 	   bool		setComplete;

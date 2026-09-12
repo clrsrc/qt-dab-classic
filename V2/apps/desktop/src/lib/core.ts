@@ -119,6 +119,8 @@ export interface Alert {
   phase: EwsPhase;
   sub_ch: number;
   stage: number;
+  /** Rohes Status-Byte der FIG 0/15 (Warntag 2026: 0x01); 0 bei aelterem Kern. */
+  stage_raw: number;
   iid: number;
   locations: string[];
   is_test: boolean;
@@ -170,7 +172,8 @@ export interface Settings {
   music_keep_aac: boolean;
   music_mp3_kbps: number;
   audio_device: number | null;
-  debug_panel_open: boolean;
+  /** EPG-Paketdienst im Kern mitlaufen lassen (set_epg). */
+  epg_enabled: boolean;
   autostart: boolean;
   last_file: string | null;
   file_loop: boolean;
@@ -249,6 +252,8 @@ export interface Transport {
 
   /// Datei-Auswahldialog (null = abgebrochen).
   pickFile(): Promise<string | null>;
+  /// Ordner-Auswahldialog, z. B. Aufnahmeordner (null = abgebrochen).
+  pickDirectory(start?: string | null): Promise<string | null>;
 
   // Timer / Aufnahme / Sleep / Alarmfenster (lib/timers.ts, lib/recording.ts)
   timersList(): Promise<Timers>;
@@ -410,6 +415,10 @@ class TauriTransport implements Transport {
         { name: "*", extensions: ["*"] },
       ],
     });
+    return typeof r === "string" ? r : null;
+  }
+  async pickDirectory(start?: string | null) {
+    const r = await openDialog({ multiple: false, directory: true, defaultPath: start ?? undefined });
     return typeof r === "string" ? r : null;
   }
 }

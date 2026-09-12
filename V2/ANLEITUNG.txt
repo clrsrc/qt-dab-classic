@@ -1,0 +1,436 @@
+============================================================
+  DAB Classic v3.0 - DAB+-Empfaenger fuer HackRF One und RTL-SDR
+  Portable-Version fuer Windows 10/11 (64 Bit)
+============================================================
+
+INHALT
+------
+  1. Was ist DAB Classic
+  2. Portable-Ordner entpacken und starten
+  3. USB-Treiber einrichten (Zadig) - HackRF One, RTL-SDR
+  4. Erste Schritte: Geraet, Scan, Sender, Speicher
+  5. Oberflaeche und Panels
+  6. Tastenkuerzel
+  7. Aufnahme und Umschaltsperre
+  8. Timer (auch aus dem EPG), Vor-/Nachlauf, Sleep-Timer
+  9. Notfallwarnung (EWS) und Alarmfenster
+ 10. Datei-Wiedergabe (.uff / .iq)
+ 11. Datenordner data\
+ 12. TII-Sendestandorte und Heimatkoordinaten
+ 13. Sprache
+ 14. Fuer Entwickler: Bauen, Testen, Portable-Paket
+
+
+1. WAS IST DAB CLASSIC
+----------------------
+  DAB Classic ist ein DAB+-Empfaenger fuer den PC im kompakten, dunklen
+  "Classic Compact"-Stil. Er empfaengt Band III (174-240 MHz) mit einem
+  HackRF One oder einem RTL-SDR-Stick, spielt Programme ab und bietet:
+
+  - 10 Stationsspeicher (Tasten 1-9 und 0)
+  - Senderliste, Band-III-Scan ueber alle 38 Kanaele
+  - Senderlogos und Dia-Show (MOT), Lauftext (DLS) mit Titel/Interpret (DL+)
+  - EPG (Sendeplaene) mit Jetzt/Danach-Anzeige und Timer-Anlage per Klick
+  - Aufnahme als WAV, Timer zum Umschalten und Aufnehmen, Sleep-Timer
+  - Notfallwarnung (EWS nach ETSI TS 104 089) mit Alarmfenster und
+    automatischer Umschaltung auf den Warndienst
+  - Wiedergabe von IQ-Mitschnitten (.uff, .iq)
+  - Debug-Panel mit Spektrum, Konstellation, SNR-Verlauf, Fehlerzaehlern
+    und TII-Sendestandorten (Entfernung/Azimut zum eigenen Standort)
+  - Deutsch und Englisch umschaltbar
+
+  Technik: Der Empfangskern (dabcored.exe, C++) laeuft als eigener Prozess,
+  die App-Logik ist in Rust geschrieben, die Oberflaeche nutzt Tauri 2 mit
+  Svelte 5 und bringt ihre eigene WebView2-Laufzeit mit.
+
+
+2. PORTABLE-ORDNER ENTPACKEN UND STARTEN
+----------------------------------------
+  1. ZIP "DAB-Classic-v3.0-dev-portable-win64.zip" an einen beliebigen
+     Ort entpacken (Festplatte oder USB-Stick), z. B. D:\DAB-Classic\.
+     Der Pfad darf Leerzeichen und Umlaute enthalten.
+
+  2. dab-classic.exe doppelklicken. Fertig.
+
+  Inhalt des Ordners:
+    dab-classic.exe   Programm (Oberflaeche + App-Logik)
+    core\             Empfangskern dabcored.exe mit Bibliotheken
+                      (faad2, FFTW, PortAudio, libusb, libhackrf, librtlsdr)
+    tii\txdata.tii    Senderdatenbank fuer TII-Standorte
+    webview2\         WebView2-Laufzeit (Fixed Version) - die App laeuft damit
+                      auch auf Rechnern ohne installiertes Edge/WebView2
+    data\             Einstellungen, Speicher, Timer, Aufnahmen, EPG, Logos
+    zadig-2.9.exe     USB-Treiber-Werkzeug (Abschnitt 3)
+    ANLEITUNG.txt     diese Datei
+
+  Portabler Modus: Liegt der Ordner data\ neben der EXE, speichert DAB
+  Classic alles dort und schreibt nichts ins Windows-Benutzerprofil.
+  Ohne data\-Ordner (und ohne portable.txt) werden die Daten unter
+  %APPDATA%\DAB Classic\ abgelegt. Im Einstellungs-Panel steht unter
+  "Datenordner", welcher Ordner gerade benutzt wird.
+
+  Es sind keine Eintraege in Registry oder PATH noetig. Windows-Firewall
+  oder Adminrechte werden nicht gebraucht (Ausnahme: Zadig, einmalig).
+
+
+3. USB-TREIBER EINRICHTEN (ZADIG) - einmalig pro Rechner
+--------------------------------------------------------
+  HackRF One und RTL-SDR brauchen den WinUSB-Treiber. Zadig liegt bei.
+
+  HackRF One:
+  1. HackRF One per USB anschliessen.
+  2. zadig-2.9.exe per Rechtsklick "Als Administrator ausfuehren".
+  3. Im Zadig-Fenster:
+     - Menue Options -> "List All Devices" aktivieren
+     - Im Dropdown "HackRF One" auswaehlen
+     - Rechts neben dem gruenen Pfeil muss "WinUSB" stehen
+       (sonst mit den Pfeiltasten zu "WinUSB" blaettern)
+     - "Install Driver" bzw. "Replace Driver" klicken
+     - Warten bis "Driver Installation: SUCCESS" erscheint
+  4. Fertig. Zadig wird nur einmal benoetigt, nicht bei jedem Start.
+
+  RTL-SDR (RTL2832U-Stick):
+  1. Stick anstecken.
+  2. Zadig wie oben starten, "List All Devices" aktivieren.
+  3. Im Dropdown den Stick waehlen. Er heisst meist "Bulk-In, Interface
+     (Interface 0)" oder "RTL2838UHIDIR" / "RTL2832U".
+  4. Zieltreiber "WinUSB" einstellen, "Replace Driver" klicken.
+  5. Fertig. Der Stick ist danach fuer DAB Classic (und andere SDR-
+     Programme mit librtlsdr) nutzbar.
+
+  Hinweis: Ein SDR-Geraet kann immer nur von einem Programm gleichzeitig
+  benutzt werden. Andere SDR-Software vorher schliessen.
+
+
+4. ERSTE SCHRITTE
+-----------------
+  Geraet waehlen und oeffnen
+    In der Zeile "Geraet" unter der Speicherleiste HackRF One, RTL-SDR
+    oder Datei waehlen und "Oeffnen" klicken. Bei RTL-SDR kann rechts der
+    Geraeteindex stehen (0 = erster Stick). Der Kern meldet das Geraet in
+    der Anzeige; die SYNC-LED in der Statusleiste wird gruen, sobald ein
+    DAB-Signal erkannt ist.
+
+  Scan
+    "Scan" durchlaeuft alle 38 Band-III-Kanaele (ca. 100 s) und oeffnet das
+    Scan-Panel mit den gefundenen Ensembles, SNR und Dienstezahl. Ein Klick
+    auf ein Ergebnis stimmt den Kanal ab. Gefundene Kanaele sind danach in
+    der Kanalliste mit dem Ensemble-Namen markiert.
+    Bei uebersteuertem Eingang schaltet der Scan den HackRF-Vorverstaerker
+    (AMP) selbst um und prueft den Kanal erneut.
+
+  Sender waehlen
+    Kanal in der Kanalliste waehlen (z. B. 5C fuer den Bundesmux). Im
+    Panel "Sender" erscheint die Dienstliste des Ensembles; Klick spielt
+    den Dienst. Pfeil hoch/runter schaltet zum vorherigen/naechsten Dienst.
+    Datendienste (z. B. EPG) stehen mit "Daten" in der Liste und werden
+    vom Kern im Hintergrund genutzt.
+
+  Die 10 Speicher belegen
+    - Rechtsklick auf einen Speicherknopf -> "Mit aktuellem Sender belegen"
+    - Langer Druck (0,5 s) auf einen Speicherknopf
+    - Strg + Ziffer (1-9, 0) waehrend ein Dienst laeuft
+    - Dienst aus der Senderliste auf einen Speicherknopf ziehen (Drag)
+    Ein belegter Speicher fragt vor dem Ueberschreiben nach.
+    Rechtsklick -> "Loeschen" gibt den Speicher frei.
+    Aufruf: Klick auf den Knopf oder Taste 1-9 / 0. Liegt der Sender auf
+    einem anderen Kanal, stimmt DAB Classic um und wartet auf den Dienst
+    (Statuszeile: "Speicher n: suche ... auf ...").
+
+  Favoriten-Import
+    "Favoriten importieren" in der Speicherleiste uebernimmt die Favoriten
+    aus Qt-DAB (Datei .qt-dab-presets.xml im Benutzerprofil oder unter
+    Qt-DAB-portable\data\) in freie Speicherplaetze.
+
+  Beim naechsten Start
+    Mit "Beim Start letztes Geraet oeffnen" (Einstellungen, Standard an)
+    oeffnet DAB Classic das zuletzt benutzte Geraet bzw. die letzte Datei
+    und stellt Kanal, Sender und Lautstaerke wieder her.
+
+
+5. OBERFLAECHE UND PANELS
+-------------------------
+  Von oben nach unten:
+    Titelleiste     Programmname, KERN-Anzeige (gruen = Kern laeuft),
+                    AUFNAHME-Kennung, Minimieren, Schliessen. Das Fenster
+                    laesst sich an der Titelleiste verschieben und am Rand
+                    in der Groesse aendern.
+    Anzeige         Ensemble (EId), Dienst, Bitrate, Codec, Stereo/Mono,
+                    FIC-Qualitaet, Kanal/Frequenz/SNR, Senderlogo bzw.
+                    Dia-Show, Jetzt/Danach aus dem EPG, Lauftext (DLS) mit
+                    Titel/Interpret (DL+), Aussteuerung L/R.
+    Transport       Vorheriger/naechster Dienst, Stopp, Stumm, EPG-, EWF-,
+                    TMR- und REC-Knopf, Lautstaerkeregler.
+    Speicher        Die 10 Speicherknoepfe mit Logo, Name und Kanal;
+                    "Favoriten importieren".
+    Geraet/Kanal    Geraetewahl, Oeffnen/Schliessen, Kanalliste, Scan.
+    Panel-Leiste    Knoepfe Speicher, Sender, Scan, Einstellungen, EPG,
+                    Timer, Debug - jedes Panel laesst sich ein- und
+                    ausklappen; die Sichtbarkeit wird gespeichert.
+    Statusleiste    LEDs EWF (gruen = Ensemble meldet Notfallwarn-System,
+                    rot = Alarm), SYNC, MOT, REC mit Laufzeit, Sleep-Timer-
+                    Rest, TII-Kurzinfo, Uhrzeit, Hinweise (Speicherstatus,
+                    naechster Timer, Vorwarnung).
+
+  Panels
+    Speicher        Speicherleiste (Abschnitt 4).
+    Sender          Dienstliste des Ensembles (Klick = Umschalten, Drag
+                    auf einen Speicherknopf).
+    Scan            Ergebnisse des Band-III-Scans.
+    Einstellungen   Gruppen Geraet/Empfang (Geraet, RTL-SDR-Index, PPM,
+                    AGC, manueller Gain, Merker je Geraet/Kanal), Audio
+                    (Ausgabegeraet, Lautstaerke), Notfallwarnung (EWS
+                    auswerten, automatisch umschalten, Warnton), EPG,
+                    Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
+                    Vor-/Nachlauf, Sleep-Timer), Allgemein (Sprache,
+                    Autostart, sichtbare Panels, Datenordner, Kern-Version
+                    und Kern-Neustart), TII/Debug (Heimatkoordinaten,
+                    TII-Auswertung, Schwelle, DX-Modus, Scope-Rate).
+    EPG             Tagesknoepfe (heute, morgen, ...), Dienstwahl, Sende-
+                    plan mit laufender Sendung; Klick auf eine Sendung
+                    zeigt Details mit "Umschalten", "Aufnehmen" (Aufnahme-
+                    Timer) und "Umschalt-Timer".
+    Timer           Timerliste mit Typ, Dienst, Start, Dauer, Status;
+                    "Neu", Bearbeiten, Loeschen, aktiv/inaktiv.
+    Debug           Spektrum, Konstellation, SNR-Verlauf (120 s), Zaehler
+                    (FIC, Frame-, RS-, AAC-Fehler, RS-Korrekturen, Frequenz-
+                    offset, Gain, SNR) und TII-Senderliste. Nur bei
+                    geoeffnetem Panel liefert der Kern Scope-Daten.
+
+  Gain und AGC (Einstellungen)
+    Die SNR-gesteuerte AGC ist Standard. Fuer manuelle Werte AGC
+    ausschalten; beim HackRF sind LNA (0-40, 8er-Schritte), VGA (0-62,
+    2er-Schritte) und AMP einstellbar, beim RTL-SDR der Tuner-Gain in dB.
+    DAB Classic merkt sich den Gain-Satz je Geraet und Kanal ("Merker je
+    Geraet/Kanal"); bei Datei-Wiedergabe sind die Felder ohne Wirkung und
+    deshalb ausgegraut.
+
+
+6. TASTENKUERZEL
+----------------
+  1 .. 9, 0        Speicher 1-10 aufrufen
+  Strg + Ziffer    Speicher 1-10 mit dem laufenden Sender belegen
+  Pfeil hoch/ab    vorheriger / naechster Dienst im Ensemble
+  M                Stumm ein/aus
+  + / -            Lautstaerke in 5-%-Schritten
+  R                Aufnahme starten / beenden
+  E                EPG-Panel ein/aus
+  T                Timer-Panel ein/aus
+  D                Debug-Panel ein/aus
+  Leertaste, Pfeil links/rechts, Esc
+                   reserviert fuer Timeshift (Pause/Play, +/-30 s, live),
+                   kommt mit dem naechsten Meilenstein
+  Im Alarmfenster: Esc oder Enter = Quittieren
+
+  Die Kuerzel gelten, solange kein Eingabefeld den Fokus hat; nach einer
+  Auswahl in Listen gibt DAB Classic den Fokus automatisch wieder frei.
+
+
+7. AUFNAHME UND UMSCHALTSPERRE
+------------------------------
+  REC-Knopf oder Taste R startet die Aufnahme des laufenden Dienstes als
+  WAV (48 kHz, Stereo, 16 Bit, unabhaengig von der Lautstaerke). Der Knopf
+  blinkt rot, die Titelleiste zeigt "AUFNAHME", die Statusleiste "REC" mit
+  Laufzeit (Tooltip: Dateiname). Nochmals REC/R beendet die Aufnahme und
+  meldet Datei und Groesse.
+
+  Dateiname (wie in Qt-DAB):
+    JJJJMMTT_HHMMSS_<Dienst auf 16 Zeichen>_<Titel>.wav
+    z. B. 20260912_121101_Dlf______________Informationen_am_Mittag.wav
+  Ablage: data\recordings\ oder der in den Einstellungen gewaehlte
+  Aufnahmeordner ("Ordner..." oeffnet den Auswahldialog, "Standard" setzt
+  auf data\recordings zurueck).
+
+  Umschaltsperre: Waehrend einer Aufnahme sind Sender-, Kanal- und
+  Speicherwechsel sowie der Scan gesperrt. Ein Versuch oeffnet den Dialog
+  "Aufnahme laeuft" mit "Aufnahme beenden und wechseln" oder "Abbrechen".
+  Ein Notfall-Alarm mit automatischer Umschaltung hat Vorrang.
+
+
+8. TIMER, VOR-/NACHLAUF, SLEEP-TIMER
+------------------------------------
+  Timer anlegen
+    Timer-Panel -> "Neu": Typ (Umschalten oder Aufnahme), Dienst (aus dem
+    aktuellen Ensemble, aus den Speichern oder frei mit Name und Kanal),
+    Startzeit, Dauer in Minuten (0 = nur umschalten bzw. Aufnahme bis zum
+    manuellen Stopp), Titel fuer den Dateinamen. "Speichern" prueft
+    Konflikte: Startzeit in der Vergangenheit, Ueberschneidung mit einem
+    bestehenden Timer ("Ersetzen"/"Trotzdem anlegen") oder eine bereits
+    laufende Aufnahme.
+
+  Timer aus dem EPG
+    Im EPG-Panel eine Sendung anklicken -> "Aufnehmen" legt einen EPG-
+    Aufnahme-Timer mit Start, Dauer und Titel der Sendung an, "Umschalt-
+    Timer" einen EPG-Umschalt-Timer. "Umschalten" wechselt sofort.
+
+  Ablauf
+    Zur Startzeit stimmt DAB Classic Kanal und Dienst ab (auch ueber
+    Kanalgrenzen), schaltet um bzw. startet die Aufnahme und beendet sie
+    nach der Dauer plus Nachlauf. Die Statusleiste zeigt den naechsten
+    wartenden Timer; Meldungen informieren ueber Start, Ende, Wartezeit
+    (weil eine Aufnahme laeuft) oder einen verpassten Timer. Erledigte
+    Timer werden beim naechsten Start ausgeduennt.
+
+  Vor-/Nachlauf (Einstellungen -> Aufnahme/Timer)
+    Aufnahme-Timer starten um den Vorlauf frueher und enden um den
+    Nachlauf spaeter (Standard 2 min vor, 5 min nach). Der Timer-Panel-
+    Kopf zeigt die aktuellen Werte.
+
+  Import aus Qt-DAB
+    Fehlt data\timers.json, uebernimmt DAB Classic beim ersten Start
+    einmalig die Timer aus .qt-dab-timers.json (Benutzerprofil oder
+    Qt-DAB-portable\data\).
+
+  Sleep-Timer (Einstellungen -> Aufnahme/Timer)
+    Minuten eingeben (1-1440), Aktion "stumm" oder "beenden", "Start".
+    Die Restzeit steht in der Statusleiste (SLEEP mm:ss); "Abbrechen"
+    hebt ihn auf.
+
+
+9. NOTFALLWARNUNG (EWS) UND ALARMFENSTER
+----------------------------------------
+  DAB Classic wertet die Notfallwarn-Signalisierung nach ETSI TS 104 089
+  (FIG 0/15) aus, wie sie der Bundesmux "DR Deutschland" (Kanal 5C) sendet
+  und am bundesweiten Warntag 10.09.2026 gesendet hat.
+
+  Anzeige im Normalbetrieb
+    EWF-LED gruen: Das Ensemble nimmt am Warnsystem teil (Heartbeat).
+    Vorwarnung (Pre-Trigger): Hinweis in der Statusleiste mit Unterkanal.
+
+  Alarm (Trigger/Sustain)
+    - Das Alarmfenster oeffnet sich immer im Vordergrund: Warndienst,
+      Phase (Ausloesung / andauernd), Stufe mit dem rohen Status-Byte
+      (z. B. "0 (Rohwert 0x01)"), Ortscodes, IId und Unterkanal, Test-
+      Kennzeichen (Rahmen gelb statt rot) und ein Hinweis.
+    - Ein Warnton ertoent (abschaltbar: Einstellungen -> "Warnton im
+      Alarmfenster").
+    - Bei "Bei Alarm automatisch umschalten" (Standard an) schaltet der
+      Kern auf den Warndienst (im Bundesmux "ASA DE") um; das Fenster
+      nennt den vorherigen Sender.
+    - Im Hauptfenster erscheint ein roter Alarmbalken, die EWF-LED
+      blinkt rot.
+    - "Quittieren" (Esc/Enter) schliesst das Fenster und den Balken; der
+      Alarm laeuft weiter, bis das Ensemble das Ende signalisiert.
+
+  Alarmende (End oder Heartbeat)
+    Das Alarmfenster schliesst, der vorherige Sender laeuft live weiter,
+    ein Hinweis "Alarm beendet" erscheint fuer einige Sekunden.
+
+  Einstellungen: "Notfallwarnung (EWS) auswerten" schaltet die Auswertung
+  ganz ab; "Bei Alarm automatisch umschalten" und "Warnton" sind einzeln
+  waehlbar.
+
+  Zum Ausprobieren eignet sich die Datei-Wiedergabe eines Warntag-
+  Mitschnitts (Abschnitt 10).
+
+
+10. DATEI-WIEDERGABE (.uff / .iq)
+---------------------------------
+  Geraet "Datei" waehlen, Pfad eintragen oder mit "..." auswaehlen,
+  "Schleife" nach Wunsch, "Oeffnen". Unterstuetzt werden .uff (Qt-DAB-
+  XML-Format, 8-Bit-IQ) und rohe int8-.iq-Dateien mit 2,048 MS/s.
+
+  In der Anzeige laeuft die Position (mm:ss / Laenge, Schleifensymbol);
+  am Dateiende erscheint "Datei zu Ende" (ohne Schleife). Kanalliste und
+  Scan sind bei Datei-Wiedergabe deaktiviert, Speicheraufruf funktioniert
+  fuer Dienste der Datei. EPG, Logos, EWS-Alarm, Aufnahme und Debug-Panel
+  arbeiten mit Dateien genauso wie mit Geraeten.
+
+  Der Kern kann die Samples einer laufenden Quelle (Geraet oder Datei)
+  selbst als .uff mitschreiben (IQ-Dump, heute ueber dab-cli /
+  dabcored; siehe Abschnitt 14).
+
+
+11. DATENORDNER data\
+---------------------
+  data\settings.json     alle Einstellungen (JSON, lesbar; Aenderungen
+                         bei geschlossenem Programm vornehmen)
+  data\presets.json      die 10 Speicher (Kanal, EId, SId, Name, Logo)
+  data\timers.json       Timer (Version 2; Qt-DAB-Timer werden importiert)
+  data\recordings\       Aufnahmen (WAV), sofern kein anderer Ordner
+                         eingestellt ist
+  data\epg\<EId>\        EPG-Sendeplaene je Ensemble und Tag
+                         (JJJJMMTT_<SId>_SI.xml), alte Tage werden beim
+                         Start entfernt
+  data\logos\<EId>\      Senderlogos aus dem SPI-Dienst (PNG/JPEG)
+  data\tii-files.csv     TII-Protokoll im DX-Modus (Zeit, Kanal, Ensemble,
+                         Sender, Staerke, Entfernung, Azimut)
+  data\txdata.tii        optional: eigene TII-Datenbank; hat Vorrang vor
+                         tii\txdata.tii neben der EXE
+  data\log\              fuer Protokolle vorgesehen
+  data\music\            fuer die Musikaufnahme (naechster Meilenstein)
+
+  Fuer einen Umzug reicht es, den ganzen Portable-Ordner zu kopieren.
+  Einstellungen und Speicher lassen sich durch Loeschen der jeweiligen
+  Datei auf Standard zuruecksetzen.
+
+
+12. TII-SENDESTANDORTE UND HEIMATKOORDINATEN
+--------------------------------------------
+  Der Kern liest im Nullsymbol die TII-Kennungen (Haupt-/Unter-ID) der
+  empfangenen Sender eines Gleichwellennetzes und ordnet sie ueber
+  txdata.tii Sendernamen zu (5C in Langenberg-Reichweite: Langenberg,
+  Duesseldorf, Koeln). Das Debug-Panel zeigt die Liste mit Staerke; die
+  Statusleiste den staerksten Sender.
+
+  Heimatkoordinaten (Einstellungen -> TII/Debug, Dezimalgrad, z. B.
+  51.2180 / 6.7617) schalten Entfernung in km und Azimut (Kompassrichtung)
+  je Sender frei. "TII auswerten" und die Schwelle steuern den Detektor;
+  der DX-Modus protokolliert jede neue Sichtung in data\tii-files.csv.
+
+
+13. SPRACHE
+-----------
+  Einstellungen -> Allgemein -> Sprache: System, Deutsch oder English.
+  Die Umschaltung wirkt sofort auf alle Texte, auch im Alarmfenster.
+  "System" folgt der Windows-Anzeigesprache (Deutsch, sonst Englisch).
+
+
+14. FUER ENTWICKLER: BAUEN, TESTEN, PORTABLE-PAKET
+--------------------------------------------------
+  Quellen: Repository clrsrc/qt-dab-classic, Branch v3-dev, Ordner V2\.
+  Verbindliche Entscheidungen: V2\docs\Entscheidungen.md,
+  Protokoll Kern <-> App: V2\docs\protocol.md.
+
+  Werkzeuge
+    - MSYS2 UCRT64 mit gcc, cmake, ninja und den Bibliotheken faad2, fftw3f,
+      portaudio, libusb, hackrf (librtlsdr.dll liegt unter
+      core-cpp\third_party\bin\, Abholung per tools\fetch-rtlsdr.ps1)
+    - Rust stable (MSVC) mit Visual Studio Build Tools 2022
+    - Node.js mit pnpm, Tauri-CLI ueber pnpm
+
+  Kern (C++), einmal pro Aenderung; kopiert dabcored.exe + DLLs nach
+  apps\desktop\src-tauri\resources\core\ und fuehrt die 7 ctest-Laeufe aus:
+    cd P:\Projekte\DAB\V2
+    .\tools\build-core.ps1 -Test
+
+  Rust-Workspace (dab-api, dab-core, dab-app, dab-cli, Tauri-Crate):
+    cargo build --release
+    cargo test --workspace
+    .\target\release\dab-cli.exe --no-audio replay ..\Warntag-2026\cuts\warnung-110030-2min.uff --fast
+    .\target\release\dab-cli.exe live --channel 5C --service Dlf --duration 30
+    .\target\release\dab-cli.exe scan --device hackrf
+
+  Oberflaeche (Entwicklung mit Hot-Reload; Datenordner apps\desktop\data\):
+    cd apps\desktop
+    pnpm install
+    pnpm run check        # svelte-check
+    pnpm build            # statischer Build nach build\
+    pnpm tauri dev        # Shell starten
+
+  Portable-Paket (Release-Build von Kern und Shell, Ordner dist\
+  DAB-Classic-portable\, mit -Zip zusaetzlich das ZIP):
+    .\tools\deploy-portable.ps1 -Zip
+  Die WebView2-Fixed-Version-Runtime (.cab, x64) wird aus
+  third_party\webview2\ eingebunden; Bezug: developer.microsoft.com/
+  microsoft-edge/webview2 -> "Fixed Version". Ohne .cab entsteht ein
+  Paket, das die auf dem Rechner installierte Evergreen-Runtime nutzt.
+
+  Kern direkt (ohne Rust):
+    .\core-cpp\build\dabcored.exe --no-audio --file X.uff --fast --events out.jsonl
+    .\target\release\dab-cli.exe live --channel 5C --gain 40,24,0 --no-agc --iq-dump 5c.uff --duration 10
+
+============================================================
+  DAB Classic v3.0 (Entwicklungsstand M3) - Stefan Kammann (DM2TIM)
+  Lizenz: GPLv3 - Empfangskern auf Basis von Qt-DAB (Jan van Katwijk)
+============================================================

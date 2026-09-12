@@ -87,7 +87,7 @@ und die App bei Überlast verwerfen darf.
 | `audio_underrun` | `missed` |
 | `audio_devices` | `names[]`, `current?` – nach `ready` (als drittes Ereignis, nach der Viterbi-Log-Zeile), nach `get_state` (direkt nach `state_snapshot`) und nach `set_audio_device`; mit `--no-audio` leere Liste und `current: null` |
 | `ews_present` | |
-| `ews_alert` | `phase: pre_trigger\|trigger\|sustain\|end`, `sub_ch`, `stage`, `iid`, `locations[]`, `is_test` |
+| `ews_alert` | `phase: pre_trigger\|trigger\|sustain\|end`, `sub_ch`, `stage`, `stage_raw`, `iid`, `locations[]`, `is_test` – `stage` = Bits 6..4 des Status-Bytes der FIG 0/15, `stage_raw` = das ganze Status-Byte (Bit 7 Last, Bits 6..4 Stage, Bits 3..0 IId) der ersten Trigger-Instanz; Warntag 2026: `0x01`; bei `sustain` ohne gesehenen Trigger und bei `end` der zuletzt gemerkte Wert (sonst 0). Rust liest fehlendes `stage_raw` als 0 |
 | `ews_alive` | `sub_ch?` (Unterkanal des aktiven Alarms, höchstens 1/s Ensemble-Zeit; `null` = Heartbeat ohne Alarm, 1/s) |
 | `ewf_alarm` | `active`, `sub_ch` |
 | `ews_switched` | `to_sid`, `from_sid?` |
@@ -117,7 +117,7 @@ und die App bei Überlast verwerfen darf.
 ← {"type":"audio_format","rate":48000,"channels":2}
 ← {"type":"dls","slot":"primary","sid":53776,"text":"Aus EUDI-Wallet wird \"d-you\" ..., Falk Steiner"}
 ← {"type":"dl_plus","slot":"primary","sid":53776,"item_toggle":false,"item_running":true,"tags":[[1,"Aus EUDI-Wallet wird \"d-you\" ..."],[4,"Falk Steiner"]]}
-← {"type":"ews_alert","phase":"trigger","sub_ch":1,"stage":1,"iid":1,"locations":["Z1:5C+F300"],"is_test":false}
+← {"type":"ews_alert","phase":"trigger","sub_ch":1,"stage":0,"stage_raw":1,"iid":1,"locations":["Z1:5C+F300"],"is_test":false}
 → {"type":"shutdown"}
 ← {"type":"exiting","reason":"shutdown"}
 ```

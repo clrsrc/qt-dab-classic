@@ -42,8 +42,9 @@ struct ReceiverCallbacks {
     std::function<void(int sid, int pty)>     programType;
     std::function<void(bool)>                 alarmFlag;
     std::function<void(bool active, int subChId)> ewfAlarm;
-    // EWS (FIG 0/15): phase 0 Pre-trigger, 1 Trigger, 2 Sustain, 3 End
-    std::function<void(int phase, int subChId, int stage, int iid,
+    // EWS (FIG 0/15): phase 0 Pre-trigger, 1 Trigger, 2 Sustain, 3 End;
+    // stageRaw = rohes Status-Byte (Last/Stage/IId) der Trigger-Instanz
+    std::function<void(int phase, int subChId, int stage, int stageRaw, int iid,
                        const std::vector<std::string>& locations)> ewsAlert;
     // subChId < 0: Heartbeat ohne aktiven Alarm
     std::function<void(int subChId)>          ewsAlive;

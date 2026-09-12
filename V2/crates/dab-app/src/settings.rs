@@ -31,7 +31,8 @@ pub struct Settings {
     pub music_keep_aac: bool,
     pub music_mp3_kbps: u16,
     pub audio_device: Option<u32>,
-    pub debug_panel_open: bool,
+    /// EPG/SPI-Paketdienst im Kern automatisch mitlaufen lassen (`set_epg`), Standard an.
+    pub epg_enabled: bool,
     /// Beim Start das zuletzt benutzte Geraet oeffnen und den letzten Dienst wiederherstellen.
     pub autostart: bool,
     /// Letzte Datei fuer die Datei-Wiedergabe (Entscheidung 13).
@@ -94,7 +95,7 @@ impl Default for Settings {
             music_keep_aac: false,
             music_mp3_kbps: 256,
             audio_device: None,
-            debug_panel_open: false,
+            epg_enabled: true,
             autostart: true,
             last_file: None,
             file_loop: true,
@@ -161,5 +162,13 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"volume_percent": 42}"#).unwrap();
         assert_eq!(s.volume_percent, 42);
         assert_eq!(s.music_mp3_kbps, 256);
+        assert!(s.epg_enabled);
+    }
+
+    #[test]
+    fn unknown_fields_are_ignored() {
+        // aeltere settings.json (z. B. mit `debug_panel_open`) bleibt lesbar
+        let s: Settings = serde_json::from_str(r#"{"debug_panel_open": true, "epg_enabled": false}"#).unwrap();
+        assert!(!s.epg_enabled);
     }
 }

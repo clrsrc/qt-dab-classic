@@ -6,7 +6,8 @@ Oberfläche mit Tauri 2 + Svelte 5. Der bisherige Qt-DAB-Code in
 `../qt-dab-master/` bleibt unverändert und dient als Referenz.
 
 Entscheidungen: `docs/Entscheidungen.md`. Analyse: `docs/Analyse-2026-09-11.md`.
-Protokoll: `docs/protocol.md`.
+Protokoll: `docs/protocol.md`. Bedienung, Treiber, Portable-Ordner und Build-Schritte:
+`ANLEITUNG.txt` (liegt auch im Portable-Paket).
 
 ## Aufbau
 
@@ -94,6 +95,22 @@ cd apps\desktop
 pnpm install
 pnpm tauri dev
 ```
+
+## Stand M3
+
+Feature-Parität zur Classic Compact Shell: EWS-Alarm mit eigenem Alarmfenster
+(FIG 0/15, `ews_alert` inkl. rohem Status-Byte `stage_raw`), Timer (manuell und
+aus dem EPG, Vor-/Nachlauf, Import der v1-Timer), WAV-Aufnahme mit
+Umschaltsperre, Sleep-Timer, EPG-Panel mit Jetzt/Danach, Senderlogos,
+TII-Sendestandorte mit Entfernung/Azimut, Debug-Panel (Spektrum, Konstellation,
+SNR-Verlauf, Zähler), Datei-Wiedergabe, vollständiges Einstellungs-Panel
+(Gerät/Gain je Gerät und Kanal, Audio, EWS, EPG, Aufnahmeordner, Panels,
+Sprache DE/EN), portabler Datenordner `data/`.
+
+Portable-Paket: `.	ools\deploy-portable.ps1 -Zip` baut Kern und Shell im
+Release und packt `dist\DAB-Classic-portable\` (EXE, `core\`, `tii\`, `data\`,
+WebView2-Fixed-Version-Runtime aus `third_party\webview2\*.cab`) sowie
+`dist\DAB-Classic-v3.0-dev-portable-win64.zip`.
 
 ## Meilensteine
 

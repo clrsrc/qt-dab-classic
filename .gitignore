@@ -72,6 +72,8 @@ V2/apps/desktop/src-tauri/target/
 V2/apps/desktop/src-tauri/gen/
 V2/apps/desktop/src-tauri/resources/core/
 V2/dist-portable/
+V2/dist/
+V2/third_party/
 V2/tests/data/*.uff
 V2/tests/data/*.iq
 

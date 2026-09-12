@@ -263,7 +263,7 @@ export function applyCoreEvent(ev: CoreEvent) {
         s.ews_switched_from = null;
       } else {
         const dismissed = !!s.alert && s.alert.dismissed && s.alert.iid === e.iid && s.alert.sub_ch === e.sub_ch;
-        s.alert = { phase: e.phase, sub_ch: e.sub_ch, stage: e.stage, iid: e.iid, locations: e.locations, is_test: e.is_test, dismissed };
+        s.alert = { phase: e.phase, sub_ch: e.sub_ch, stage: e.stage, stage_raw: e.stage_raw ?? 0, iid: e.iid, locations: e.locations, is_test: e.is_test, dismissed };
       }
       break;
     case "ews_switched":
@@ -399,9 +399,14 @@ export async function refreshState() {
 /** Einstellungen aendern (Teilobjekt) und an die Rust-Seite geben. */
 export async function patchSettings(patch: Partial<Settings>) {
   if (!ui.settings) return;
-  const next = { ...ui.settings, ...patch };
-  ui.settings = next;
+  // Sofort im Spiegel (Sprache/Panels reagieren ohne Wartezeit), dann auf der
+  // frischen Rust-Fassung aufsetzen: die pflegt z. B. gain_by_channel und
+  // last_channel selbst, das darf ein Patch nicht ueberschreiben.
+  ui.settings = { ...ui.settings, ...patch };
   if (patch.language !== undefined) setLang(patch.language);
+  const base = await api.getSettings().catch(() => ui.settings as Settings);
+  const next = { ...base, ...patch };
+  ui.settings = next;
   await api.updateSettings(next);
 }
 

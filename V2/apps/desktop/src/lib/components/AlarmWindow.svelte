@@ -30,7 +30,8 @@
     if (sid == null) return "";
     return s.services.find((x) => x.sid === sid)?.name.trim() ?? sid.toString(16).toUpperCase();
   });
-  const stageHex = $derived((alert?.stage ?? 0).toString(16).toUpperCase().padStart(2, "0"));
+  // Rohes Status-Byte der FIG 0/15 aus dem Kern (Warntag 2026: 0x01 = Last-Bit 0, Stufe 0, IId 1)
+  const stageHex = $derived((alert?.stage_raw ?? 0).toString(16).toUpperCase().padStart(2, "0"));
   const beepOn = $derived(active && !alert?.dismissed && (ui.settings?.alarm_beep ?? true));
 
   $effect(() => {

@@ -585,7 +585,7 @@ fn print_event(t: Duration, ev: &Event) {
         Event::MotObject { sid, content_type, name, data_b64, .. } => println!("{ts}  MOT   [{sid:04X}] {name} ct=0x{content_type:04X} {} B", data_b64.len() * 3 / 4),
         Event::EpgObject { sid, date_yyyymmdd, name, xml, .. } => println!("{ts}  EPG   [{sid:04X}] {date_yyyymmdd} {name} {} B XML", xml.len()),
         Event::AudioFormat { rate, channels } => println!("{ts}  AUDIO {rate} Hz, {channels} Kanaele"),
-        Event::EwsAlert { phase, sub_ch, stage, iid, locations, is_test } => println!("{ts}  EWS  {phase:?} subCh={sub_ch} stage={stage} iid={iid} test={is_test} {} Orte", locations.len()),
+        Event::EwsAlert { phase, sub_ch, stage, stage_raw, iid, locations, is_test } => println!("{ts}  EWS  {phase:?} subCh={sub_ch} stage={stage} (roh 0x{stage_raw:02X}) iid={iid} test={is_test} {} Orte", locations.len()),
         Event::EwsAlive { sub_ch: Some(sub_ch) } => println!("{ts}  EWS  alive subCh={sub_ch}"),
         Event::EwsAlive { sub_ch: None } => println!("{ts}  EWS  heartbeat"),
         Event::EwsPresent => println!("{ts}  EWS  vorhanden"),

@@ -72,6 +72,7 @@
 	theEws. phase		= 0;
 	theEws. subChId		= 0;
 	theEws. stage		= 0;
+	theEws. stageRaw	= 0;
 	theEws. iid		= 0;
 	theEws. setComplete	= false;
 	ewsHeartbeatSeen	= false;
@@ -899,7 +900,7 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	      logf ("info", "EWS: heartbeat while alert active - alert on subCh %d ended",
 	               theEws. subChId);
 	      emitCb (cb -> ewsAlert, 3, (int)theEws. subChId, (int)theEws. stage,
-	              (int)theEws. iid, noCodes);
+	              (int)theEws. stageRaw, (int)theEws. iid, noCodes);
 	   }
 //	V2: der Heartbeat selbst ist das Lebenszeichen der EWS-Signalisierung
 	   emitCb (cb -> ewsAlive, -1);
@@ -936,7 +937,7 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	         theEws. phase = 2;
 	         logf ("info", "EWS: alert on subCh %d in Sustain phase", subChId);
 	         emitCb (cb -> ewsAlert, 2, (int)subChId, (int)theEws. stage,
-	                 (int)theEws. iid, theEws. locations);
+	                 (int)theEws. stageRaw, (int)theEws. iid, theEws. locations);
 	      }
 	      ewsAliveThrottled (subChId);
 	   }
@@ -946,11 +947,12 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	      theEws. phase	= 2;
 	      theEws. subChId	= subChId;
 	      theEws. stage	= 0;
+	      theEws. stageRaw	= 0;
 	      theEws. iid	= 0;
 	      theEws. locations. clear ();
 	      theEws. setComplete = false;
 	      logf ("info", "EWS: Sustain phase without Trigger seen, subCh %d", subChId);
-	      emitCb (cb -> ewsAlert, 2, (int)subChId, 0, 0, noCodes);
+	      emitCb (cb -> ewsAlert, 2, (int)subChId, 0, 0, 0, noCodes);
 	   }
 	   return;
 	}
@@ -960,7 +962,7 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	      theEws. phase  = 3;
 	      logf ("info", "EWS: End phase, alert on subCh %d ended", subChId);
 	      emitCb (cb -> ewsAlert, 3, (int)subChId, (int)theEws. stage,
-	              (int)theEws. iid, noCodes);
+	              (int)theEws. stageRaw, (int)theEws. iid, noCodes);
 	   }
 	   ewsPreTriggerKey = 0xFFFFFFFF;
 	   return;
@@ -996,6 +998,7 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	      theEws. phase	= 1;
 	      theEws. subChId	= subChId;
 	      theEws. stage	= stage;
+	      theEws. stageRaw	= status;
 	      theEws. iid	= iid;
 	      theEws. locations. clear ();
 	      theEws. setComplete = false;
@@ -1013,9 +1016,9 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	               joinCodes (theEws. locations). c_str ());
 	   }
 	   if (newAlert) {
-	      logf ("info", "EWS: TRIGGER subCh %d stage %d IId %d, %d location code(s) in this instance",
-	               subChId, stage, iid, (int)codes. size ());
-	      emitCb (cb -> ewsAlert, 1, (int)subChId, (int)stage, (int)iid, codes);
+	      logf ("info", "EWS: TRIGGER subCh %d stage %d (status 0x%02X) IId %d, %d location code(s) in this instance",
+	               subChId, stage, status, iid, (int)codes. size ());
+	      emitCb (cb -> ewsAlert, 1, (int)subChId, (int)stage, (int)status, (int)iid, codes);
 	   }
 	   ewsAliveThrottled (subChId);
 	}
@@ -1025,7 +1028,7 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	      logf ("info", "EWS: %s subCh %d stage %d IId %d, trigger at second %d, area %s",
 	               phaseNames [phase], subChId, stage, iid, sec,
 	               joinCodes (codes). c_str ());
-	      emitCb (cb -> ewsAlert, 0, (int)subChId, (int)stage, (int)iid, codes);
+	      emitCb (cb -> ewsAlert, 0, (int)subChId, (int)stage, (int)status, (int)iid, codes);
 	   }
 	}
 }

@@ -166,7 +166,8 @@ impl App {
         let mut fx = Effects::default()
             .cmd(Command::SetVolume { percent: s.volume_percent })
             .cmd(Command::SetAgc { enabled: s.agc })
-            .cmd(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch });
+            .cmd(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch })
+            .cmd(Command::SetEpg { enabled: s.epg_enabled });
         fx.append(self.debug_startup());
         if s.ppm != 0 {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
@@ -506,6 +507,9 @@ impl App {
         }
         if old.ews_enabled != s.ews_enabled || old.ews_autoswitch != s.ews_autoswitch {
             fx = fx.cmd(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch });
+        }
+        if old.epg_enabled != s.epg_enabled {
+            fx = fx.cmd(Command::SetEpg { enabled: s.epg_enabled });
         }
         if old.ppm != s.ppm {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
@@ -906,7 +910,7 @@ mod tests {
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 1, scids: 0, slot: ServiceSlot::Primary }]);
         let fx = a.step_service(-1).unwrap();
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 2, scids: 0, slot: ServiceSlot::Primary }]);
-        a.handle_event(&Event::EwsAlert { phase: EwsPhase::Trigger, sub_ch: 1, stage: 1, iid: 1, locations: vec![], is_test: false }, now);
+        a.handle_event(&Event::EwsAlert { phase: EwsPhase::Trigger, sub_ch: 1, stage: 1, stage_raw: 0x81, iid: 1, locations: vec![], is_test: false }, now);
         let fx = a.command(Command::EwsDismiss).unwrap();
         assert_eq!(fx.commands, vec![Command::EwsDismiss]);
         assert!(a.state.alert.as_ref().unwrap().dismissed);

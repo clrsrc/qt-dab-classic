@@ -3,18 +3,18 @@
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, patchSettings, refreshState, s, togglePanel, ui } from "$lib/state.svelte";
 
-  let device = $state("hackrf");
+  // Geraet und RTL-SDR-Index kommen aus den Einstellungen (auch im
+  // Einstellungs-Panel aenderbar); Datei/Schleife sind lokale Eingaben.
+  const device = $derived(ui.settings?.device ?? "hackrf");
+  const rtlIndex = $derived(ui.settings?.rtlsdr_index ?? 0);
   let filePath = $state("");
   let fileLoop = $state(true);
-  let rtlIndex = $state(0);
   let initialised = false;
   $effect(() => {
     if (ui.settings && !initialised) {
       initialised = true;
-      device = ui.settings.device;
       filePath = ui.settings.last_file ?? "";
       fileLoop = ui.settings.file_loop;
-      rtlIndex = ui.settings.rtlsdr_index;
     }
   });
   const run = (p: Promise<unknown>) => p.catch((e) => notify("warn", tError(e)));
@@ -51,8 +51,10 @@
     }
   }
   function onDevice(e: Event) {
-    device = (e.target as HTMLSelectElement).value;
-    void patchSettings({ device });
+    void patchSettings({ device: (e.target as HTMLSelectElement).value });
+  }
+  function onRtlIndex(e: Event) {
+    void patchSettings({ rtlsdr_index: Math.max(0, Number((e.target as HTMLInputElement).value) || 0) });
   }
 </script>
 
@@ -68,7 +70,7 @@
     <button class="btn" onclick={pick} title={t("device.pick")}>…</button>
     <label><input type="checkbox" bind:checked={fileLoop} />{t("device.loop")}</label>
   {:else if device === "rtlsdr"}
-    <input type="number" class="idx" bind:value={rtlIndex} min="0" max="9" title={t("device.rtlsdr_index")} />
+    <input type="number" class="idx" value={rtlIndex} min="0" max="9" title={t("device.rtlsdr_index")} onchange={onRtlIndex} />
   {/if}
   <button class="btn" class:on={!!s.device} onclick={open}>{t("device.open")}</button>
   {#if s.device}

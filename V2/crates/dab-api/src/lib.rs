@@ -264,7 +264,19 @@ pub enum Event {
 
     // EWS / EWF
     EwsPresent,
-    EwsAlert { phase: EwsPhase, sub_ch: u8, stage: u8, iid: u16, locations: Vec<String>, is_test: bool },
+    /// `stage_raw`: rohes Status-Byte der FIG 0/15 (Bit 7 Last, Bits 6..4
+    /// Stage, Bits 3..0 IId) der ersten Trigger-Instanz, Warntag 2026: 0x01;
+    /// additiv, Standard 0.
+    EwsAlert {
+        phase: EwsPhase,
+        sub_ch: u8,
+        stage: u8,
+        #[serde(default)]
+        stage_raw: u8,
+        iid: u16,
+        locations: Vec<String>,
+        is_test: bool,
+    },
     /// Lebenszeichen der EWS-Signalisierung: `sub_ch` = Unterkanal des
     /// aktiven Alarms (hoechstens 1/s), `None` = Heartbeat ohne Alarm (1/s).
     EwsAlive { sub_ch: Option<u8> },
@@ -473,14 +485,22 @@ mod tests {
             phase: EwsPhase::Trigger,
             sub_ch: 1,
             stage: 1,
+            stage_raw: 0x81,
             iid: 1,
             locations: vec!["Z1:5C+F300".into()],
             is_test: false,
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("\"type\":\"ews_alert\""));
+        assert!(s.contains("\"stage_raw\":129"));
         let back: Event = serde_json::from_str(&s).unwrap();
         assert_eq!(back, ev);
+        // Aeltere Kerne ohne stage_raw: Feld fehlt -> 0
+        let old = r#"{"type":"ews_alert","phase":"trigger","sub_ch":1,"stage":1,"iid":1,"locations":[],"is_test":false}"#;
+        match serde_json::from_str::<Event>(old).unwrap() {
+            Event::EwsAlert { stage_raw, .. } => assert_eq!(stage_raw, 0),
+            _ => panic!(),
+        }
     }
 
     #[test]

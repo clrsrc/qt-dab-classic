@@ -80,6 +80,8 @@ pub struct AlertState {
     pub phase: EwsPhase,
     pub sub_ch: u8,
     pub stage: u8,
+    /// Rohes Status-Byte der FIG 0/15 (Warntag 2026: 0x01).
+    pub stage_raw: u8,
     pub iid: u16,
     pub locations: Vec<String>,
     pub is_test: bool,
@@ -326,7 +328,7 @@ impl AppState {
                 self.audio_device_current = *current;
             }
             Event::EwsPresent => self.ews_present = true,
-            Event::EwsAlert { phase, sub_ch, stage, iid, locations, is_test } => {
+            Event::EwsAlert { phase, sub_ch, stage, stage_raw, iid, locations, is_test } => {
                 if *phase == EwsPhase::End {
                     self.alert = None;
                     self.ews_switched_from = None;
@@ -340,6 +342,7 @@ impl AppState {
                         phase: *phase,
                         sub_ch: *sub_ch,
                         stage: *stage,
+                        stage_raw: *stage_raw,
                         iid: *iid,
                         locations: locations.clone(),
                         is_test: *is_test,
@@ -440,7 +443,7 @@ mod tests {
     #[test]
     fn alert_phases_and_dismiss() {
         let mut st = AppState::default();
-        let alert = |phase| Event::EwsAlert { phase, sub_ch: 1, stage: 1, iid: 7, locations: vec![], is_test: false };
+        let alert = |phase| Event::EwsAlert { phase, sub_ch: 1, stage: 1, stage_raw: 0x81, iid: 7, locations: vec![], is_test: false };
         st.apply(&alert(EwsPhase::Trigger));
         assert!(st.alert.is_some());
         st.alert.as_mut().unwrap().dismissed = true;
