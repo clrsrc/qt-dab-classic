@@ -12,6 +12,8 @@
 #include "backend/msc-handler.h"
 #include "backend/backend.h"
 #include "backend/backend-callbacks.h"
+#include "backend/timeshift-controller.h"
+#include "backend/timeshift-export.h"
 #include "backend/audio/aac-decoder.h"
 #include "pad/mot-object.h"
 #include "backend/data/epg/epg-compiler.h"
@@ -132,6 +134,15 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
     int has_sse4 = __builtin_cpu_supports("sse4.1") != 0 ? SSE_SUPPORT : 0;
     cpuSupport_ = static_cast<uint8_t>(has_avx2 + has_sse4);
 #endif
+    // Timeshift-Ring des Primary-Slots (Entscheidung 4, Plan M4):
+    // Meldungen, Log, Audio-Flush und die Ensemble-Uhrzeit kommen von hier.
+    timeshift_ = std::make_unique<TimeshiftController>();
+    timeshift_->setNotify([this](const TimeshiftSnapshot& s) { onTimeshiftState(s); });
+    timeshift_->setLogger([this](const char* level, const std::string& t) { sink_(events::log(level, t)); });
+    timeshift_->setFlush([this] { flushPrimaryAudio(); });
+    timeshift_->setStarvedHandler([this](bool starved) { setPrimaryStarved(starved); });
+    timeshift_->setClock([this] { return frameUnixNow(); });
+
     params_ = std::make_unique<processParams>();
     callbacks_ = std::make_unique<ReceiverCallbacks>();
     msc_ = std::make_unique<mscHandler>(params_->dabMode, cpuSupport_);
@@ -168,6 +179,7 @@ DabCore::~DabCore() {
     stopSpike();
     closeDevice();
     stopFrameDump();
+    joinExportThread();
 }
 
 // audio_devices kommt nach ready, auf get_state und nach set_audio_device;
@@ -200,6 +212,76 @@ void DabCore::onTii(const std::vector<std::tuple<uint8_t, uint8_t, float>>& tx) 
 std::string DabCore::currentChannel() const {
     std::lock_guard<std::mutex> lk(stateM_);
     return state_["channel"].is_string() ? state_["channel"].get<std::string>() : "";
+}
+
+// Entscheidung 5 / v1 radio.cpp ewsStart: bei Trigger/Sustain auf den
+// Warndienst (den Audiodienst auf dem gemeldeten Unterkanal) wechseln,
+// bei End zurueck auf den Dienst, der vorher lief. Laeuft im OFDM-Thread
+// (FIC-Callback), wie die anderen ews*-Callbacks auch.
+void DabCore::handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest) {
+    bool autoswitch;
+    {
+        std::lock_guard<std::mutex> lk(stateM_);
+        autoswitch = state_.value("ews_autoswitch", true);
+    }
+    if (!autoswitch || isTest) return;
+    if (phase == 1 || phase == 2) {   // Trigger, Sustain
+        if (ewsAutoActive_) return;   // schon auf dem Warndienst
+        uint32_t targetSid = 0;
+        uint8_t targetScids = 0;
+        uint32_t curSid = 0;
+        uint8_t curScids = 0;
+        bool haveCur = false;
+        {
+            std::lock_guard<std::mutex> lk(stateM_);
+            for (auto& e : state_["services"]) {
+                if (e.value("is_audio", false) && e.value("sub_ch", -1) == static_cast<int>(subChId)) {
+                    targetSid = e.at("sid").get<uint32_t>();
+                    targetScids = e.value("scids", static_cast<uint8_t>(0));
+                    break;
+                }
+            }
+            if (state_["primary"].is_array() && state_["primary"].size() == 2) {
+                curSid = state_["primary"][0].get<uint32_t>();
+                curScids = state_["primary"][1].get<uint8_t>();
+                haveCur = true;
+            }
+        }
+        // Nur umschalten, wenn schon ein Primary-Dienst lief (Entscheidung 5:
+        // "...schaltet auf den Warndienst; nach Alarmende vorheriger Sender
+        // live weiter" setzt einen gehoerten Dienst voraus). Ohne Hoerer
+        // (z. B. reiner EPG-Empfang, Headless-Tests ohne --service) bleibt
+        // der Alarm rein informativ (ews_alert/ews_present/ews_alive).
+        if (targetSid == 0 || !haveCur || targetSid == curSid) return;
+        ewsSavedSid_ = haveCur ? curSid : 0;
+        ewsSavedScids_ = haveCur ? curScids : 0;
+        ewsHasSaved_ = haveCur;
+        ewsAlertSid_ = targetSid;
+        // selectService lehnt bei laufender Aufnahme ab (loggt "warn") – der
+        // Alarm bleibt dann beim gehoerten Dienst, ews_switched bleibt aus.
+        selectService(targetSid, targetScids, Slot::Primary);
+        uint32_t nowPrimary = 0;
+        {
+            std::lock_guard<std::mutex> lk(stateM_);
+            if (state_["primary"].is_array() && state_["primary"].size() == 2)
+                nowPrimary = state_["primary"][0].get<uint32_t>();
+        }
+        if (nowPrimary != targetSid) return;   // Umschalten wurde abgelehnt
+        ewsAutoActive_ = true;
+        sink_(events::ewsSwitched(targetSid, haveCur ? static_cast<int64_t>(curSid) : -1));
+    } else if (phase == 3) {   // End
+        if (!ewsAutoActive_) return;
+        uint32_t backSid = ewsSavedSid_;
+        uint8_t backScids = ewsSavedScids_;
+        bool hadSaved = ewsHasSaved_;
+        uint32_t alertSid = ewsAlertSid_;
+        ewsAutoActive_ = false;
+        ewsHasSaved_ = false;
+        if (hadSaved && backSid != 0) {
+            selectService(backSid, backScids, Slot::Primary);
+            sink_(events::ewsSwitched(backSid, static_cast<int64_t>(alertSid)));
+        }
+    }
 }
 
 // Verbindet die Callbacks des Empfangspfads (OFDM-Thread) mit der EventSink.
@@ -304,6 +386,10 @@ void DabCore::wireCallbacks() {
     cb.clockTime = [this](uint32_t mjd, int h, int m, int s, int ltoMinutes,
                           int, int, int, int, int) {
         int64_t unix = (static_cast<int64_t>(mjd) - 40587) * 86400 + h * 3600 + m * 60 + s;
+        // Zeitstempel der Timeshift-Rahmen (Plan 1.2): letzter bekannter
+        // Wert, zwischen zwei Meldungen mit der steady_clock fortgeschrieben.
+        clockUnix_.store(unix);
+        clockAtMs_.store(agcNowMs());
         {
             std::lock_guard<std::mutex> lk(stateM_);
             state_["clock_time"] = {{"unix_utc", unix}, {"lto_minutes", ltoMinutes}};
@@ -319,8 +405,17 @@ void DabCore::wireCallbacks() {
     cb.ewsAlert = [this](int phase, int subChId, int stage, int stageRaw, int iid, const std::vector<std::string>& loc) {
         EwsPhase p = phase == 0 ? EwsPhase::PreTrigger : phase == 1 ? EwsPhase::Trigger
                    : phase == 2 ? EwsPhase::Sustain : EwsPhase::End;
+        // v1 radio.cpp: Stufe 7 ("Test") ist eine Testwarnung, keine echte.
+        bool isTest = (stage & 7) == 7;
+        // Entscheidung 5: der Alarm verlaesst den Zeitversatz immer – der
+        // Hoerer muss die Warnung live bekommen, nicht aus dem Puffer.
+        if (p == EwsPhase::Trigger && timeshift_ && timeshift_->attached())
+            timeshift_->dropToLive("Notfallwarnung");
+        // Erst die Meldung selbst, dann ihre Folgen (Umschalten): die App
+        // soll den Alarm sehen, bevor ews_switched eintrifft.
         sink_(events::ewsAlert(p, static_cast<uint8_t>(subChId), static_cast<uint8_t>(stage),
-                               static_cast<uint8_t>(stageRaw), static_cast<uint16_t>(iid), loc, false));
+                               static_cast<uint8_t>(stageRaw), static_cast<uint16_t>(iid), loc, isTest));
+        if (phase != 0) handleEwsAutoswitch(phase, static_cast<uint32_t>(subChId), isTest);
     };
     cb.ewsAlive = [this](int subChId) { sink_(events::ewsAlive(subChId)); };
     cb.ewsPresent = [this] { sink_(events::ewsPresent()); };
@@ -632,7 +727,8 @@ bool DabCore::handle(const json& c) {
     }
     if (type == "start_recording") {
         startRecording(slotFromJson(c), c.contains("sid") && c["sid"].is_number() ? c["sid"].get<int64_t>() : -1,
-                       c.value("path", ""), c.value("format", json::object()));
+                       c.value("path", ""), c.value("format", json::object()),
+                       c.contains("pre_s") && c["pre_s"].is_number() ? c["pre_s"].get<double>() : 0.0);
         return true;
     }
     if (type == "stop_recording") {
@@ -653,6 +749,26 @@ bool DabCore::handle(const json& c) {
         iqOn_ = c.value("iq", false);
         scopeRateHz_ = std::clamp(c.value("rate_hz", 5), 1, 10);
         applyScopes();
+        return true;
+    }
+    // --- Timeshift (Plan M4 1.3) ---
+    if (type == "timeshift_configure") {
+        const std::string backing = c.contains("backing") && c["backing"].is_object()
+                                        ? c["backing"].value("backing", "ram") : "ram";
+        if (backing != "ram")
+            sink_(events::log("warn", "timeshift_configure: backing \"" + backing +
+                                      "\" wird vorerst wie ram behandelt (Entscheidung 4)"));
+        timeshift_->configure(static_cast<uint32_t>(std::max(0, c.value("capacity_s", 3600))));
+        return true;
+    }
+    if (type == "timeshift_pause") { timeshift_->pause(); return true; }
+    if (type == "timeshift_play") { timeshift_->play(); return true; }
+    if (type == "timeshift_live") { timeshift_->live(); return true; }
+    if (type == "timeshift_seek") { timeshift_->seek(c.value("offset_s", 0.0)); return true; }
+    if (type == "timeshift_skip") { timeshift_->skip(c.value("delta_s", 0.0)); return true; }
+    if (type == "export_timeshift_range") {
+        exportTimeshiftRange(c.value("from_s", 0.0), c.value("to_s", 0.0), c.value("path", ""),
+                             c.value("format", json::object()));
         return true;
     }
     if (type == "set_tii") {
@@ -708,6 +824,7 @@ void DabCore::emitState() {
     st["tii_threshold"] = params_->tiiThreshold;
     st["tii_dx_mode"] = params_->dxMode;
     st["scopes"] = {{"spectrum", spectrumOn_.load()}, {"iq", iqOn_.load()}, {"rate_hz", scopeRateHz_.load()}};
+    st["timeshift"] = timeshiftJson();
     st["snr"] = lastSnrDb_.load();
     st["scanning"] = scanning_.load();
     st["ppm"] = ppm_;
@@ -886,6 +1003,9 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
         sink_(events::serviceStartedData(slot, sid, scids));
     }
     RunningService* raw = rs.get();
+    // Timeshift: nur der Primary-Audiodienst haengt am Ring (Entscheidung 4).
+    // Der Ring beginnt mit dem Dienst neu.
+    attachTimeshiftLocked(raw);
     services_.push_back(std::move(rs));
     // Headless --wav: Dump des Primary-Dienstes ab dem ersten PCM-Block
     if (slot == Slot::Primary && raw->audio && !opt_.autoWav.empty() && !autoWavStarted_) {
@@ -897,7 +1017,10 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
 }
 
 void DabCore::stopOneLocked(RunningService* rs) {
-    // Reihenfolge: erst Backend (danach keine Callbacks mehr), dann Pipeline
+    // Reihenfolge: Timeshift loesen (der Takt-Thread darf danach nicht mehr
+    // in den Driver schreiben), dann Backend (danach keine Callbacks mehr),
+    // dann Pipeline
+    detachTimeshiftLocked(rs);
     if (rs->backend) { msc_->stopBackend(rs->backend); rs->backend = nullptr; }
     if (rs->audio) rs->audio->stop();
     sink_(events::serviceStopped(rs->slot, rs->sid));
@@ -919,21 +1042,44 @@ void DabCore::stopAllServicesLocked() {
     updateServiceState();
 }
 
-bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, const json& format) {
+bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, const json& format, double preS) {
     std::string fmt = format.value("format", "wav");
     if (fmt != "wav") {
         sink_(events::log("error", "Aufnahmeformat " + fmt + " folgt spaeter (nur wav)"));
         return false;
     }
-    std::lock_guard<std::mutex> lk(serviceM_);
-    auto* rs = findLocked(slot, sid);
-    if (!rs || !rs->audio) {
-        sink_(events::log("warn", "start_recording: kein Audiodienst im Slot"));
-        return false;
+    {
+        std::lock_guard<std::mutex> lk(serviceM_);
+        auto* rs = findLocked(slot, sid);
+        if (!rs || !rs->audio) {
+            sink_(events::log("warn", "start_recording: kein Audiodienst im Slot"));
+            return false;
+        }
+        std::string err;
+        if (!rs->audio->startWav(path, err)) { sink_(events::log("error", err)); return false; }
+        updateServiceState();
     }
-    std::string err;
-    if (!rs->audio->startWav(path, err)) { sink_(events::log("error", err)); return false; }
-    updateServiceState();
+    // Vorlauf aus dem Ring (Entscheidung 18, Plan M4 1.6): der WAV-Schreiber
+    // kann nicht anhaengen, deshalb als eigene Datei <name>_vorlauf.wav.
+    if (preS > 0.0 && slot == Slot::Primary && timeshift_ && timeshift_->attached()) {
+        const double have = timeshift_->buffer().bufferedSeconds();
+        const double pre = std::min(preS, have);
+        if (pre < 1.0) {
+            sink_(events::log("info", "Aufnahme-Vorlauf: Ring hat erst " +
+                                      std::to_string(static_cast<int>(have)) + " s, kein Vorlauf"));
+        } else {
+            std::string pv = path;
+            const size_t dot = pv.find_last_of('.');
+            const size_t slash = pv.find_last_of("/\\");
+            if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+                pv.insert(dot, "_vorlauf");
+            else
+                pv += "_vorlauf.wav";
+            sink_(events::log("info", "Aufnahme-Vorlauf: " + std::to_string(static_cast<int>(pre)) +
+                                      " s aus dem Timeshift-Ring nach " + pv));
+            startExportThread(pre, 0.0, pv, false);
+        }
+    }
     return true;
 }
 
@@ -956,6 +1102,145 @@ void DabCore::startFrameDump(const std::string& path) {
 void DabCore::stopFrameDump() {
     std::lock_guard<std::mutex> lk(frameDumpM_);
     if (frameDump_) { std::fclose(frameDump_); frameDump_ = nullptr; }
+}
+
+// --- Timeshift (M4) ------------------------------------------------------------
+
+// Zeitstempel fuer einen Ringrahmen: letzte Ensemble-Uhrzeit (FIG 0/10),
+// zwischen zwei Meldungen mit der steady_clock fortgeschrieben; 0, solange
+// keine Uhrzeit kam (Plan 1.2).
+int64_t DabCore::frameUnixNow() const {
+    const int64_t base = clockUnix_.load();
+    if (base == 0) return 0;
+    const int64_t at = clockAtMs_.load();
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count();
+    return base + (now - at) / 1000;
+}
+
+// Primary-Audiodienst an den Ring haengen (serviceM_ gehalten). Der Backend-
+// Tap laeuft danach ueber den Controller; der Ring ist leer und live.
+void DabCore::attachTimeshiftLocked(RunningService* rs) {
+    if (!timeshift_ || rs->slot != Slot::Primary || !rs->isAudio || !rs->backend || !rs->descriptor) return;
+    {
+        std::lock_guard<std::mutex> lk(primaryAudioM_);
+        primaryAudio_ = rs->audio.get();
+    }
+    Backend* be = rs->backend;
+    const uint32_t frameBits = static_cast<uint32_t>(rs->descriptor->bitRate) * 24;
+    timeshift_->attach(frameBits, [be](const std::vector<uint8_t>& f) { be->deliverFrame(f); });
+    be->setFrameTap(timeshift_.get());
+}
+
+void DabCore::detachTimeshiftLocked(RunningService* rs) {
+    if (!timeshift_ || rs->slot != Slot::Primary || !rs->isAudio) return;
+    if (rs->backend) rs->backend->setFrameTap(nullptr);
+    {
+        std::lock_guard<std::mutex> lk(primaryAudioM_);
+        primaryAudio_ = nullptr;
+    }
+    timeshift_->detach();
+}
+
+void DabCore::onTimeshiftState(const TimeshiftSnapshot& s) {
+    sink_(events::timeshiftState(timeshiftModeName(s.mode), s.bufferedS, s.offsetS, s.capacityS,
+                                 s.frameIndex, s.liveUnix));
+}
+
+// state_snapshot.state.timeshift: [mode, buffered_s, offset_s, capacity_s]
+// (dab-api CoreState.timeshift ist ein Tupel), null ohne Primary-Dienst.
+json DabCore::timeshiftJson() const {
+    if (!timeshift_ || !timeshift_->attached()) return json(nullptr);
+    const TimeshiftSnapshot s = timeshift_->snapshot();
+    return json::array({timeshiftModeName(s.mode), s.bufferedS, s.offsetS, s.capacityS});
+}
+
+// Der Controller ruft diese beiden aus attach/detach (serviceM_ ist dann
+// gehalten) und aus seinem Takt-Thread; deshalb eine eigene Sperre nur um
+// den Zeiger auf die Pipeline des Primary-Slots.
+// Sperrreihenfolge: serviceM_ vor primaryAudioM_.
+void DabCore::flushPrimaryAudio() {
+    std::lock_guard<std::mutex> lk(primaryAudioM_);
+    if (primaryAudio_) primaryAudio_->requestFlush();
+}
+
+void DabCore::setPrimaryStarved(bool starved) {
+    std::lock_guard<std::mutex> lk(primaryAudioM_);
+    if (primaryAudio_) primaryAudio_->setStarved(starved);
+}
+
+bool DabCore::primaryAudioParams(uint32_t& sid, int16_t& bitRate) {
+    std::lock_guard<std::mutex> lk(serviceM_);
+    for (auto& rs : services_)
+        if (rs->slot == Slot::Primary && rs->isAudio && rs->descriptor) {
+            sid = rs->sid;
+            bitRate = rs->descriptor->bitRate;
+            return true;
+        }
+    return false;
+}
+
+void DabCore::joinExportThread() {
+    if (exportThread_.joinable()) exportThread_.join();
+}
+
+// export_timeshift_range: from_s/to_s sind Sekunden hinter live (from_s > to_s).
+void DabCore::exportTimeshiftRange(double fromS, double toS, const std::string& path, const json& format) {
+    const std::string fmt = format.is_object() ? format.value("format", "wav") : "wav";
+    if (fmt != "wav")
+        sink_(events::log("warn", "export_timeshift_range: Format " + fmt +
+                                  " folgt in M4b, es wird WAV geschrieben"));
+    if (path.empty()) { sink_(events::log("error", "export_timeshift_range ohne Pfad")); return; }
+    if (!(fromS > toS) || toS < 0.0) {
+        sink_(events::log("error", "export_timeshift_range: ungueltiger Bereich (from_s > to_s >= 0)"));
+        return;
+    }
+    startExportThread(fromS, toS, path, true);
+}
+
+// Rahmen kopieren (unter der Ringsperre) und in einem eigenen Thread
+// dekodieren. reportRecordingState: Ende als recording_state melden
+// (export_timeshift_range); der Aufnahme-Vorlauf meldet nur ins Log, damit
+// die laufende Aufnahme in der App nicht als beendet erscheint.
+void DabCore::startExportThread(double fromS, double toS, const std::string& path, bool reportRecordingState) {
+    if (!timeshift_ || !timeshift_->attached()) {
+        sink_(events::log("warn", "Timeshift-Export: kein Primary-Dienst"));
+        return;
+    }
+    if (exportBusy_.load()) {
+        sink_(events::log("warn", "Timeshift-Export laeuft bereits"));
+        return;
+    }
+    joinExportThread();
+    uint32_t sid = 0;
+    int16_t bitRate = 0;
+    if (!primaryAudioParams(sid, bitRate)) {
+        sink_(events::log("warn", "Timeshift-Export: kein Primary-Audiodienst"));
+        return;
+    }
+    TimeshiftExportJob job;
+    job.frameBits = timeshift_->buffer().frameBits();
+    job.frames = timeshift_->buffer().copyRange(fromS, toS, job.packed);
+    job.sid = sid;
+    job.bitRate = bitRate;
+    job.path = path;
+    if (job.frames == 0) {
+        sink_(events::log("warn", "Timeshift-Export: im Bereich " + std::to_string(fromS) + ".." +
+                                  std::to_string(toS) + " s liegen keine Rahmen"));
+        if (reportRecordingState) sink_(events::recordingState(Slot::Primary, sid, false, path, 0, 0.0));
+        return;
+    }
+    sink_(events::log("info", "Timeshift-Export: " + std::to_string(job.frames) + " Rahmen (" +
+                              std::to_string(static_cast<int>(job.frames * 24 / 1000)) + " s) nach " + path));
+    exportBusy_.store(true);
+    exportThread_ = std::thread([this, job = std::move(job), sid, reportRecordingState] {
+        auto res = timeshiftExportWav(job, aacKind_,
+                                      [this](const char* level, const std::string& t) { sink_(events::log(level, t)); });
+        if (!res.ok) sink_(events::log("error", res.error));
+        if (reportRecordingState)
+            sink_(events::recordingState(Slot::Primary, sid, false, res.path, res.bytes, res.seconds));
+        exportBusy_.store(false);
+    });
 }
 
 // --- Quelle -------------------------------------------------------------------

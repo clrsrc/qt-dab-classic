@@ -21,6 +21,9 @@ public:
     virtual bool selectDevice(int index) = 0;
     // Seit dem letzten Aufruf fehlende Samples (Underrun), setzt zurueck.
     virtual uint32_t takeMissed() = 0;
+    // Ausstehende Ausgabedaten verwerfen (Timeshift: Sprung auf live, sonst
+    // hoert man noch den Inhalt des Ausgabepuffers, ~0,7 s).
+    virtual void flush() {}
     virtual const char* name() const = 0;
 };
 
@@ -33,5 +36,6 @@ public:
     int currentDevice() override { return -1; }
     bool selectDevice(int) override { return false; }
     uint32_t takeMissed() override { return 0; }
+    void flush() override {}
     const char* name() const override { return "null"; }
 };

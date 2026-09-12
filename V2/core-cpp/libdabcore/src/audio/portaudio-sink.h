@@ -47,6 +47,7 @@ public:
 	int		currentDevice		() override;
 	bool		selectDevice		(int index) override;
 	uint32_t	takeMissed		() override;
+	void		flush			() override;
 	const char	*name			() const override { return "portaudio"; }
 	bool		ok			() const { return portAudio; }
 private:

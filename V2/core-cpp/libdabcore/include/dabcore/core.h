@@ -44,6 +44,8 @@ namespace dabcore {
 class AudioPipeline;
 class ScanController;
 class AgcController;
+class TimeshiftController;
+struct TimeshiftSnapshot;
 
 struct CoreOptions {
     bool audio = true;          // PortAudio-Ausgabe (Entscheidung 3)
@@ -145,15 +147,47 @@ private:
     bool epgNameParts(const std::string& name, uint32_t& date, uint32_t& sid) const;
     bool ensembleHasSid(uint32_t sid) const;
     void updateServiceState();
-    bool startRecording(Slot slot, int64_t sid, const std::string& path, const json& format);
+    // pre_s > 0: Vorlauf aus dem Timeshift-Ring als <name>_vorlauf.wav
+    // (Entscheidung 18, Plan M4 1.6)
+    bool startRecording(Slot slot, int64_t sid, const std::string& path, const json& format, double preS);
     void stopRecording(Slot slot, int64_t sid);
     void startFrameDump(const std::string& path);
     void stopFrameDump();
     void emitAudioDevices();
+
+    // --- Timeshift (M4) ---
+    // Ring an den Primary-Audiodienst haengen bzw. loesen (serviceM_ gehalten)
+    void attachTimeshiftLocked(RunningService* rs);
+    void detachTimeshiftLocked(RunningService* rs);
+    void onTimeshiftState(const TimeshiftSnapshot& s);
+    // Zustand als [mode, buffered_s, offset_s, capacity_s] fuer state_snapshot
+    json timeshiftJson() const;
+    // Audio-Puffer des Primary-Slots verwerfen (timeshift_live)
+    void flushPrimaryAudio();
+    void setPrimaryStarved(bool starved);
+    // Bitrate/SId des Primary-Audiodienstes fuer Export und Vorlauf
+    bool primaryAudioParams(uint32_t& sid, int16_t& bitRate);
+    void exportTimeshiftRange(double fromS, double toS, const std::string& path, const json& format);
+    // Ergebnis eines Exports melden (recording_state, Plan 1.3)
+    void startExportThread(double fromS, double toS, const std::string& path, bool reportRecordingState);
+    void joinExportThread();
     // set_scopes auf den (neuen) ofdmHandler anwenden
     void applyScopes();
     // TII-Liste hoechstens 1x/s und nur bei Aenderung melden
     void onTii(const std::vector<std::tuple<uint8_t, uint8_t, float>>& tx);
+
+    // --- EWS Auto-Umschaltung (Entscheidung 5) ---
+    // Bei Trigger/Sustain auf den Dienst des gemeldeten Unterkanals wechseln
+    // (v1 radio.cpp ewsStart), bei End zurueck auf den vorherigen Primary-
+    // Dienst. Keine Umschaltung bei Testalarm, ausgeschaltetem Autoswitch
+    // oder wenn schon umgeschaltet ist; eine gesperrte Umschaltung wegen
+    // laufender Aufnahme (selectService) bleibt beim Warndienst-Ton stumm.
+    void handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest);
+    bool     ewsAutoActive_ = false;
+    uint32_t ewsAlertSid_ = 0;
+    uint32_t ewsSavedSid_ = 0;
+    uint8_t  ewsSavedScids_ = 0;
+    bool     ewsHasSaved_ = false;
 
     EventSink sink_;
     CoreOptions opt_;
@@ -205,6 +239,20 @@ private:
     AacDecoderKind aacKind_;
     std::mutex frameDumpM_;
     FILE* frameDump_ = nullptr;
+    // Timeshift-Ring des Primary-Slots (Entscheidung 4); der Controller lebt
+    // so lange wie der Kern, der Ring nur zwischen attach und detach.
+    std::unique_ptr<TimeshiftController> timeshift_;
+    // Pipeline des Primary-Slots fuer Flush/Underrun-Unterdrueckung; eigene
+    // Sperre, weil der Timeshift-Controller sie auch aus attach/detach ruft
+    // (serviceM_ ist dann schon gehalten).
+    mutable std::mutex primaryAudioM_;
+    AudioPipeline* primaryAudio_ = nullptr;
+    std::thread exportThread_;
+    std::atomic<bool> exportBusy_{false};
+    // Letzte Ensemble-Uhrzeit als Zeitstempel der Ringrahmen
+    std::atomic<int64_t> clockUnix_{0};
+    std::atomic<int64_t> clockAtMs_{0};
+    int64_t frameUnixNow() const;
     std::vector<std::string> autoPending_;   // noch nicht gefundene --service
     std::map<std::string, ServiceInfo> autoCandidates_;   // Teilstring-Treffer je --service
     std::chrono::steady_clock::time_point autoCandidateSince_{};

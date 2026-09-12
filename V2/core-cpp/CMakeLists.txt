@@ -103,6 +103,12 @@ if(DABCORE_BUILD_TESTS)
     add_executable(test_agc tests/test-agc.cpp libdabcore/src/device/agc-controller.cpp)
     target_include_directories(test_agc PRIVATE ${DABCORE_SRC}/device)
     add_test(NAME agc_controller COMMAND test_agc)
+    # Timeshift-Ring als reiner Speicher: Packen/Entpacken der Hardbits,
+    # Ueberlauf, Seek/Skip, copyRange fuer den Export, Leeren bei Wechseln
+    add_executable(test_timeshift_buffer tests/test-timeshift-buffer.cpp
+                   libdabcore/src/backend/timeshift-buffer.cpp)
+    target_include_directories(test_timeshift_buffer PRIVATE ${DABCORE_SRC}/backend)
+    add_test(NAME timeshift_buffer COMMAND test_timeshift_buffer)
     add_test(NAME dabcored_ready
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
@@ -135,6 +141,12 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-epg.ps1)
+    # Timeshift am 60-s-Referenzmitschnitt (Echtzeit): configure, pause,
+    # play, skip, live, Export als WAV, Leeren beim Dienstwechsel
+    add_test(NAME dabcored_timeshift
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-timeshift.ps1)
     # state_snapshot (running[] mit dls/codec, ensemble als [eid, name]),
     # audio_devices nach ready/get_state, set_scopes (spectrum + iq_samples
     # mit Rate und Groesse), stdin-EOF bei laufendem Dienst -> Ende < 1 s

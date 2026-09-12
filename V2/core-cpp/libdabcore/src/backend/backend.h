@@ -39,6 +39,7 @@
 #include        "backend-driver.h"
 #include        "backend-deconvolver.h"
 #include	"backend-callbacks.h"
+#include	"backend-frame-tap.h"
 #include	"aac-decoder.h"
 
 #define	NUMBER_SLOTS	25
@@ -54,6 +55,11 @@ public:
 	int32_t	process		(int16_t *, int16_t);
 	void	stopRunning	();
 	bool	is_dataBackend	();
+//	Timeshift (Plan M4 1.1): mit gesetztem Tap gehen die Hardbit-Rahmen
+//	nicht direkt an den Driver, sondern an den Tap, der sie ueber
+//	deliverFrame zurueckgibt. Setzen/Loeschen aus dem Kommandothread.
+	void	setFrameTap	(IFrameTap *tap);
+	void	deliverFrame	(const std::vector<uint8_t> &hardBits);
 //	we need sometimes to access the key parameters for decoding
 	int		backendType;
 	int		serviceId;
@@ -70,6 +76,7 @@ private:
 	backendDeconvolver	deconvolver;
 	std::vector<uint8_t>	hardBits;
 	backendDriver		driver;
+	std::atomic<IFrameTap *>	frameTap;
 	void	run();
 	std::atomic<bool>	running;
 	std::thread		theThread;

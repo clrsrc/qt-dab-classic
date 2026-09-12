@@ -33,16 +33,16 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 | `set_volume` | `percent` |
 | `set_mute` | `muted` |
 | `set_audio_device` | `index?` |
-| `start_recording` | `path`, `format: {format: wav} \| {format: mp3, kbps} \| {format: aac_passthrough}`, `slot`, `sid?` (heute nur `wav`: 48 kHz, Stereo, 16 Bit, vor der Lautstärke abgegriffen) |
+| `start_recording` | `path`, `format: {format: wav} \| {format: mp3, kbps} \| {format: aac_passthrough}`, `slot`, `sid?` (heute nur `wav`: 48 kHz, Stereo, 16 Bit, vor der Lautstärke abgegriffen), `pre_s?` (additiv, M4: Vorlauf aus dem Timeshift-Ring, siehe „Timeshift“) |
 | `stop_recording` | `slot`, `sid?` |
-| `export_timeshift_range` | `from_s`, `to_s`, `path`, `format` |
+| `export_timeshift_range` | `from_s`, `to_s`, `path`, `format` – `from_s`/`to_s` = Sekunden hinter live, `from_s > to_s >= 0`; der Kern kopiert die Rahmen aus dem Ring und dekodiert sie in einem eigenen Thread durch eine zweite Decoder-Instanz (~250× Echtzeit), Ergebnis ist eine WAV-Datei (48 kHz, Stereo, 16 Bit). `format` ≠ `wav` → `log warn` und **trotzdem WAV** (MP3/AAC folgen in M4b). Ende: `recording_state{slot: primary, sid, active: false, path, bytes, seconds}` mit dem Exportpfad. Höchstens ein Export gleichzeitig (sonst `log warn`); ohne Primary-Dienst oder bei leerem Bereich nur `log warn` |
 | `start_iq_dump` / `stop_iq_dump` | `path` – Samples der Quelle als `.uff` (Qt-DAB-XML-Format, 8 Bit: HackRF `int8`, RTL-SDR `uint8`, Datei-Quelle `int8` der resampelten 2,048 MS/s); von `open_device{file}` wieder lesbar |
 | `start_frame_dump` / `stop_frame_dump` | `path` |
-| `timeshift_configure` | `capacity_s`, `backing: {backing: ram} \| {backing: disk, dir}` |
-| `timeshift_pause` / `timeshift_play` / `timeshift_live` | |
-| `timeshift_seek` | `offset_s` |
-| `timeshift_skip` | `delta_s` |
-| `set_ews` | `enabled`, `autoswitch` |
+| `timeshift_configure` | `capacity_s` (60..14400, wird geklemmt, Standard 3600), `backing: {backing: ram} \| {backing: disk, dir}` (`disk` wird angenommen, aber wie `ram` behandelt und geloggt – Entscheidung 4). Nur bei **geänderter** Kapazität wird der Ring neu angelegt (und ist dann leer); der Speicherbedarf steht als `log info` |
+| `timeshift_pause` / `timeshift_play` / `timeshift_live` | `pause`: live/playing → `paused`, der Lesezeiger bleibt stehen (der Ring füllt sich weiter). `play`: `paused` → `playing`, ein 24-ms-Takt im Kern spielt ab dem Lesezeiger; erreicht der Lesezeiger den Schreibzeiger, geht es ohne Ruckeln zurück auf `live`. `live`: Lesezeiger = Schreibzeiger, Zustand `live`, **Audio-Puffer wird verworfen** (sonst hört man noch ~0,7 s Altes). Ohne Primary-Audiodienst: `log warn`, sonst nichts |
+| `timeshift_seek` | `offset_s` = Sekunden hinter live (0 = live), geklemmt auf 0..`buffered_s`; der Zustand (`paused`/`playing`) bleibt. Aus `live` heraus mit `offset_s > 0` wird `playing` (sonst zöge der Schreibzeiger den Lesezeiger sofort wieder mit) |
+| `timeshift_skip` | `delta_s` relativ: `+` geht Richtung live, `−` zurück; über live hinaus = `timeshift_live`. Aus `live` zurück gesprungen wird `playing` (wie `timeshift_seek`) |
+| `set_ews` | `enabled`, `autoswitch` (Standard beide an). `autoswitch` steuert die automatische Umschaltung auf den Warndienst bei `trigger`/`sustain` (siehe `ews_switched`); `enabled` wirkt nur auf App-Seite (Alarmfenster/Ton) |
 | `ews_dismiss` | |
 | `set_epg` | `enabled` (Standard an). Der Kern startet den SPI/EPG-Paketdienst des Ensembles (FIG 0/13 Appl-Type 7, DSCTy 60, im Bundesmux „EPG Deutschland“) selbst als Background-Slot, sobald die FIC ihn meldet – auch ohne Primary-Dienst (z. B. nach dem Scan); Kanalwechsel/`close_device` beenden ihn, `enabled: false` beendet nur die vom Kern gestarteten Dienste. `service_started{slot: background, codec: {codec: data}}` wie bei `select_service`; `state.epg_enabled` |
 | `set_scopes` | `spectrum`, `iq` (getrennt schaltbar), `rate_hz` (1–10, Standard 5, gemeinsame Rate; der Kern klemmt). Wirkt sofort und bleibt über `open_device`/`set_channel` erhalten. Beide aus (Standard): kein Datenfluss und kein Rechenaufwand |
@@ -90,9 +90,9 @@ und die App bei Überlast verwerfen darf.
 | `ews_alert` | `phase: pre_trigger\|trigger\|sustain\|end`, `sub_ch`, `stage`, `stage_raw`, `iid`, `locations[]`, `is_test` – `stage` = Bits 6..4 des Status-Bytes der FIG 0/15, `stage_raw` = das ganze Status-Byte (Bit 7 Last, Bits 6..4 Stage, Bits 3..0 IId) der ersten Trigger-Instanz; Warntag 2026: `0x01`; bei `sustain` ohne gesehenen Trigger und bei `end` der zuletzt gemerkte Wert (sonst 0). Rust liest fehlendes `stage_raw` als 0 |
 | `ews_alive` | `sub_ch?` (Unterkanal des aktiven Alarms, höchstens 1/s Ensemble-Zeit; `null` = Heartbeat ohne Alarm, 1/s) |
 | `ewf_alarm` | `active`, `sub_ch` |
-| `ews_switched` | `to_sid`, `from_sid?` |
+| `ews_switched` | `to_sid`, `from_sid?` – bei `trigger`/`sustain` (kein Testalarm, `autoswitch` an, **und ein Primary-Dienst lief bereits**) wechselt der Kern den Primary-Slot auf den Audiodienst des in `ews_alert.sub_ch` gemeldeten Unterkanals (`to_sid` = Warndienst, `from_sid` = vorheriger Dienst); bei `end` zurück (`to_sid` = vorheriger Dienst, `from_sid` = Warndienst). Ohne laufenden Primary-Dienst (z. B. reiner EPG-Empfang, Headless-Betrieb ohne `select_service`) bleibt der Alarm rein informativ, es kommt kein `ews_switched`. Kommt nach dem jeweiligen `ews_alert` |
 | `recording_state` | `slot`, `sid`, `active`, `path?`, `bytes`, `seconds` (bei Start, 1 Hz während der Aufnahme, bei Ende) |
-| `timeshift_state` **LW** | `mode: live\|paused\|playing`, `buffered_s`, `offset_s`, `capacity_s` |
+| `timeshift_state` **LW** | `mode: live\|paused\|playing`, `buffered_s` (Inhalt des Rings), `offset_s` (Abstand Lesezeiger → live, in `live` immer 0), `capacity_s`; additiv (M4): `frame_index` (Schreibzeiger, 24-ms-Rahmen seit dem letzten Leeren) und `live_unix` (Ensemble-Uhrzeit am Schreibzeiger, 0 = unbekannt). Kommt mit **2 Hz**, solange ein Primary-Audiodienst läuft, und sofort bei jedem Zustandswechsel; nach dem Ende des Dienstes einmal mit `buffered_s` 0 |
 | `scan_progress` | `channel`, `index`, `total` |
 | `scan_result` | `channel`, `eid?`, `ensemble?`, `services[]`, `snr` |
 | `scan_finished` | |
@@ -100,7 +100,7 @@ und die App bei Überlast verwerfen darf.
 | `spectrum` **LW** | `bins_b64` – 2048 Bins (u8) der Eingangssamples nach Frequenzkorrektur, fftshift (Bin 0 = −1,024 MHz, Bin 1024 = Trägermitte), 0,5 dB je Stufe: `dBFS = Wert / 2 − 120` (0 = −120 dBFS, 240 = 0 dBFS). Nur mit `set_scopes{spectrum:true}`, höchstens `rate_hz`/s; kommt auch ohne Sync (Antennenausrichtung) |
 | `iq_samples` **LW** | `iq_b64` – Konstellation von OFDM-Symbol 2 (wie das v1-IQ-Scope): 1536 Träger nach der Differenzdemodulation in Frequenzreihenfolge (k = −768…−1, 1…768), je Träger auf den Einheitskreis normiert, als 3072 int8-Werte `I0,Q0,I1,Q1,…` (127 = 1,0), Base64 (4096 Zeichen, ~4,1 kB je Ereignis). Nur mit `set_scopes{iq:true}` und nur bei Sync, höchstens `rate_hz`/s |
 | `log` | `level: error\|warn\|info\|debug`, `text` |
-| `state_snapshot` | `state: {...}` (siehe `CoreState`). Neben Quelle/Kanal/Gain/Diensten: `ensemble: [eid, name]`, `epg_enabled`, `tii_enabled`, `tii_threshold`, `tii_dx_mode`, `scopes{spectrum,iq,rate_hz}`, `snr` (letzter Wert), `clock_time{unix_utc,lto_minutes}?` (letztes `clock_time`), `ppm`, `scanning` und `running[]` – je laufendem Dienst (alle Slots): `slot`, `sid`, `scids`, `name`, `is_audio`, `codec?` (wie `service_started`, `null` bis zum ersten dekodierten Block), `stereo`, `dls?` (letzter Text), `dl_plus?` (`item_toggle`, `item_running`, `tags`), `slide?` (`mime`, `name`, `data_b64` der letzten `mot_slide`), `recording{active,path?,bytes,seconds}`. Damit kann eine neu verbundene App die Anzeige ohne Warten auf neue Ereignisse aufbauen |
+| `state_snapshot` | `state: {...}` (siehe `CoreState`). Neben Quelle/Kanal/Gain/Diensten: `ensemble: [eid, name]`, `timeshift: [mode, buffered_s, offset_s, capacity_s]` (`null`, solange kein Primary-Audiodienst läuft), `epg_enabled`, `tii_enabled`, `tii_threshold`, `tii_dx_mode`, `scopes{spectrum,iq,rate_hz}`, `snr` (letzter Wert), `clock_time{unix_utc,lto_minutes}?` (letztes `clock_time`), `ppm`, `scanning` und `running[]` – je laufendem Dienst (alle Slots): `slot`, `sid`, `scids`, `name`, `is_audio`, `codec?` (wie `service_started`, `null` bis zum ersten dekodierten Block), `stereo`, `dls?` (letzter Text), `dl_plus?` (`item_toggle`, `item_running`, `tags`), `slide?` (`mime`, `name`, `data_b64` der letzten `mot_slide`), `recording{active,path?,bytes,seconds}`. Damit kann eine neu verbundene App die Anzeige ohne Warten auf neue Ereignisse aufbauen |
 | `exiting` | `reason` |
 
 ## Gain-Regelung (AGC)
@@ -117,6 +117,34 @@ Hintergrund (Messung 12.09.2026, HackRF/NRW): der Standard-VGA 24 reicht für 11
 | **AGC aus** | Eingefroren: `no_signal`/`snr` ändern nichts; `set_gain` wirkt direkt. Ausnahme Scan (siehe `start_scan`). |
 
 Typische Werte am Messort: 11D Sync nach ~1,2 s (bei VGA 32), Tracking auf VGA 40–44 bei 6,5–9 dB; 5C sofort Sync, VGA 36–44 bei 8–10 dB; 9B/9D/12D VGA 44; AMP im Endzustand nie an.
+
+## Timeshift
+
+Kern: `core-cpp/libdabcore/src/backend/timeshift-buffer.{h,cpp}` (Ring, ctest `timeshift_buffer`) und
+`timeshift-controller.{h,cpp}` (Takt-Thread, Kommandos); ctest `dabcored_timeshift`.
+
+Gespeichert werden die **Hardbits** des Subkanals (nicht PCM): je 24-ms-Rahmen `bitRate * 3` Byte
+gepackt, also 13 kB/s bei 104 kbit/s – eine Stunde Dlf ≈ 46,8 MB (Entscheidung 4, alles im RAM).
+Der Ring hängt nur am **Primary-Audiodienst** und beginnt neu bei: Dienstwechsel des Primary-Slots,
+`stop_service`, Kanalwechsel, `close_device`, `timeshift_configure` mit anderer Kapazität und bei
+`ews_alert{phase: trigger}` (Entscheidung 5: der Alarm verlässt den Zeitversatz immer, `log info`
+„Timeshift: Zeitversatz verworfen (Notfallwarnung)“).
+
+In `paused` und `playing` bekommt der Decoder nur das, was der Ring liefert; die Ausgabe läuft weiter
+(keine Umschaltlatenz), Stille entsteht durch fehlende Rahmen. `audio_underrun` wird in diesen
+Zuständen **nicht** gemeldet, ebenso nicht in der ersten Sekunde nach `timeshift_live` (der Decoder
+braucht bis zu einen Superframe, bis wieder Ton kommt).
+
+**Aufnahme-Vorlauf** (`start_recording{pre_s}`, Entscheidung 18): Der WAV-Schreiber kann nicht
+anhängen, deshalb schreibt der Kern den Vorlauf in eine **eigene Datei** neben der Aufnahme –
+`<name>_vorlauf.wav` (`aufnahme.wav` → `aufnahme_vorlauf.wav`). Die laufende Aufnahme beginnt
+unverändert live; der Vorlauf wird im Hintergrund dekodiert und nur als `log info` gemeldet (kein
+eigenes `recording_state`, damit die App die laufende Aufnahme nicht als beendet sieht). Hat der Ring
+weniger als 1 s Inhalt, entfällt der Vorlauf mit `log info`.
+
+`pre_s` kennt bisher nur der Kern: in `dab-api` fehlt das Feld in `Command::StartRecording` noch
+(ein zusätzliches Feld in dieser Variante müsste zusammen mit den Aufrufstellen in `dab-app`
+eingebaut werden). Wer es heute nutzen will, schickt die JSON-Zeile direkt.
 
 ## Beispiel
 

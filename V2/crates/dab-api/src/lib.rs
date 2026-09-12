@@ -139,6 +139,8 @@ pub struct TiiEntry {
 // Kommandos (App -> Kern)
 // ---------------------------------------------------------------------------
 
+fn is_zero_f64(v: &f64) -> bool { *v == 0.0 }
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
@@ -163,7 +165,19 @@ pub enum Command {
     SetAudioDevice { index: Option<u32> },
 
     // Aufnahme / Dumps
-    StartRecording { path: PathBuf, format: RecFormat, slot: ServiceSlot, #[serde(default, skip_serializing_if = "Option::is_none")] sid: Option<u32> },
+    StartRecording {
+        path: PathBuf,
+        format: RecFormat,
+        slot: ServiceSlot,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sid: Option<u32>,
+        /// Vorlauf aus dem Timeshift-Ring in dieselbe Aufnahme uebernehmen
+        /// (Sekunden, Entscheidung 18); 0 = kein Vorlauf. Additiv, der Kern
+        /// schreibt den Vorlauf als eigene Datei `<name>_vorlauf.wav`
+        /// (M4-Timeshift-Plan 1.6) und meldet das nur per `log info`.
+        #[serde(default, skip_serializing_if = "is_zero_f64")]
+        pre_s: f64,
+    },
     StopRecording { slot: ServiceSlot, #[serde(default, skip_serializing_if = "Option::is_none")] sid: Option<u32> },
     ExportTimeshiftRange { from_s: f64, to_s: f64, path: PathBuf, format: RecFormat },
     StartIqDump { path: PathBuf },

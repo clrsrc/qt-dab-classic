@@ -121,8 +121,9 @@ json recordingState(Slot slot, uint32_t sid, bool active, const std::string& pat
     if (path.empty()) j["path"] = nullptr; else j["path"] = path;
     j["bytes"] = bytes; j["seconds"] = s; return j;
 }
-json timeshiftState(const char* mode, double b, double o, double c) {
-    auto j = ev("timeshift_state"); j["mode"] = mode; j["buffered_s"] = b; j["offset_s"] = o; j["capacity_s"] = c; return j;
+json timeshiftState(const char* mode, double b, double o, double c, uint64_t frameIndex, int64_t liveUnix) {
+    auto j = ev("timeshift_state"); j["mode"] = mode; j["buffered_s"] = b; j["offset_s"] = o; j["capacity_s"] = c;
+    j["frame_index"] = frameIndex; j["live_unix"] = liveUnix; return j;
 }
 
 json scanProgress(const std::string& ch, uint16_t i, uint16_t t) {

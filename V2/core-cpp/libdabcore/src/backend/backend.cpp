@@ -51,6 +51,7 @@
 	this	-> protLevel		= d -> protLevel;
 	this	-> subChId		= d -> subchId;
 	this	-> borf			= flag;
+	frameTap. store (nullptr);
 
 	interleaveData. resize (16);
 	for (int i = 0; i < 16; i ++) {
@@ -139,6 +140,21 @@ void	Backend::processSegment (int16_t *softBits_in) {
 //	and the energy dispersal
 	for (uint16_t i = 0; i < bitRate * 24; i ++)
 	   hardBits [i] ^= disperseVector [i];
+	if (!running. load ())
+	   return;
+//	Timeshift: der Tap entscheidet, wann der Rahmen beim Driver landet
+	IFrameTap *tap = frameTap. load ();
+	if (tap != nullptr)
+	   tap -> onBackendFrame (hardBits);
+	else
+	   driver. addtoFrame (hardBits);
+}
+
+void	Backend::setFrameTap	(IFrameTap *tap) {
+	frameTap. store (tap);
+}
+
+void	Backend::deliverFrame	(const std::vector<uint8_t> &hardBits) {
 	if (running. load ())
 	   driver. addtoFrame (hardBits);
 }
@@ -168,6 +184,8 @@ void	Backend::stopRunning () {
 	slotCv. notify_all ();
 	if (theThread. joinable ())
 	   theThread. join ();
+//	der Backend-Thread steht: ab hier kommt kein Tap-Aufruf mehr
+	frameTap. store (nullptr);
 	driver. stop ();
 }
 

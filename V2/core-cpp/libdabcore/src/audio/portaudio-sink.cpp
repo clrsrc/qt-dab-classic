@@ -196,6 +196,14 @@ uint32_t	i;
 uint32_t	PortAudioSink::takeMissed	() {
 	return theMissed. exchange (0);
 }
+
+//	Timeshift (Plan M4 1.3): beim Sprung auf live den Ausgabepuffer
+//	verwerfen; der Stream laeuft weiter (Latenz), er bekommt nur nichts
+//	Altes mehr. Der Underrun-Zaehler wird mit zurueckgesetzt.
+void	PortAudioSink::flush	() {
+	_O_Buffer. FlushRingBuffer ();
+	theMissed. store (0);
+}
 //
 //	we call this with the amount of floats!!
 void	PortAudioSink::write	(const float *b, uint32_t amount) {

@@ -59,6 +59,14 @@ void AudioPipeline::push(const complex16* pcm, int nPairs, int rate, bool ps, bo
 void AudioPipeline::setVolume(int percent) { volume_ = std::clamp(percent, 0, 100); }
 void AudioPipeline::setMute(bool muted) { muted_ = muted; }
 
+// Timeshift: waehrend paused/playing liefert der Ring bewusst nichts; die
+// dabei im Sink auflaufenden Fehlstellen sind kein Underrun. Beim Verlassen
+// des Zustands den aufgelaufenen Zaehler einmal wegwerfen.
+void AudioPipeline::setStarved(bool starved) {
+    const bool was = starved_.exchange(starved);
+    if (was && !starved && audio_) audio_->takeMissed();
+}
+
 bool AudioPipeline::startWav(const std::string& path, std::string& error) {
     std::lock_guard<std::mutex> lk(wavM_);
     if (!wav_.open(path, 48000, 2, error)) return false;
@@ -90,6 +98,13 @@ void AudioPipeline::run() {
     std::vector<float> out;
     std::vector<int16_t> wavBuf;
     while (true) {
+        if (flushPending_.exchange(false)) {
+            // eigener PCM-Ring (bis 1,4 s) und Ausgabepuffer des Sinks
+            ring_.FlushRingBuffer();
+            if (audio_) { audio_->flush(); audio_->takeMissed(); }
+            quietUntil_ = std::chrono::steady_clock::now() + 1s;
+            spaceCv_.notify_one();
+        }
         int rate = rate_.load();
         uint32_t amount = static_cast<uint32_t>(rate / 10);   // v1: newAudio bei rate/10 Paaren
         {
@@ -142,7 +157,8 @@ void AudioPipeline::run() {
                     }
                     sink_(events::audioLevel(l, r));
                     uint32_t missed = audio_->takeMissed();
-                    if (missed > 0) sink_(events::audioUnderrun(missed));
+                    if (missed > 0 && !starved_.load() && now >= quietUntil_)
+                        sink_(events::audioUnderrun(missed));
                 }
             }
             rate = rate_.load();

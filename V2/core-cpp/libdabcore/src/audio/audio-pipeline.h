@@ -39,6 +39,15 @@ public:
     void setVolume(int percent);
     void setMute(bool muted);
 
+    // Timeshift (Plan M4 1.3): beim Sprung auf live den PCM-Ring dieses
+    // Threads und den Ausgabepuffer des Sinks verwerfen. Der eigene Thread
+    // erledigt das beim naechsten Durchlauf (<= 50 ms), damit es keinen
+    // Wettlauf mit dem Schreiben gibt.
+    void requestFlush() { flushPending_.store(true); }
+    // true, solange der Ring bewusst nichts liefert (paused/playing): dann
+    // wird audio_underrun nicht gezaehlt.
+    void setStarved(bool starved);
+
     bool startWav(const std::string& path, std::string& error);
     void stopWav();
     bool recording() const { return recording_.load(); }
@@ -71,6 +80,11 @@ private:
 
     std::atomic<int> volume_{70};
     std::atomic<bool> muted_{false};
+    std::atomic<bool> flushPending_{false};
+    std::atomic<bool> starved_{false};
+    // nach einem Flush braucht der Decoder bis zu einem Superframe (120 ms),
+    // bis wieder PCM kommt; solange ist eine Luecke kein Underrun
+    std::chrono::steady_clock::time_point quietUntil_{};
 
     converter_48000 converter_;
     std::mutex wavM_;

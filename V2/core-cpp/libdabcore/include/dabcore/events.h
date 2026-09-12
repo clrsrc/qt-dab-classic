@@ -90,7 +90,10 @@ json ewfAlarm(bool active, uint8_t subCh);
 json ewsSwitched(uint32_t toSid, int64_t fromSid /* <0 = keiner */);
 
 json recordingState(Slot slot, uint32_t sid, bool active, const std::string& path, uint64_t bytes, double seconds);
-json timeshiftState(const char* mode, double bufferedS, double offsetS, double capacityS);
+// mode live|paused|playing; frame_index (Schreibzeiger) und live_unix
+// (Ensemble-Uhrzeit am Schreibzeiger, 0 = unbekannt) kamen in M4 additiv dazu.
+json timeshiftState(const char* mode, double bufferedS, double offsetS, double capacityS,
+                    uint64_t frameIndex, int64_t liveUnix);
 
 json scanProgress(const std::string& channel, uint16_t index, uint16_t total);
 json scanResult(const std::string& channel, int eid, const std::string& ensemble, const std::vector<ServiceInfo>& services, float snr);

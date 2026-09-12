@@ -123,7 +123,10 @@ impl App {
         };
         // Sperre sofort, nicht erst mit der Bestaetigung des Kerns.
         self.state.recording = true;
-        fx.commands.push(Command::StartRecording { path, format: RecFormat::Wav, slot: ServiceSlot::Primary, sid: None });
+        // Vorlauf aus dem Timeshift-Ring nur bei Aufnahme-Timern (Entscheidung 18);
+        // eine manuelle Aufnahme (Taste R) beginnt bewusst erst ab jetzt.
+        let pre_s = if timer.is_some() { self.settings.record_pre_s as f64 } else { 0.0 };
+        fx.commands.push(Command::StartRecording { path, format: RecFormat::Wav, slot: ServiceSlot::Primary, sid: None, pre_s });
         fx.events.push(AppEvent::RecordingChanged { recording: self.rec.info.clone() });
         Ok(fx)
     }

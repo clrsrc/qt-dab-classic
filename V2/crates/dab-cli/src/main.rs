@@ -335,7 +335,7 @@ fn run_session(
             }
             Event::ServiceStarted { slot: ServiceSlot::Primary, .. } => {
                 if let Some(p) = wav.take() {
-                    tx.send(Command::StartRecording { path: p, format: dab_api::RecFormat::Wav, slot: ServiceSlot::Primary, sid: None })?;
+                    tx.send(Command::StartRecording { path: p, format: dab_api::RecFormat::Wav, slot: ServiceSlot::Primary, sid: None, pre_s: 0.0 })?;
                 }
             }
             Event::Snr { db } => snr.push(*db),
