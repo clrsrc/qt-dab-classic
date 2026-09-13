@@ -7,7 +7,7 @@
 use crate::favorites;
 use crate::state::{AppState, PendingState};
 use crate::{DataDirs, Preset, Presets, Settings, PRESET_SLOTS};
-use dab_api::{Command, Event, Gain, ScanMode, ServiceInfo, ServiceSlot, SourceKind};
+use dab_api::{Command, Event, EwsPhase, Gain, ScanMode, ServiceInfo, ServiceSlot, SourceKind};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -47,6 +47,9 @@ pub enum AppEvent {
     TimeshiftNotice { notice: crate::timeshift::TimeshiftNotice },
     /// Musik-Trennung (crate::music): Vorschlagsliste geaendert.
     MusicCandidates { candidates: Vec<dab_music::TrackCandidate> },
+    /// EWS-Ortscodes uebersetzt (crate::ews_location); `iid`/`sub_ch` zum
+    /// Abgleich, falls im Frontend inzwischen ein neuerer Alarm ansteht.
+    EwsLocations { iid: u16, sub_ch: u8, location_info: Vec<crate::ews_location::LocationInfo> },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -279,6 +282,27 @@ impl App {
         self.state.apply(ev);
         let mut fx = self.media_on_event(ev);
         match ev {
+            Event::EwsAlert { locations, iid, sub_ch, phase, .. } => {
+                // Ortscodes uebersetzen (Mittelpunkt, Entfernung/Richtung):
+                // braucht die Heimatkoordinaten aus den Settings, die
+                // `AppState::apply` nicht kennt (siehe state.rs). Das
+                // Frontend baut `s.alert` selbst aus dem rohen `dab://event`
+                // auf (ohne `location_info`); hier zusaetzlich als
+                // `dab://app`-Ereignis nachreichen, gegen `iid`/`sub_ch`
+                // geprueft, damit ein spaeterer neuer Alarm nicht mit den
+                // Ortscodes des vorigen ueberschrieben wird.
+                if *phase != EwsPhase::End {
+                    let home = match (self.settings.home_lat, self.settings.home_lon) {
+                        (Some(lat), Some(lon)) => Some((lat, lon)),
+                        _ => None,
+                    };
+                    let location_info = crate::ews_location::translate(locations, home);
+                    if let Some(alert) = self.state.alert.as_mut() {
+                        alert.location_info = location_info.clone();
+                    }
+                    fx = fx.ev(AppEvent::EwsLocations { iid: *iid, sub_ch: *sub_ch, location_info });
+                }
+            }
             Event::GainChanged { lna, vga, amp, agc } => {
                 // Entscheidung 26: Gain-Merker je Geraet/Kanal nur bei AGC AUS
                 // (manuelle Werte). Bei AGC an findet der Kern den Wert selbst
@@ -950,6 +974,43 @@ mod tests {
         assert_eq!(back.last_service, Some((0xD210, 0)));
         assert_eq!(back.device, "hackrf");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn ews_alert_translates_locations_with_home_and_reports_them() {
+        let now = Instant::now();
+        let mut a = app();
+        // Duesseldorf als Heimat (Sendestandort aus dem Warntag-Test).
+        a.settings.home_lat = Some(51.2180);
+        a.settings.home_lon = Some(6.7617);
+        let ev = Event::EwsAlert {
+            phase: EwsPhase::Trigger,
+            sub_ch: 1,
+            stage: 0,
+            stage_raw: 0x01,
+            iid: 1,
+            locations: vec!["Z1:5C+F300".into(), "bad-code".into()],
+            is_test: false,
+        };
+        let fx = a.handle_event(&ev, now);
+        let alert = a.state.alert.as_ref().expect("Alarm gesetzt");
+        assert_eq!(alert.location_info.len(), 2);
+        assert!(alert.location_info[0].distance_km.is_some(), "gueltiger Code bekommt eine Entfernung");
+        assert!(alert.location_info[1].distance_km.is_none(), "unbekannter Code bleibt ohne Entfernung");
+        match fx.events.as_slice() {
+            [AppEvent::EwsLocations { iid, sub_ch, location_info }] => {
+                assert_eq!(*iid, 1);
+                assert_eq!(*sub_ch, 1);
+                assert_eq!(location_info, &alert.location_info);
+            }
+            other => panic!("EwsLocations-Ereignis erwartet, nicht {other:?}"),
+        }
+
+        // Phase "end": keine Ortscodes mehr zu uebersetzen, kein Ereignis.
+        let end = Event::EwsAlert { phase: EwsPhase::End, sub_ch: 1, stage: 0, stage_raw: 0, iid: 1, locations: vec![], is_test: false };
+        let fx = a.handle_event(&end, now);
+        assert!(a.state.alert.is_none());
+        assert!(fx.events.is_empty());
     }
 
     #[test]

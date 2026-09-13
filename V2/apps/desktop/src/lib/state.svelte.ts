@@ -283,7 +283,7 @@ export function applyCoreEvent(ev: CoreEvent) {
         s.ews_switched_from = null;
       } else {
         const dismissed = !!s.alert && s.alert.dismissed && s.alert.iid === e.iid && s.alert.sub_ch === e.sub_ch;
-        s.alert = { phase: e.phase, sub_ch: e.sub_ch, stage: e.stage, stage_raw: e.stage_raw ?? 0, iid: e.iid, locations: e.locations, is_test: e.is_test, dismissed };
+        s.alert = { phase: e.phase, sub_ch: e.sub_ch, stage: e.stage, stage_raw: e.stage_raw ?? 0, iid: e.iid, locations: e.locations, location_info: [], is_test: e.is_test, dismissed };
       }
       break;
     case "ews_switched":
@@ -397,6 +397,14 @@ export function applyAppEvent(ev: AppEvent) {
     // Musik-Trennung (lib/music.ts): Vorschlagsliste geaendert
     case "music_candidates":
       s.music_candidates = ev.candidates;
+      break;
+    // EWS-Ortscodes uebersetzt (dab_app::ews_location); kommt kurz nach dem
+    // rohen "ews_alert" nach, gegen iid/sub_ch geprueft, falls inzwischen
+    // schon ein neuerer Alarm lief.
+    case "ews_locations":
+      if (s.alert && s.alert.iid === ev.iid && s.alert.sub_ch === ev.sub_ch) {
+        s.alert = { ...s.alert, location_info: ev.location_info };
+      }
       break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:

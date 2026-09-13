@@ -2,6 +2,7 @@
   import { api } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { alertActive, notify, s } from "$lib/state.svelte";
+  import { compass, fmtDistance } from "$lib/tii";
 
   const visible = $derived(alertActive() && !s.alert?.dismissed);
   const service = $derived.by(() => {
@@ -9,6 +10,18 @@
     if (!a) return "";
     const svc = s.services.find((x) => x.sub_ch === a.sub_ch) ?? (s.current ? s.services.find((x) => x.sid === s.current!.sid) : undefined);
     return svc?.name.trim() ?? `SubCh ${a.sub_ch}`;
+  });
+  /** Kompakte Ortsangabe: naechstliegender Ortscode, sonst die rohen Codes
+   * (Uebersetzung dab_app::ews_location braucht Heimatkoordinaten). */
+  const locationSummary = $derived.by(() => {
+    const a = s.alert;
+    if (!a) return "";
+    const withDistance = a.location_info.filter((l) => l.distance_km != null);
+    if (withDistance.length) {
+      const nearest = withDistance.reduce((min, l) => (l.distance_km! < min.distance_km! ? l : min));
+      return `${fmtDistance(nearest.distance_km)} ${compass(nearest.azimuth_deg!)}`;
+    }
+    return a.locations.join(", ");
   });
   // Warnton kommt aus dem Alarmfenster (AlarmWindow.svelte, Entscheidung 10),
   // damit er nicht doppelt spielt und in den Einstellungen abschaltbar ist.
@@ -26,7 +39,7 @@
       <span class="blink">⚠</span>
     </div>
     <div class="info">
-      {t("alarm.stage", { stage: s.alert.stage })} · {s.alert.phase} · {s.alert.locations.join(", ")}
+      {t("alarm.stage", { stage: s.alert.stage })} · {s.alert.phase} · {locationSummary}
       {#if s.ews_switched_from != null}<br />{t("alarm.switched_from")}{/if}
     </div>
     <button class="btn ok" onclick={dismiss}>{t("alarm.dismiss")}</button>

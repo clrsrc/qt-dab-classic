@@ -132,8 +132,20 @@ export interface Alert {
   stage_raw: number;
   iid: number;
   locations: string[];
+  /** Ortscodes uebersetzt (Mittelpunkt, Entfernung/Richtung von zu Hause). */
+  location_info: EwsLocationInfo[];
   is_test: boolean;
   dismissed: boolean;
+}
+
+/** Uebersetzung eines DAB-EWS-Ortscodes (ETSI TS 104 089 Annex F, dab_app::ews_location). */
+export interface EwsLocationInfo {
+  code: string;
+  lat: number | null;
+  lon: number | null;
+  radius_km: number | null;
+  distance_km: number | null;
+  azimuth_deg: number | null;
 }
 
 export interface Preset {
@@ -227,6 +239,7 @@ export type AppEvent =
   | { type: "settings_changed"; settings: Settings }
   | { type: "core_restarted"; reason: string; attempt: number }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string }
+  | { type: "ews_locations"; iid: number; sub_ch: number; location_info: EwsLocationInfo[] }
   | EpgAppEvent
   | TimerAppEvent
   | DebugAppEvent

@@ -84,6 +84,10 @@ pub struct AlertState {
     pub stage_raw: u8,
     pub iid: u16,
     pub locations: Vec<String>,
+    /// Ortscodes uebersetzt (Mittelpunkt, Entfernung/Richtung von zu Hause);
+    /// wird nach `apply()` in `App::handle_event` befuellt (braucht die
+    /// Heimatkoordinaten aus den Settings, die hier nicht vorliegen).
+    pub location_info: Vec<crate::ews_location::LocationInfo>,
     pub is_test: bool,
     /// Vom Nutzer per "Verstanden" quittiert (Banner aus, Alarm laeuft weiter).
     pub dismissed: bool,
@@ -354,6 +358,7 @@ impl AppState {
                         stage_raw: *stage_raw,
                         iid: *iid,
                         locations: locations.clone(),
+                        location_info: Vec::new(),
                         is_test: *is_test,
                         dismissed,
                     });

@@ -8,6 +8,7 @@
 
 pub mod app;
 pub mod epg;
+pub mod ews_location;
 pub mod favorites;
 pub mod logos;
 pub mod music;

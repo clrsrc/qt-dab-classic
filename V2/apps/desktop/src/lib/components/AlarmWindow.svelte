@@ -5,9 +5,10 @@
   // Orte, Testkennzeichen, Warndienst; "Quittieren" schickt ews_dismiss.
   import { onMount } from "svelte";
   import { startBeep, stopBeep } from "$lib/alarm";
-  import { api } from "$lib/core";
+  import { api, type EwsLocationInfo } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { dispose, init, notify, s, ui } from "$lib/state.svelte";
+  import { compass, fmtDistance } from "$lib/tii";
 
   onMount(() => {
     init().catch((e) => notify("error", String(e)));
@@ -32,6 +33,20 @@
   });
   // Rohes Status-Byte der FIG 0/15 aus dem Kern (Warntag 2026: 0x01 = Last-Bit 0, Stufe 0, IId 1)
   const stageHex = $derived((alert?.stage_raw ?? 0).toString(16).toUpperCase().padStart(2, "0"));
+
+  /** Ortscode lesbar machen (dab_app::ews_location): Entfernung/Richtung von
+   * zu Hause, sonst nur die Naeherungskoordinate, sonst der rohe Code. */
+  function locationLabel(loc: EwsLocationInfo): string {
+    if (loc.distance_km != null && loc.azimuth_deg != null) {
+      return `${loc.code} – ${fmtDistance(loc.distance_km)} ${compass(loc.azimuth_deg)}`;
+    }
+    if (loc.lat != null && loc.lon != null) {
+      const ns = loc.lat >= 0 ? "N" : "S";
+      const ew = loc.lon >= 0 ? "O" : "W";
+      return `${loc.code} – ≈ ${Math.abs(loc.lat).toFixed(1)}°${ns} ${Math.abs(loc.lon).toFixed(1)}°${ew}`;
+    }
+    return loc.code;
+  }
   const beepOn = $derived(active && !alert?.dismissed && (ui.settings?.alarm_beep ?? true));
 
   $effect(() => {
@@ -71,9 +86,16 @@
       <div class="grid">
         <span class="k">{t("alarm.phase")}</span><span>{t(`alarm.phase.${alert.phase}`)}</span>
         <span class="k">{t("alarm.stage_label")}</span><span>{t("alarm.stage_raw", { stage: alert.stage, hex: stageHex })}</span>
-        <span class="k">{t("alarm.locations")}</span><span class="loc">{alert.locations.length ? alert.locations.join(", ") : "–"}</span>
         <span class="k">IId</span><span>{alert.iid} · SubCh {alert.sub_ch}</span>
       </div>
+      {#if alert.locations.length}
+        <div class="locs">
+          <div class="k">{t("alarm.locations")}</div>
+          {#each alert.location_info.length ? alert.location_info : alert.locations.map((code) => ({ code, lat: null, lon: null, radius_km: null, distance_km: null, azimuth_deg: null }) as EwsLocationInfo) as loc (loc.code)}
+            <div class="loc">{locationLabel(loc)}</div>
+          {/each}
+        </div>
+      {/if}
       {#if alert.is_test}<div class="hint test">{t("alarm.test_hint")}</div>{/if}
       {#if from}<div class="hint">{t("alarm.switched_from_name", { name: from })}</div>{:else}<div class="hint">{t("alarm.hint")}</div>{/if}
     </div>
@@ -96,7 +118,8 @@
   .service { font-size: 20px; font-weight: bold; color: #ffdddd; text-align: center; }
   .grid { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; font-size: 12px; }
   .k { color: #ffb0b0; font-weight: bold; }
-  .loc { font-family: var(--mono); word-break: break-all; }
+  .locs { display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
+  .loc { font-family: var(--mono); word-break: break-all; color: #ffdddd; }
   .hint { font-size: 11px; color: #ffcccc; text-align: center; }
   .hint.test { color: var(--amber); font-weight: bold; }
   .actions { display: flex; justify-content: center; padding: 8px; }
