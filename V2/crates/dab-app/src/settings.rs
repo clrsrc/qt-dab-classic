@@ -27,6 +27,9 @@ pub struct Settings {
     pub ews_autoswitch: bool,
     pub record_pre_s: u32,
     pub record_post_s: u32,
+    /// Musik-Trennung (Titelerkennung aus DL+/DLS, Schnitt aus dem Timeshift-Ring)
+    /// insgesamt an/aus, Standard an. Aus loescht offene Kandidaten und die Liste.
+    pub music_enabled: bool,
     pub music_auto_save: bool,
     pub music_keep_aac: bool,
     pub music_mp3_kbps: u16,
@@ -96,6 +99,7 @@ impl Default for Settings {
             ews_autoswitch: true,
             record_pre_s: 2 * 60,
             record_post_s: 5 * 60,
+            music_enabled: true,
             music_auto_save: false,
             music_keep_aac: false,
             music_mp3_kbps: 256,
@@ -159,6 +163,7 @@ mod tests {
         assert!(s.agc);
         assert_eq!(s.record_pre_s, 120);
         assert_eq!(s.record_post_s, 300);
+        assert!(s.music_enabled);
         assert!(!s.music_auto_save);
     }
 

@@ -24,6 +24,7 @@
   import { notify, patchSettings, s, ui } from "$lib/state.svelte";
 
   let busy = $state(false);
+  const enabled = $derived(ui.settings?.music_enabled ?? true);
   const autoSave = $derived(ui.settings?.music_auto_save ?? false);
   const frame = $derived(s.timeshift.frame_index);
   const open = $derived(s.music_candidates.filter((c) => !c.taken).length);
@@ -97,18 +98,26 @@
   <div class="panel-head">
     <span>{t("panel.music")}</span>
     <span class="grow"></span>
-    <label class="inl" title={t("music.auto_save_hint")}>
-      <input type="checkbox" checked={autoSave} onchange={(e) => patchSettings({ music_auto_save: (e.currentTarget as HTMLInputElement).checked })} />
-      {t("music.auto_save")}
+    <label class="inl strong" title={t("music.enabled_hint")}>
+      <input type="checkbox" checked={enabled} onchange={(e) => patchSettings({ music_enabled: (e.currentTarget as HTMLInputElement).checked })} />
+      {t("music.enabled")}
     </label>
-    <button class="btn mini" disabled={busy || !open} onclick={takeAll}>{t("music.take_all")}</button>
-    <button class="btn mini" disabled={!s.music_candidates.length} onclick={clear}>{t("music.clear")}</button>
+    {#if enabled}
+      <label class="inl" title={t("music.auto_save_hint")}>
+        <input type="checkbox" checked={autoSave} onchange={(e) => patchSettings({ music_auto_save: (e.currentTarget as HTMLInputElement).checked })} />
+        {t("music.auto_save")}
+      </label>
+      <button class="btn mini" disabled={busy || !open} onclick={takeAll}>{t("music.take_all")}</button>
+      <button class="btn mini" disabled={!s.music_candidates.length} onclick={clear}>{t("music.clear")}</button>
+    {/if}
   </div>
   <div class="list">
-    {#if !s.music_candidates.length}
+    {#if !enabled}
+      <div class="row"><span class="grow dim">{t("music.disabled")}</span></div>
+    {:else if !s.music_candidates.length}
       <div class="row"><span class="grow dim">{autoSave ? t("music.empty_auto") : t("music.empty")}</span></div>
     {/if}
-    {#each s.music_candidates as c, i (`${c.start_frame}-${i}`)}
+    {#each enabled ? s.music_candidates : [] as c, i (`${c.start_frame}-${i}`)}
       {@const dur = durationS(c)}
       <div class="row" class:taken={c.taken} title={rowTitle(c)}>
         <span class="bar" aria-hidden="true"><i style="width:{Math.round(Math.min(1, (dur ?? 0) / longest) * 100)}%"></i></span>
@@ -139,7 +148,7 @@
       </div>
     {/each}
   </div>
-  <div class="foot">{t("music.hint")}</div>
+  {#if enabled}<div class="foot">{t("music.hint")}</div>{/if}
 </section>
 
 <style>
@@ -162,6 +171,7 @@
   .dim { color: var(--green-dim); }
   .mini { font-size: 9px; min-height: 14px; padding: 0 4px; }
   .inl { display: inline-flex; align-items: center; gap: 3px; font-weight: normal; letter-spacing: 0; text-transform: none; }
+  .inl.strong { color: var(--text, #e8e8e8); font-weight: bold; }
   .foot { font-size: 9px; color: var(--text-dim); padding: 1px 8px 3px; }
   input[type="checkbox"] { margin: 0; }
 </style>

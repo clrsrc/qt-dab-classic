@@ -182,6 +182,8 @@ export interface Settings {
   ews_autoswitch: boolean;
   record_pre_s: number;
   record_post_s: number;
+  /** Musik-Trennung insgesamt an/aus; aus loescht die Vorschlagsliste. */
+  music_enabled: boolean;
   music_auto_save: boolean;
   music_keep_aac: boolean;
   music_mp3_kbps: number;

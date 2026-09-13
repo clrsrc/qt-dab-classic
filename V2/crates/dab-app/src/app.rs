@@ -565,6 +565,7 @@ impl App {
         }
         fx.append(self.debug_on_settings(&old));
         fx.append(self.timeshift_on_settings(&old));
+        fx.append(self.music_on_settings(&old));
         fx.append(self.save_settings());
         fx
     }

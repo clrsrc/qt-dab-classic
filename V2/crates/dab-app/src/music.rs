@@ -217,7 +217,12 @@ impl MusicDetector {
 impl App {
     /// Aus [`App::handle_event`](crate::App::handle_event): Ereignis in die
     /// Erkennung geben und fertige Kandidaten einsortieren bzw. exportieren.
+    /// Ausgeschaltet (`Settings::music_enabled`): Ereignis wird ignoriert,
+    /// die Erkennung laeuft nicht mit.
     pub fn music_on_event(&mut self, ev: &Event, now_unix: i64) -> Effects {
+        if !self.settings.music_enabled {
+            return Effects::default();
+        }
         let station = self.current_service_name();
         let step = self.music.step(ev, now_unix, station.as_deref());
         match step {
@@ -228,6 +233,24 @@ impl App {
             }
             Step::Closed(c) => self.music_finish(c),
         }
+    }
+
+    /// Aus [`App::update_settings`](crate::App::update_settings): bei
+    /// `music_enabled` aus -> an oder an -> aus die Erkennung und die
+    /// Vorschlagsliste zuruecksetzen (sonst haengen offene Kandidaten mit
+    /// veraltetem Zustand in der Liste).
+    pub fn music_on_settings(&mut self, old: &crate::Settings) -> Effects {
+        if old.music_enabled == self.settings.music_enabled {
+            return Effects::default();
+        }
+        self.music = MusicDetector { cfg: self.music.cfg.clone(), ..MusicDetector::default() };
+        if self.state.music_candidates.is_empty() {
+            return Effects::default();
+        }
+        self.state.music_candidates.clear();
+        let mut fx = Effects::default();
+        fx.events.push(AppEvent::MusicCandidates { candidates: Vec::new() });
+        fx
     }
 
     /// Name des laufenden Dienstes (fuer Album-Tag und Dateiname).
@@ -602,6 +625,52 @@ mod tests {
         a.music_adjust(last, -5.0, 999.0).unwrap();
         assert_eq!(a.state.music_candidates[last].pre_roll_s, Some(dab_music::MIN_ROLL_S));
         assert_eq!(a.state.music_candidates[last].post_roll_s, Some(dab_music::MAX_ROLL_S));
+        cleanup(&a);
+    }
+
+    #[test]
+    fn disabled_ignores_events_and_builds_no_candidates() {
+        let mut a = app();
+        a.settings.music_enabled = false;
+        feed(&mut a, &ts(1_000), 2000);
+        feed(&mut a, &dlp(false, true, "Enjoy the Silence", "Depeche Mode"), 2000);
+        feed(&mut a, &ts(9_333), 2200);
+        let fx = feed(&mut a, &dlp(true, true, "Blue Monday", "New Order"), 2200);
+        assert!(a.music.open.is_none(), "keine Erkennung waehrend ausgeschaltet");
+        assert!(a.state.music_candidates.is_empty());
+        assert!(fx.events.is_empty());
+        cleanup(&a);
+    }
+
+    #[test]
+    fn toggling_enabled_off_resets_detector_and_clears_the_list() {
+        let mut a = app();
+        feed(&mut a, &ts(1_000), 2000);
+        feed(&mut a, &dlp(false, true, "Enjoy the Silence", "Depeche Mode"), 2000);
+        feed(&mut a, &ts(9_333), 2200);
+        feed(&mut a, &dlp(true, true, "Blue Monday", "New Order"), 2200);
+        // ein geschlossener Kandidat in der Liste, einer noch offen
+        assert_eq!(a.state.music_candidates.len(), 1);
+        assert!(a.music.open.is_some());
+
+        let mut new = a.settings.clone();
+        new.music_enabled = false;
+        let fx = a.update_settings(new);
+        assert!(a.state.music_candidates.is_empty(), "Liste wird beim Ausschalten geleert");
+        assert!(a.music.open.is_none(), "offener Kandidat wird verworfen");
+        assert!(matches!(fx.events.first(), Some(AppEvent::MusicCandidates { candidates }) if candidates.is_empty()));
+
+        // Danach hat ein Ereignis keine Wirkung mehr
+        feed(&mut a, &dlp(false, true, "Titel 3", "Artist 3"), 2400);
+        assert!(a.state.music_candidates.is_empty());
+
+        // wieder an: sauberer Neustart, kein Nachwirken alter Zustaende
+        let mut new2 = a.settings.clone();
+        new2.music_enabled = true;
+        a.update_settings(new2);
+        feed(&mut a, &ts(20_000), 2500);
+        feed(&mut a, &dlp(false, true, "Neuer Titel", "Neuer Artist"), 2500);
+        assert!(a.music.open.is_some(), "Erkennung laeuft nach dem Wiedereinschalten normal weiter");
         cleanup(&a);
     }
 
