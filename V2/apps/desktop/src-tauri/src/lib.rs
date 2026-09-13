@@ -463,7 +463,8 @@ pub fn run() {
             timeshift_cmds::timeshift_status,
             music_cmds::music_list,
             music_cmds::music_export,
-            music_cmds::music_clear
+            music_cmds::music_clear,
+            music_cmds::music_adjust
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");

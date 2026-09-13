@@ -28,3 +28,10 @@ pub fn music_export(handle: AppHandle, shared: State<'_, Shared>, candidate_inde
 pub fn music_clear(handle: AppHandle, shared: State<'_, Shared>) -> R<()> {
     act(&handle, &shared, |a| Ok(((), a.music_clear())))
 }
+
+/// Vor-/Nachlauf eines Kandidaten verschieben (+/- Sekunden-Stepper im
+/// Musik-Panel). Wirkt erst beim naechsten "uebernehmen" dieses Kandidaten.
+#[tauri::command]
+pub fn music_adjust(handle: AppHandle, shared: State<'_, Shared>, candidate_index: usize, pre_roll_s: f64, post_roll_s: f64) -> R<()> {
+    act(&handle, &shared, |a| a.music_adjust(candidate_index, pre_roll_s, post_roll_s).map(|fx| ((), fx)))
+}

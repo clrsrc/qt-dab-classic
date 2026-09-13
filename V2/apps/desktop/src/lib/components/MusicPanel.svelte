@@ -8,7 +8,19 @@
   // Keine echte Wellenform: statt eines weiteren Rings im Kern zeigt die Zeile
   // nur einen Laengenbalken (Plan Abschnitt 3, erste Ausbaustufe).
   import { t, tError } from "$lib/i18n.svelte";
-  import { ageS, durationS, fmtLen, label, musicApi, type TrackCandidate } from "$lib/music";
+  import {
+    ageS,
+    durationS,
+    effectivePostRoll,
+    effectivePreRoll,
+    fmtLen,
+    label,
+    MAX_ROLL_S,
+    MIN_ROLL_S,
+    musicApi,
+    ROLL_STEP_S,
+    type TrackCandidate,
+  } from "$lib/music";
   import { notify, patchSettings, s, ui } from "$lib/state.svelte";
 
   let busy = $state(false);
@@ -67,6 +79,18 @@
     const d = durationS(c);
     return `${label(c)} · ${c.station ?? ""} · ${fmtLen(d)}${c.from_dls ? ` · ${t("music.from_dls")}` : ""}`;
   }
+
+  /** +/- Sekunden-Stepper fuer Vor-/Nachlauf (verschiebbare Schnittmarken, Plan M4b Abschnitt 5). */
+  async function adjust(index: number, c: TrackCandidate, dPre: number, dPost: number) {
+    if (busy) return;
+    const preRollS = Math.min(MAX_ROLL_S, Math.max(MIN_ROLL_S, effectivePreRoll(c) + dPre));
+    const postRollS = Math.min(MAX_ROLL_S, Math.max(MIN_ROLL_S, effectivePostRoll(c) + dPost));
+    try {
+      await musicApi.adjust(index, preRollS, postRollS);
+    } catch (e) {
+      notify("warn", tError(e));
+    }
+  }
 </script>
 
 <section class="panel music">
@@ -95,6 +119,18 @@
         <span class="svc">{c.station ?? ""}</span>
         <span class="len">{fmtLen(dur)}</span>
         <span class="ago">{t("music.ago", { time: fmtLen(ageS(c, frame)) })}</span>
+        {#if !c.taken}
+          <span class="roll" title={t("music.pre_roll_hint")}>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, -ROLL_STEP_S, 0)}>−</button>
+            <span class="roll-val">{t("music.pre_roll", { value: effectivePreRoll(c) })}</span>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, ROLL_STEP_S, 0)}>+</button>
+          </span>
+          <span class="roll" title={t("music.post_roll_hint")}>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, 0, -ROLL_STEP_S)}>−</button>
+            <span class="roll-val">{t("music.post_roll", { value: effectivePostRoll(c) })}</span>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, 0, ROLL_STEP_S)}>+</button>
+          </span>
+        {/if}
         {#if c.taken}
           <span class="done" title={t("music.taken")}>✓</span>
         {:else}
@@ -120,6 +156,9 @@
   .len { width: 38px; font-family: var(--mono); text-align: right; flex: none; }
   .ago { width: 62px; font-family: var(--mono); text-align: right; flex: none; color: var(--text-dim); }
   .done { width: 40px; text-align: center; flex: none; color: var(--green); }
+  .roll { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+  .roll-val { width: 52px; font-family: var(--mono); text-align: center; color: var(--text-dim); }
+  .step { width: 14px; padding: 0; line-height: 1; }
   .dim { color: var(--green-dim); }
   .mini { font-size: 9px; min-height: 14px; padding: 0 4px; }
   .inl { display: inline-flex; align-items: center; gap: 3px; font-weight: normal; letter-spacing: 0; text-transform: none; }

@@ -27,7 +27,20 @@ export interface TrackCandidate {
   from_dls: boolean;
   /** Schon uebernommen (Export an den Kern geschickt). */
   taken: boolean;
+  /** Vorlauf individuell verschoben (Stepper); null = Standardwert des Kerns. */
+  pre_roll_s: number | null;
+  /** Nachlauf individuell verschoben (Stepper); null = Standardwert des Kerns. */
+  post_roll_s: number | null;
 }
+
+/** Grenzen des +/- Steppers (dab_music::{MIN,MAX}_ROLL_S). */
+export const MIN_ROLL_S = 0;
+export const MAX_ROLL_S = 30;
+/** Vom Kern verwendeter Standard-Vor-/Nachlauf (dab_music::SplitConfig::default), solange nicht verschoben. */
+export const DEFAULT_PRE_ROLL_S = 8;
+export const DEFAULT_POST_ROLL_S = 3;
+/** Schrittweite des Steppers. */
+export const ROLL_STEP_S = 1;
 
 export type MusicAppEvent = { type: "music_candidates"; candidates: TrackCandidate[] };
 
@@ -36,6 +49,8 @@ export interface MusicTransport {
   /** "uebernehmen": liefert den Zielpfad der MP3. */
   exportCandidate(index: number): Promise<string>;
   clear(): Promise<void>;
+  /** Vor-/Nachlauf eines Kandidaten verschieben (Stepper). */
+  adjust(index: number, preRollS: number, postRollS: number): Promise<void>;
 }
 
 class TauriMusicTransport implements MusicTransport {
@@ -47,6 +62,9 @@ class TauriMusicTransport implements MusicTransport {
   }
   clear() {
     return invoke<void>("music_clear");
+  }
+  adjust(index: number, preRollS: number, postRollS: number) {
+    return invoke<void>("music_adjust", { candidateIndex: index, preRollS, postRollS });
   }
 }
 
@@ -68,6 +86,16 @@ export function fmtLen(seconds: number | null): string {
   if (seconds === null || !isFinite(seconds)) return "–:––";
   const v = Math.max(0, Math.round(seconds));
   return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`;
+}
+
+/** Vorlauf, der fuer diesen Kandidaten beim naechsten Export gilt. */
+export function effectivePreRoll(c: TrackCandidate): number {
+  return c.pre_roll_s ?? DEFAULT_PRE_ROLL_S;
+}
+
+/** Nachlauf, der fuer diesen Kandidaten beim naechsten Export gilt. */
+export function effectivePostRoll(c: TrackCandidate): number {
+  return c.post_roll_s ?? DEFAULT_POST_ROLL_S;
 }
 
 /** "Interpret - Titel" (wie dab_music::TrackCandidate::label). */

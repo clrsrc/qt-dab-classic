@@ -367,5 +367,9 @@
   "music.taken": "kept",
   "music.exported": "Cutting track: {file}",
   "music.hint": "Cut from the timeshift buffer as MP3 with title, artist, station and cover.",
+  "music.pre_roll": "Lead-in {value}s",
+  "music.post_roll": "Lead-out {value}s",
+  "music.pre_roll_hint": "Lead-in before the track starts",
+  "music.post_roll_hint": "Lead-out after the track ends",
   "error.slot out of range": "Entry not found"
 }

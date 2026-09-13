@@ -272,6 +272,18 @@ impl App {
         &self.state.music_candidates
     }
 
+    /// Vor-/Nachlauf eines Kandidaten verschieben (Stepper im Musik-Panel,
+    /// Plan M4b Abschnitt 5). Wirkt nur auf den naechsten Export dieses
+    /// Kandidaten (`to_export_range`), nicht rueckwirkend auf bereits
+    /// uebernommene.
+    pub fn music_adjust(&mut self, index: usize, pre_roll_s: f64, post_roll_s: f64) -> Result<Effects, AppError> {
+        let c = self.state.music_candidates.get_mut(index).ok_or(AppError::Slot)?;
+        c.set_roll(pre_roll_s, post_roll_s);
+        let mut fx = Effects::default();
+        fx.events.push(AppEvent::MusicCandidates { candidates: self.state.music_candidates.clone() });
+        Ok(fx)
+    }
+
     /// Vorschlagsliste leeren.
     pub fn music_clear(&mut self) -> Effects {
         self.state.music_candidates.clear();
@@ -557,6 +569,39 @@ mod tests {
         }
         assert!(a.state.music_candidates[0].taken, "Eintrag ist erledigt");
         assert!(a.music_export(9).is_err(), "Index ausserhalb der Liste");
+        cleanup(&a);
+    }
+
+    #[test]
+    fn adjust_shifts_the_export_range_of_a_candidate() {
+        let mut a = app();
+        feed(&mut a, &ts(1_000), 2000);
+        feed(&mut a, &dlp(false, true, "Enjoy the Silence", "Depeche Mode"), 2000);
+        feed(&mut a, &ts(9_333), 2200);
+        feed(&mut a, &dlp(true, true, "Blue Monday", "New Order"), 2200);
+        feed(&mut a, &ts(10_000), 2220);
+        let fx = a.music_adjust(0, 2.0, 6.0).unwrap();
+        assert_eq!(a.state.music_candidates[0].pre_roll_s, Some(2.0));
+        assert_eq!(a.state.music_candidates[0].post_roll_s, Some(6.0));
+        assert!(matches!(fx.events.first(), Some(AppEvent::MusicCandidates { .. })), "Liste wird neu gemeldet");
+        let (path, fx) = a.music_export(0).unwrap();
+        let cmd = fx.commands.first().expect("ein Kommando");
+        match cmd {
+            // (10000-1000)*0,024 + 2 = 218 ; (10000-9333)*0,024 - 6 = 10,008
+            Command::ExportTimeshiftRange { from_s, to_s, .. } => {
+                assert!((from_s - 218.0).abs() < 1e-6, "{from_s}");
+                assert!((to_s - 10.008).abs() < 1e-6, "{to_s}");
+            }
+            other => panic!("export_timeshift_range erwartet, nicht {other:?}"),
+        }
+        let _ = path;
+        assert!(a.music_adjust(9, 1.0, 1.0).is_err(), "Index ausserhalb der Liste");
+        // Geklemmt auf [MIN_ROLL_S, MAX_ROLL_S]
+        a.state.music_candidates.push(TrackCandidate::opened(0, None, None, None));
+        let last = a.state.music_candidates.len() - 1;
+        a.music_adjust(last, -5.0, 999.0).unwrap();
+        assert_eq!(a.state.music_candidates[last].pre_roll_s, Some(dab_music::MIN_ROLL_S));
+        assert_eq!(a.state.music_candidates[last].post_roll_s, Some(dab_music::MAX_ROLL_S));
         cleanup(&a);
     }
 

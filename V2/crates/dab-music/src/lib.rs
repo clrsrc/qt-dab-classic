@@ -19,6 +19,11 @@ use serde::{Deserialize, Serialize};
 /// zaehlt in dieser Einheit (`Event::TimeshiftState`).
 pub const FRAME_S: f64 = 0.024;
 
+/// Grenzen fuer den individuellen Vor-/Nachlauf-Stepper je Kandidat (Plan
+/// M4b Abschnitt 5: "+/- Sekunden-Stepper statt Drag-Wellenform").
+pub const MIN_ROLL_S: f64 = 0.0;
+pub const MAX_ROLL_S: f64 = 30.0;
+
 /// DL+-Inhaltstypen, die einen Titel beschreiben (TS 102 980, Tabelle 3).
 pub mod dlplus {
     pub const ITEM_TITLE: u8 = 1;
@@ -60,6 +65,10 @@ pub struct TrackCandidate {
     pub from_dls: bool,
     /// Bereits exportiert ("uebernommen"); bleibt zur Rueckmeldung in der Liste.
     pub taken: bool,
+    /// Vorlauf individuell verschoben (Stepper); `None` = `SplitConfig::pre_roll_s`.
+    pub pre_roll_s: Option<f64>,
+    /// Nachlauf individuell verschoben (Stepper); `None` = `SplitConfig::post_roll_s`.
+    pub post_roll_s: Option<f64>,
 }
 
 impl Default for TrackCandidate {
@@ -77,6 +86,8 @@ impl Default for TrackCandidate {
             item_running: true,
             from_dls: false,
             taken: false,
+            pre_roll_s: None,
+            post_roll_s: None,
         }
     }
 }
@@ -131,14 +142,34 @@ impl TrackCandidate {
         }
     }
 
+    /// Vorlauf, der fuer diesen Kandidaten gilt: individuell verschoben
+    /// (Stepper) oder `cfg.pre_roll_s`.
+    pub fn effective_pre_roll(&self, cfg: &SplitConfig) -> f64 {
+        self.pre_roll_s.unwrap_or(cfg.pre_roll_s)
+    }
+
+    /// Nachlauf, der fuer diesen Kandidaten gilt (siehe `effective_pre_roll`).
+    pub fn effective_post_roll(&self, cfg: &SplitConfig) -> f64 {
+        self.post_roll_s.unwrap_or(cfg.post_roll_s)
+    }
+
+    /// Vor-/Nachlauf individuell setzen (Stepper in der Oberflaeche), geklemmt
+    /// auf `[MIN_ROLL_S, MAX_ROLL_S]`.
+    pub fn set_roll(&mut self, pre_roll_s: f64, post_roll_s: f64) {
+        self.pre_roll_s = Some(pre_roll_s.clamp(MIN_ROLL_S, MAX_ROLL_S));
+        self.post_roll_s = Some(post_roll_s.clamp(MIN_ROLL_S, MAX_ROLL_S));
+    }
+
     /// Bereich fuer `Command::ExportTimeshiftRange`, bezogen auf den jetzigen
     /// Schreibzeiger `current_frame` (beide Werte = Sekunden hinter live,
     /// `from_s > to_s`). `None`, wenn der Kandidat noch offen ist oder der
     /// Bereich nach Vor-/Nachlauf keine Laenge mehr hat.
     pub fn to_export_range(&self, current_frame: u64, cfg: &SplitConfig) -> Option<(f64, f64)> {
         let end = self.end_frame?;
-        let from_s = current_frame.saturating_sub(self.start_frame) as f64 * FRAME_S + cfg.pre_roll_s;
-        let to_s = (current_frame.saturating_sub(end) as f64 * FRAME_S - cfg.post_roll_s).max(0.0);
+        let pre_roll_s = self.effective_pre_roll(cfg);
+        let post_roll_s = self.effective_post_roll(cfg);
+        let from_s = current_frame.saturating_sub(self.start_frame) as f64 * FRAME_S + pre_roll_s;
+        let to_s = (current_frame.saturating_sub(end) as f64 * FRAME_S - post_roll_s).max(0.0);
         if !from_s.is_finite() || !to_s.is_finite() || from_s <= to_s {
             return None;
         }
@@ -232,6 +263,29 @@ mod tests {
         // Unsinniger Vorlauf (negativ in settings.json): Bereich ohne Laenge -> None
         let cfg2 = SplitConfig { pre_roll_s: -20.0, post_roll_s: 5.0, ..SplitConfig::default() };
         assert_eq!(c.to_export_range(10_000, &cfg2), None);
+    }
+
+    #[test]
+    fn set_roll_overrides_split_config() {
+        let cfg = SplitConfig::default(); // pre 8 s, post 3 s
+        let mut c = cand(1000, Some(10_000));
+        assert_eq!(c.effective_pre_roll(&cfg), 8.0);
+        assert_eq!(c.effective_post_roll(&cfg), 3.0);
+        c.set_roll(2.0, 6.0);
+        assert_eq!(c.effective_pre_roll(&cfg), 2.0);
+        assert_eq!(c.effective_post_roll(&cfg), 6.0);
+        let (from_s, to_s) = c.to_export_range(12_500, &cfg).unwrap();
+        // wie export_range_from_frames, aber pre 2 s statt 8 s, post 6 s statt 3 s
+        assert!((from_s - 278.0).abs() < 1e-9, "{from_s}");
+        assert!((to_s - 54.0).abs() < 1e-9, "{to_s}");
+    }
+
+    #[test]
+    fn set_roll_clamps_to_bounds() {
+        let mut c = cand(1000, Some(10_000));
+        c.set_roll(-5.0, 999.0);
+        assert_eq!(c.pre_roll_s, Some(MIN_ROLL_S));
+        assert_eq!(c.post_roll_s, Some(MAX_ROLL_S));
     }
 
     #[test]

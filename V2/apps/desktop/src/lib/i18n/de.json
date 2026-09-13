@@ -367,5 +367,9 @@
   "music.taken": "übernommen",
   "music.exported": "Titel wird geschnitten: {file}",
   "music.hint": "Schnitt aus dem Timeshift-Puffer als MP3 mit Titel, Interpret, Sender und Cover.",
+  "music.pre_roll": "Vorlauf {value}s",
+  "music.post_roll": "Nachlauf {value}s",
+  "music.pre_roll_hint": "Vorlauf vor dem Titelbeginn",
+  "music.post_roll_hint": "Nachlauf nach dem Titelende",
   "error.slot out of range": "Eintrag nicht gefunden"
 }
