@@ -27,7 +27,6 @@
         draggable={svc.is_audio}
         ondragstart={(e) => startServiceDrag(e, svc)}
         onclick={() => select(svc)}
-        ondblclick={() => select(svc)}
       >
         {#if svc.is_audio}<Logo eid={s.ensemble?.eid ?? null} sid={svc.sid} size="small" name={svc.name} px={16} />{/if}
         <span class="grow">{svc.name.trim()}{svc.scids ? ` (${svc.scids})` : ""}</span>

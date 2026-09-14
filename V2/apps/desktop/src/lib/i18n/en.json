@@ -30,7 +30,7 @@
   "transport.rec": "Record (M3)",
   "transport.epg": "EPG panel (E)",
   "transport.timer": "Timer panel (T)",
-  "transport.ewf": "EWF status",
+  "transport.ewf": "EWF history (green: EWF service in ensemble)",
 
   "panel.presets": "Presets",
   "panel.services": "Ensemble",
@@ -41,6 +41,7 @@
   "panel.timer": "Timer",
   "panel.debug": "Debug",
   "panel.music": "Music",
+  "panel.ews_history": "EWF history",
   "panel.placeholder": "Coming in M3.",
 
   "preset.empty": "–",
@@ -374,5 +375,9 @@
   "music.post_roll": "Lead-out {value}s",
   "music.pre_roll_hint": "Lead-in before the track starts",
   "music.post_roll_hint": "Lead-out after the track ends",
+  "music.preview": "▶",
+  "music.preview_hint": "Preview from the cut start (timeshift bar: back to live)",
+  "ews_history.empty": "No alert has ended in this session yet.",
+  "ews_history.test": "TEST",
   "error.slot out of range": "Entry not found"
 }

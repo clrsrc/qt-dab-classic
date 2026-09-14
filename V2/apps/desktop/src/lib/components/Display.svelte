@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { channelMhz } from "$lib/core";
   import { t } from "$lib/i18n.svelte";
   import { currentService, dlPlusTitle, s, slideUrl, ui } from "$lib/state.svelte";
   import { fmtClock, remainingMin } from "$lib/epg";
   import { fmtOffset } from "$lib/timeshift";
+  import { linkify } from "$lib/linkify";
   import Logo from "./Logo.svelte";
 
   const svc = $derived(currentService());
@@ -13,6 +15,13 @@
   );
   const eid = $derived(s.ensemble ? s.ensemble.eid.toString(16).toUpperCase().padStart(4, "0") : "");
   const dlp = $derived(dlPlusTitle());
+  const dlsSegments = $derived(linkify(s.dls));
+  const titleSegments = $derived(linkify(dlp?.title ?? ""));
+  const artistSegments = $derived(linkify(dlp?.artist ?? ""));
+  const openLink = (e: MouseEvent, url: string) => {
+    e.preventDefault();
+    void openUrl(url);
+  };
   const slide = $derived(slideUrl());
   const headline = $derived.by(() => {
     if (s.pending) return s.pending.name ? t("display.searching_service", { name: s.pending.name, channel: s.pending.channel }) : t("display.searching", { channel: s.pending.channel });
@@ -56,7 +65,15 @@
   </div>
   {#if slide || s.logo_data_url}
     <div class="media">
-      <Logo src={s.logo_data_url} name={svc?.name ?? ""} size="medium" px={slide ? 84 : 48} />
+      <Logo
+        eid={s.ensemble?.eid ?? null}
+        sid={s.current?.sid ?? null}
+        src={s.logo_data_url}
+        name={svc?.name ?? ""}
+        size="medium"
+        px={slide ? 84 : 48}
+        zoomable
+      />
       {#if slide}<img src={slide} alt={s.slide?.name ?? "slide"} />{/if}
     </div>
   {/if}
@@ -73,14 +90,18 @@
   {/if}
   <div class="dlp">
     {#if dlp}
-      <span class="hi">{dlp.title}</span>
-      {#if dlp.artist}<span class="dim"> · </span><span>{dlp.artist}</span>{/if}
+      <span class="hi">{#each titleSegments as seg, i (i)}{#if seg.url}<a href={seg.url} onclick={(e) => openLink(e, seg.url ?? "")}>{seg.text}</a>{:else}{seg.text}{/if}{/each}</span>
+      {#if dlp.artist}<span class="dim"> · </span><span>{#each artistSegments as seg, i (i)}{#if seg.url}<a href={seg.url} onclick={(e) => openLink(e, seg.url ?? "")}>{seg.text}</a>{:else}{seg.text}{/if}{/each}</span>{/if}
       {#if s.dl_plus && !s.dl_plus.item_running}<span class="dim"> (pause)</span>{/if}
     {:else}
       <span class="dim">{s.current ? "DL+ ---" : ""}</span>
     {/if}
   </div>
-  <div class="ticker"><span class:scroll={s.dls.length > 70}>{s.dls || " "}</span></div>
+  <div class="ticker">
+    <span class:scroll={s.dls.length > 70}
+      >{#if dlsSegments.length}{#each dlsSegments as seg, i (i)}{#if seg.url}<a href={seg.url} onclick={(e) => openLink(e, seg.url ?? "")}>{seg.text}</a>{:else}{seg.text}{/if}{/each}{:else}&nbsp;{/if}</span
+    >
+  </div>
   <div class="vu">
     <span class="dim">L</span><span class="bar"><i style="width:{vu(s.level[0])}%"></i></span>
     <span class="dim">R</span><span class="bar"><i style="width:{vu(s.level[1])}%"></i></span>
@@ -99,6 +120,8 @@
   .name.pending { color: var(--amber); animation: blink 1s steps(2, start) infinite; }
   .media { display: flex; gap: 6px; align-items: center; }
   .media img { height: 84px; max-width: calc(100% - 90px); object-fit: contain; }
+  .dlp a, .ticker a { color: inherit; text-decoration: underline; text-decoration-style: dotted; cursor: pointer; }
+  .dlp a:hover, .ticker a:hover { color: var(--green-hi); }
   .epgline { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .epgline .amber { color: var(--amber); }
   .dlp { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

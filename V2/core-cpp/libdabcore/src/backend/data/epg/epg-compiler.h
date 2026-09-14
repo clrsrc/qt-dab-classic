@@ -51,9 +51,17 @@ public:
 //	als Minuten addiert.
 int	process_epg	(std::string &xml,
 	                 const std::vector<uint8_t> &v, int lto);
+
+//	SId aus <scope><serviceScope id="ecc:eid:sid"/></scope> des zuletzt
+//	verarbeiteten Objekts (TS 102 371, 5.2.3), 0 wenn keiner vorhanden war.
+//	Zuverlaessiger als eine Dateinamen-Heuristik, da Teil des signierten
+//	Inhalts statt eines herstellerabhaengigen MOT-Objektnamens.
+uint32_t scopeSid () const { return lastScopeSid; }
+
 private:
 	std::string	stringTable [20];
 	std::function<void(const std::string &)> theErrorLogger;
+	uint32_t	lastScopeSid = 0;
 //
 //	element handlers
 	XmlNode	process_defaultLanguage	(const std::vector<uint8_t> &v, int &index);

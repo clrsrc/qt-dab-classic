@@ -31,6 +31,7 @@
  */
 #include	"epg-compiler.h"
 #include	"time-converter.h"
+#include	<cstdlib>
 #include	<ctime>
 #include	<cstring>
 //	miniparser for epg
@@ -212,6 +213,7 @@ int	epgCompiler::process_epg	(std::string &xml,
 uint8_t	tag	= v [0];
 int	index	= 0;
 	this	-> lto = lto;
+	this	-> lastScopeSid = 0;
 	for (int i = 0; i < 16; i ++)
 	   stringTable [i] = "";
 	int endPoint = setLength (v, index);
@@ -956,6 +958,9 @@ XmlNode serviceScope ("serviceScope");
 	      case 0x80: {	// Id, 476
 	         std::string res = process_476 (v, index);
 	         serviceScope. setAttribute ("id", res);
+	         size_t p = res. rfind (':');
+	         if (p != std::string::npos)
+	            lastScopeSid = (uint32_t) std::strtoul (res. c_str () + p + 1, nullptr, 16);
 	         break;
 	      }
 	      default:

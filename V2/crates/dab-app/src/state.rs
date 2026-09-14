@@ -93,6 +93,25 @@ pub struct AlertState {
     pub dismissed: bool,
 }
 
+/// Abgeschlossener Alarm, fuer die Sitzungs-Historie (Bugfixes.txt #10).
+/// Nur im Speicher (wie der Timeshift-Ring), keine Datei wie beim EPG-Cache -
+/// reicht, um einen Alarm nachtraeglich anzusehen, waehrend die App laeuft.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct EwsHistoryEntry {
+    /// Unix-Zeit, zu der die "End"-Meldung kam.
+    pub ended_at: i64,
+    pub sub_ch: u8,
+    pub stage: u8,
+    pub stage_raw: u8,
+    pub iid: u16,
+    pub locations: Vec<String>,
+    pub location_info: Vec<crate::ews_location::LocationInfo>,
+    pub is_test: bool,
+}
+
+/// Hoechstzahl der Eintraege in `AppState::ews_history`; aelteste fallen raus.
+pub const EWS_HISTORY_MAX: usize = 20;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct FileState {
     pub path: String,
@@ -163,6 +182,9 @@ pub struct AppState {
     /// Vorschlagsliste der Musik-Trennung (crate::music, Entscheidungen 6, 7);
     /// hoechstens `crate::music::MUSIC_MAX` Eintraege, aelteste zuerst raus.
     pub music_candidates: Vec<dab_music::TrackCandidate>,
+    /// Abgeschlossene Alarme dieser Sitzung, neueste zuerst (Bugfixes.txt #10,
+    /// [`EWS_HISTORY_MAX`] Eintraege); nicht persistiert.
+    pub ews_history: Vec<EwsHistoryEntry>,
 }
 
 pub fn unix_now() -> i64 {
@@ -343,7 +365,19 @@ impl AppState {
             Event::EwsPresent => self.ews_present = true,
             Event::EwsAlert { phase, sub_ch, stage, stage_raw, iid, locations, is_test } => {
                 if *phase == EwsPhase::End {
-                    self.alert = None;
+                    if let Some(a) = self.alert.take() {
+                        self.ews_history.insert(0, EwsHistoryEntry {
+                            ended_at: unix_now(),
+                            sub_ch: a.sub_ch,
+                            stage: a.stage,
+                            stage_raw: a.stage_raw,
+                            iid: a.iid,
+                            locations: a.locations,
+                            location_info: a.location_info,
+                            is_test: a.is_test,
+                        });
+                        self.ews_history.truncate(EWS_HISTORY_MAX);
+                    }
                     self.ews_switched_from = None;
                 } else {
                     let dismissed = self

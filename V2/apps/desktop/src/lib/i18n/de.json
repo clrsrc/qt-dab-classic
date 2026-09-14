@@ -30,7 +30,7 @@
   "transport.rec": "Aufnahme (M3)",
   "transport.epg": "EPG-Panel (E)",
   "transport.timer": "Timer-Panel (T)",
-  "transport.ewf": "EWF-Status",
+  "transport.ewf": "EWF-Historie (grün: EWF-Dienst im Ensemble)",
 
   "panel.presets": "Speicher",
   "panel.services": "Ensemble",
@@ -41,6 +41,7 @@
   "panel.timer": "Timer",
   "panel.debug": "Debug",
   "panel.music": "Musik",
+  "panel.ews_history": "EWF-Historie",
   "panel.placeholder": "Kommt in M3.",
 
   "preset.empty": "–",
@@ -374,5 +375,9 @@
   "music.post_roll": "Nachlauf {value}s",
   "music.pre_roll_hint": "Vorlauf vor dem Titelbeginn",
   "music.post_roll_hint": "Nachlauf nach dem Titelende",
+  "music.preview": "▶",
+  "music.preview_hint": "Ab dem Schnittanfang vorhören (Timeshift-Leiste: zurück zu live)",
+  "ews_history.empty": "Noch kein Alarm in dieser Sitzung beendet.",
+  "ews_history.test": "TEST",
   "error.slot out of range": "Eintrag nicht gefunden"
 }

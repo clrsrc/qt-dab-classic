@@ -114,6 +114,20 @@ export interface AppState {
   timeshift: TimeshiftInfo;
   /** Vorschlagsliste der Musik-Trennung (lib/music.ts, Entscheidungen 6, 7). */
   music_candidates: TrackCandidate[];
+  /** Abgeschlossene Alarme dieser Sitzung, neueste zuerst (Bugfixes.txt #10). */
+  ews_history: EwsHistoryEntry[];
+}
+
+/** Abgeschlossener Alarm (dab_app::state::EwsHistoryEntry). */
+export interface EwsHistoryEntry {
+  ended_at: number;
+  sub_ch: number;
+  stage: number;
+  stage_raw: number;
+  iid: number;
+  locations: string[];
+  location_info: EwsLocationInfo[];
+  is_test: boolean;
 }
 
 export interface ScanResult {
@@ -177,6 +191,8 @@ export interface Panels {
   debug: boolean;
   /** Panel "Musik" (lib/music.ts). */
   music: boolean;
+  /** EWF-Historie (Bugfixes.txt #10), Button "EWF" in Transport.svelte. */
+  ews_history: boolean;
 }
 
 export interface Settings {
@@ -217,6 +233,9 @@ export interface Settings {
   tii_threshold: number;
   tii_dx_mode: boolean;
   scope_rate_hz: number;
+  /** Fenstergroesse beim letzten Beenden (nur Tauri-Backend, rein-/rausgeschrieben). */
+  window_width: number | null;
+  window_height: number | null;
 }
 
 export interface StoreResult {
@@ -240,6 +259,7 @@ export type AppEvent =
   | { type: "core_restarted"; reason: string; attempt: number }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string }
   | { type: "ews_locations"; iid: number; sub_ch: number; location_info: EwsLocationInfo[] }
+  | { type: "ews_history"; history: EwsHistoryEntry[] }
   | EpgAppEvent
   | TimerAppEvent
   | DebugAppEvent

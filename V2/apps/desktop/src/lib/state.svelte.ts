@@ -51,6 +51,7 @@ export function emptyState(): AppState {
     stations: [],
     timeshift: emptyTimeshift(),
     music_candidates: [],
+    ews_history: [],
   };
 }
 
@@ -405,6 +406,10 @@ export function applyAppEvent(ev: AppEvent) {
       if (s.alert && s.alert.iid === ev.iid && s.alert.sub_ch === ev.sub_ch) {
         s.alert = { ...s.alert, location_info: ev.location_info };
       }
+      break;
+    // EWF-Historie (Bugfixes.txt #10): kommt nach, wenn ein Alarm endet.
+    case "ews_history":
+      s.ews_history = ev.history;
       break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:

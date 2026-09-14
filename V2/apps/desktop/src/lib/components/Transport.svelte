@@ -25,7 +25,7 @@
   <button class="btn transport" class:on={s.muted} title={t("transport.mute")} onclick={() => run(api.setMute(!s.muted))}>🔇</button>
   <span class="sep"></span>
   <button class="btn feat" class:on={ui.settings?.panels.epg} title={t("transport.epg")} onclick={() => togglePanel("epg")}>EPG</button>
-  <button class="btn feat" class:on={s.ews_present} title={t("transport.ewf")}>EWF</button>
+  <button class="btn feat" class:on={s.ews_present} title={t("transport.ewf")} onclick={() => togglePanel("ews_history")}>EWF</button>
   <button class="btn feat" class:on={ui.settings?.panels.timer} title={t("transport.timer")} onclick={() => togglePanel("timer")}>TMR</button>
   <RecButton />
   <span class="sep"></span>

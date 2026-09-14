@@ -56,6 +56,10 @@ pub struct Settings {
     pub tii_threshold: i16,
     pub tii_dx_mode: bool,
     pub scope_rate_hz: u8,
+    /// Fenstergroesse beim letzten Beenden (physische Pixel); None = Standard
+    /// aus tauri.conf.json (Bugfixes.txt #4).
+    pub window_width: Option<u32>,
+    pub window_height: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -74,11 +78,13 @@ pub struct Panels {
     pub debug: bool,
     /// Panel "Musik" (crate::music): Vorschlagsliste der Titel-Trennung.
     pub music: bool,
+    /// EWF-Historie (Bugfixes.txt #10), erreichbar ueber den Button "EWF".
+    pub ews_history: bool,
 }
 
 impl Default for Panels {
     fn default() -> Self {
-        Self { presets: true, services: true, stations: true, settings: false, scan: false, epg: false, timer: false, debug: false, music: false }
+        Self { presets: true, services: true, stations: true, settings: false, scan: false, epg: false, timer: false, debug: false, music: false, ews_history: false }
     }
 }
 
@@ -118,6 +124,8 @@ impl Default for Settings {
             tii_threshold: crate::tii::TII_THRESHOLD_DEFAULT,
             tii_dx_mode: false,
             scope_rate_hz: crate::tii::SCOPE_RATE_DEFAULT,
+            window_width: None,
+            window_height: None,
         }
     }
 }

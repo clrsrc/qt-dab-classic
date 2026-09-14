@@ -51,6 +51,8 @@ export interface MusicTransport {
   clear(): Promise<void>;
   /** Vor-/Nachlauf eines Kandidaten verschieben (Stepper). */
   adjust(index: number, preRollS: number, postRollS: number): Promise<void>;
+  /** "Vorhoeren": an den Schnittanfang springen und von dort weiterspielen. */
+  preview(index: number): Promise<void>;
 }
 
 class TauriMusicTransport implements MusicTransport {
@@ -65,6 +67,9 @@ class TauriMusicTransport implements MusicTransport {
   }
   adjust(index: number, preRollS: number, postRollS: number) {
     return invoke<void>("music_adjust", { candidateIndex: index, preRollS, postRollS });
+  }
+  preview(index: number) {
+    return invoke<void>("music_preview", { candidateIndex: index });
   }
 }
 

@@ -356,6 +356,18 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Fenstergroesse vor dem Beenden in die Settings uebernehmen (Bugfixes.txt #4).
+fn capture_window_size(window: &tauri::Window, shared: &Shared) {
+    let Ok(size) = window.inner_size() else { return };
+    if size.width == 0 || size.height == 0 {
+        return; // minimiert o.ae. liefert 0x0, nicht als Groesse uebernehmen
+    }
+    if let Ok(mut a) = shared.app.lock() {
+        a.settings.window_width = Some(size.width);
+        a.settings.window_height = Some(size.height);
+    }
+}
+
 fn stop_all(shared: &Shared) {
     shared.shutting_down.store(true, Ordering::SeqCst);
     if let Ok(mut a) = shared.app.lock() {
@@ -393,6 +405,17 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             debug_cmds::load_database(&handle, &handle.state::<Shared>());
+            // Zuletzt gespeicherte Fenstergroesse wiederherstellen (Bugfixes.txt #4);
+            // ohne gespeicherten Wert bleibt es bei der Groesse aus tauri.conf.json.
+            if let Some(window) = handle.get_webview_window("main") {
+                let saved = handle.state::<Shared>().app.lock().ok().and_then(|a| match (a.settings.window_width, a.settings.window_height) {
+                    (Some(w), Some(h)) => Some((w, h)),
+                    _ => None,
+                });
+                if let Some((width, height)) = saved {
+                    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width, height }));
+                }
+            }
             if let Err(e) = spawn_core(&handle, "start") {
                 log::error!("Kern konnte nicht gestartet werden: {e}");
                 let _ = handle.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: format!("core: {e}") });
@@ -404,6 +427,7 @@ pub fn run() {
             if window.label() == "main" && matches!(event, tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed) {
                 timer_cmds::close_alarm(window.app_handle());
                 if let Some(shared) = window.try_state::<Shared>() {
+                    capture_window_size(window, &shared);
                     stop_all(&shared);
                 }
             }
@@ -464,7 +488,8 @@ pub fn run() {
             music_cmds::music_list,
             music_cmds::music_export,
             music_cmds::music_clear,
-            music_cmds::music_adjust
+            music_cmds::music_adjust,
+            music_cmds::music_preview
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");

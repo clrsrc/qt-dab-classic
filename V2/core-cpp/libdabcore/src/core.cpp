@@ -573,9 +573,13 @@ uint32_t DabCore::sidFromLogoName(const std::string& name) const {
     return sid;
 }
 
-// v1 extractName: Datum als 8 Ziffern (Jahr 2000..2030) an Position 0..3,
-// danach die erste 4-stellige Hex-Zahl, die eine SId des Ensembles ist
-// ("w20260914dd230c0.EHB" -> 20260914, 0xD230).
+// v1 extractName: Datum als 8 Ziffern (Jahr 2000..2030) an Position 0..3
+// ("w20260914dd230c0.EHB" -> 20260914). Liefert bei gefundenem Datum immer
+// true; sid ist dabei nur ein Rateversuch (erste nachfolgende 4-stellige
+// Hex-Zahl, die zufaellig eine SId des Ensembles ist) und dient onMotObject
+// nur noch als Fallback, falls der EPG-Inhalt selbst keinen serviceScope
+// enthaelt (siehe epgCompiler::scopeSid) - der Dateiname ist nicht durch
+// TS 102 371 festgelegt und kann bei manchen Multiplexen mehrdeutig sein.
 bool DabCore::epgNameParts(const std::string& name, uint32_t& date, uint32_t& sid) const {
     std::string real = baseName(name);
     size_t dotat = real.rfind('.');
@@ -593,12 +597,13 @@ bool DabCore::epgNameParts(const std::string& name, uint32_t& date, uint32_t& si
         break;
     }
     if (eos == 0) return false;
+    sid = 0;
     for (size_t i = eos; dotat >= 3 && i < dotat - 3; ++i) {
         uint32_t cand = 0;
         if (!parseHex(real.substr(i, 4), cand)) continue;
-        if (ensembleHasSid(cand)) { sid = cand; return true; }
+        if (ensembleHasSid(cand)) { sid = cand; break; }
     }
-    return false;
+    return true;
 }
 
 // v1 handle_motObject / process_epgData / showMOTlabel (SPI-Zweig)
@@ -625,7 +630,17 @@ void DabCore::onMotObject(RunningService* rs, const std::vector<uint8_t>& data, 
         }
         uint32_t date = 0, sid = 0;
         if (!epgNameParts(name, date, sid)) {
-            sink_(events::log("debug", "EPG-Objekt ohne Datum/SId im Namen: " + name));
+            sink_(events::log("debug", "EPG-Objekt ohne Datum im Namen: " + name));
+            return;
+        }
+        // serviceScope aus dem Inhalt (TS 102 371) ist eindeutig und geht vor
+        // der Dateinamen-Heuristik, die bei manchen Multiplexen die SId eines
+        // anderen Dienstes im Ensemble treffen kann (Bugfixes.txt #3: EPG von
+        // ENERGY landete unter DLF).
+        uint32_t scopeSid = rs->epg->scopeSid();
+        if (scopeSid != 0) sid = scopeSid;
+        if (sid == 0) {
+            sink_(events::log("debug", "EPG-Objekt ohne SId (weder Inhalt noch Name): " + name));
             return;
         }
         sink_(events::epgObject(eid, sid, date, name, xml));

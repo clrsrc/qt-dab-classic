@@ -35,3 +35,12 @@ pub fn music_clear(handle: AppHandle, shared: State<'_, Shared>) -> R<()> {
 pub fn music_adjust(handle: AppHandle, shared: State<'_, Shared>, candidate_index: usize, pre_roll_s: f64, post_roll_s: f64) -> R<()> {
     act(&handle, &shared, |a| a.music_adjust(candidate_index, pre_roll_s, post_roll_s).map(|fx| ((), fx)))
 }
+
+/// "Vorhoeren": an den (mit Vor-/Nachlauf verschobenen) Anfang des Kandidaten
+/// im laufenden Audiopfad springen, um die Schnittmarken genau einstellen zu
+/// koennen (Bugfixes.txt #6). Zurueck zu "live" geht ueber die bestehende
+/// Timeshift-Leiste (ESC / Knopf LIVE).
+#[tauri::command]
+pub fn music_preview(handle: AppHandle, shared: State<'_, Shared>, candidate_index: usize) -> R<()> {
+    act(&handle, &shared, |a| a.music_preview(candidate_index).map(|fx| ((), fx)))
+}

@@ -828,6 +828,15 @@ fibConfig::AppType element;
 	if (localBase -> findIndexApptype_table (SId, SCIds) != -1)
 	   return bitOffset / 8;
 	localBase -> add_to_apptype_table (element);
+	// Diagnose fuer Bugfixes.txt #13 (Verkehrsinfo): kein TPEG/TMC-Decoder
+	// vorhanden (Entscheidung 19), aber neu gefundene Datendienst-Typen
+	// abseits von SPI/EPG (7) einmalig loggen, um zu sehen, ob der Multiplex
+	// ueberhaupt einen TPEG (4)/TMC (6) o.ae. Dienst anbietet. "warn" statt
+	// "info", weil nur warn/error bis in die Statuszeile durchgereicht
+	// werden (state.svelte.ts) - keine echte Fehlermeldung.
+	if (element. Apptype != 7)
+	   logf ("warn", "FIG0/13: SId %x App-Type %d (%s)", SId,
+	                    element. Apptype, getUserApplicationType (element. Apptype));
 	return bitOffset / 8;
 }
 

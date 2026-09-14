@@ -328,6 +328,20 @@ impl App {
         Ok((path, fx))
     }
 
+    /// "Vorhoeren" (Bugfixes.txt #6): an den mit Vor-/Nachlauf verschobenen
+    /// Anfang des Kandidaten im Timeshift-Ring springen und von dort
+    /// weiterspielen, statt einen eigenen Vorschau-Pfad zu brauchen. Wie beim
+    /// Export (`music_export_candidate`) bleibt es bei "letzter Stand" der
+    /// Schnittmarken; ein Rueckweg zu "live" bietet die Timeshift-Leiste
+    /// bereits (ESC / Knopf LIVE).
+    pub fn music_preview(&mut self, index: usize) -> Result<Effects, AppError> {
+        let c = self.state.music_candidates.get(index).cloned().ok_or(AppError::Slot)?;
+        let (from_s, _) = c.to_export_range(self.music.frame, &self.music.cfg).ok_or_else(|| AppError::Other("range invalid".into()))?;
+        let mut fx = self.timeshift_seek(from_s)?;
+        fx.commands.push(Command::TimeshiftPlay);
+        Ok(fx)
+    }
+
     /// Gemeinsamer Weg fuer "uebernehmen" und "automatisch speichern".
     fn music_export_candidate(&mut self, c: &TrackCandidate) -> Result<(PathBuf, Effects), AppError> {
         if self.state.is_file_source() {
@@ -625,6 +639,29 @@ mod tests {
         a.music_adjust(last, -5.0, 999.0).unwrap();
         assert_eq!(a.state.music_candidates[last].pre_roll_s, Some(dab_music::MIN_ROLL_S));
         assert_eq!(a.state.music_candidates[last].post_roll_s, Some(dab_music::MAX_ROLL_S));
+        cleanup(&a);
+    }
+
+    #[test]
+    fn preview_seeks_to_the_export_start_and_plays() {
+        let mut a = app();
+        feed(&mut a, &ts(1_000), 2000);
+        feed(&mut a, &dlp(false, true, "Enjoy the Silence", "Depeche Mode"), 2000);
+        feed(&mut a, &ts(9_333), 2200);
+        feed(&mut a, &dlp(true, true, "Blue Monday", "New Order"), 2200);
+        feed(&mut a, &ts(10_000), 2220);
+        a.music_adjust(0, 2.0, 6.0).unwrap();
+        // music_on_event() (ueber feed()) fuehrt music.frame nach, timeshift_on_event()
+        // (state.timeshift, hier fuer die Seek-Klemmung auf buffered_s gebraucht) laeuft
+        // im echten Betrieb parallel dazu ueber App::handle_event().
+        a.state.timeshift.buffered_s = 1800.0;
+        let fx = a.music_preview(0).unwrap();
+        // dieselbe from_s wie beim Export (Test oben): (10000-1000)*0,024 + 2 = 218
+        assert_eq!(
+            fx.commands,
+            vec![Command::TimeshiftSeek { offset_s: 218.0 }, Command::TimeshiftPlay],
+        );
+        assert!(a.music_preview(9).is_err(), "Index ausserhalb der Liste");
         cleanup(&a);
     }
 

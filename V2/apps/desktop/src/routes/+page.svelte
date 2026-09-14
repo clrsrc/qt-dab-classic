@@ -11,6 +11,7 @@
   import Dialogs from "$lib/components/Dialogs.svelte";
   import Display from "$lib/components/Display.svelte";
   import EpgPanel from "$lib/components/EpgPanel.svelte";
+  import EwsHistoryPanel from "$lib/components/EwsHistoryPanel.svelte";
   import PresetBar from "$lib/components/PresetBar.svelte";
   import TimerPanel from "$lib/components/TimerPanel.svelte";
   import MusicPanel from "$lib/components/MusicPanel.svelte";
@@ -35,7 +36,9 @@
     return dispose;
   });
   const panels = $derived(ui.settings?.panels);
-  const tabs = ["presets", "services", "stations", "scan", "settings", "epg", "timer", "music", "debug"] as const;
+  // EPG/Timer haben eigene Buttons in Transport.svelte (oben links neben Vol),
+  // hier nicht nochmal doppelt (Bugfixes.txt #11).
+  const tabs = ["presets", "services", "stations", "scan", "settings", "music", "debug"] as const;
 </script>
 
 <!-- Nach einer Auswahl den Fokus abgeben, damit die Tastenkuerzel (Ziffern, M, +/-) wieder greifen. -->
@@ -64,6 +67,7 @@
     {#if panels?.scan}<ScanPanel />{/if}
     {#if panels?.settings}<SettingsPanel />{/if}
     {#if panels?.epg}<EpgPanel />{/if}
+    {#if panels?.ews_history}<EwsHistoryPanel />{/if}
     {#if panels?.timer}<TimerPanel />{/if}
     {#if panels?.music}<MusicPanel />{/if}
     {#if panels?.debug}<DebugPanel />{/if}

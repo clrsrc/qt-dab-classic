@@ -50,6 +50,9 @@ pub enum AppEvent {
     /// EWS-Ortscodes uebersetzt (crate::ews_location); `iid`/`sub_ch` zum
     /// Abgleich, falls im Frontend inzwischen ein neuerer Alarm ansteht.
     EwsLocations { iid: u16, sub_ch: u8, location_info: Vec<crate::ews_location::LocationInfo> },
+    /// EWF-Historie geaendert (ein Alarm endete, Bugfixes.txt #10); komplette
+    /// Liste, neueste zuerst, wie `AppState::ews_history`.
+    EwsHistory { history: Vec<crate::state::EwsHistoryEntry> },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -301,6 +304,12 @@ impl App {
                         alert.location_info = location_info.clone();
                     }
                     fx = fx.ev(AppEvent::EwsLocations { iid: *iid, sub_ch: *sub_ch, location_info });
+                } else {
+                    // `AppState::apply` hat den beendeten Alarm bereits in
+                    // `ews_history` einsortiert (Bugfixes.txt #10); die Liste
+                    // baut sich (anders als `s.alert`) nicht aus rohen
+                    // Kern-Ereignissen zusammen, darum hier nachreichen.
+                    fx = fx.ev(AppEvent::EwsHistory { history: self.state.ews_history.clone() });
                 }
             }
             Event::GainChanged { lna, vga, amp, agc } => {
@@ -511,6 +520,13 @@ impl App {
         }
         self.pending = None;
         self.state.pending = None;
+        // Kopfzeile sofort auf den neuen Dienst umstellen: `service_started`
+        // kommt aus dem Kern bewusst erst mit dem ersten dekodierten
+        // Audioblock (V2/docs/protocol.md), ohne Fallback bei verlorenem
+        // erstem Block. Bis dahin sonst "kein Dienst" (Bugfixes.txt #5/#7);
+        // der codec wird nachgetragen, sobald das Event eintrifft (state.rs
+        // Event::ServiceStarted), Name/SId stehen aber sofort.
+        self.state.current = Some(crate::state::CurrentService { sid, scids, codec: None, stereo: false });
         Ok(Effects::default().cmd(Command::SelectService { sid, scids, slot: ServiceSlot::Primary }))
     }
 
@@ -1006,11 +1022,19 @@ mod tests {
             other => panic!("EwsLocations-Ereignis erwartet, nicht {other:?}"),
         }
 
-        // Phase "end": keine Ortscodes mehr zu uebersetzen, kein Ereignis.
+        // Phase "end": keine Ortscodes mehr zu uebersetzen, aber der Alarm
+        // wandert in die Sitzungs-Historie (Bugfixes.txt #10) und wird als
+        // EwsHistory nachgereicht.
         let end = Event::EwsAlert { phase: EwsPhase::End, sub_ch: 1, stage: 0, stage_raw: 0, iid: 1, locations: vec![], is_test: false };
         let fx = a.handle_event(&end, now);
         assert!(a.state.alert.is_none());
-        assert!(fx.events.is_empty());
+        assert_eq!(a.state.ews_history.len(), 1);
+        assert_eq!(a.state.ews_history[0].iid, 1);
+        assert_eq!(a.state.ews_history[0].location_info.len(), 2, "die zuletzt uebersetzten Ortscodes bleiben erhalten");
+        match fx.events.as_slice() {
+            [AppEvent::EwsHistory { history }] => assert_eq!(history, &a.state.ews_history),
+            other => panic!("EwsHistory-Ereignis erwartet, nicht {other:?}"),
+        }
     }
 
     #[test]
@@ -1022,8 +1046,12 @@ mod tests {
         started(&mut a, 3, now);
         let fx = a.step_service(1).unwrap();
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 1, scids: 0, slot: ServiceSlot::Primary }]);
+        // select_service setzt state.current sofort optimistisch (Bugfixes.txt
+        // #5/#7), daher fuehrt "prev" direkt danach wieder zur Ausgangsstation
+        // zurueck, statt (wie vor dem Fix) vom noch nicht aktualisierten alten
+        // current aus zu rechnen.
         let fx = a.step_service(-1).unwrap();
-        assert_eq!(fx.commands, vec![Command::SelectService { sid: 2, scids: 0, slot: ServiceSlot::Primary }]);
+        assert_eq!(fx.commands, vec![Command::SelectService { sid: 3, scids: 0, slot: ServiceSlot::Primary }]);
         a.handle_event(&Event::EwsAlert { phase: EwsPhase::Trigger, sub_ch: 1, stage: 1, stage_raw: 0x81, iid: 1, locations: vec![], is_test: false }, now);
         let fx = a.command(Command::EwsDismiss).unwrap();
         assert_eq!(fx.commands, vec![Command::EwsDismiss]);

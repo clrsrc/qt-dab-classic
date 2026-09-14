@@ -92,6 +92,15 @@
       notify("warn", tError(e));
     }
   }
+
+  /** "Vorhoeren": an den Schnittanfang springen, um die Marken genau einzustellen. */
+  async function preview(index: number) {
+    try {
+      await musicApi.preview(index);
+    } catch (e) {
+      notify("warn", tError(e));
+    }
+  }
 </script>
 
 <section class="panel music">
@@ -129,6 +138,7 @@
         <span class="len">{fmtLen(dur)}</span>
         <span class="ago">{t("music.ago", { time: fmtLen(ageS(c, frame)) })}</span>
         {#if !c.taken}
+          <button class="btn mini step" disabled={busy} title={t("music.preview_hint")} onclick={() => preview(i)}>{t("music.preview")}</button>
           <span class="roll" title={t("music.pre_roll_hint")}>
             <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, -ROLL_STEP_S, 0)}>−</button>
             <span class="roll-val">{t("music.pre_roll", { value: effectivePreRoll(c) })}</span>
