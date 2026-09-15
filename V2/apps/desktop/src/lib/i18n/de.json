@@ -379,5 +379,7 @@
   "music.preview_hint": "Ab dem Schnittanfang vorhören (Timeshift-Leiste: zurück zu live)",
   "ews_history.empty": "Noch kein Alarm in dieser Sitzung beendet.",
   "ews_history.test": "TEST",
+  "ews_history.outside": "AUSSERHALB",
+  "ews_history.outside_hint": "Außerhalb des eigenen Empfangsgebiets – kein Alarmfenster, kein Warnton (Heimatkoordinaten in den Einstellungen).",
   "error.slot out of range": "Eintrag nicht gefunden"
 }

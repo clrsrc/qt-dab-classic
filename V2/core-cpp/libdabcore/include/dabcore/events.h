@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -83,7 +84,11 @@ json audioDevices(const std::vector<std::string>& names, int current);
 
 json ewsPresent();
 // stageRaw: rohes Status-Byte der FIG 0/15 (Bit 7 Last, Bits 6..4 Stage, Bits 3..0 IId), Warntag 2026: 0x01
-json ewsAlert(EwsPhase phase, uint8_t subCh, uint8_t stage, uint8_t stageRaw, uint16_t iid, const std::vector<std::string>& locations, bool isTest);
+// relevant: Geofencing-Ergebnis (Annex-F-Ortscodes gegen die Heimatposition
+// aus set_home_location). std::nullopt = keine Heimatposition gesetzt, das
+// Feld wird dann als JSON null gesendet (App: "unbekannt" -> immer relevant).
+json ewsAlert(EwsPhase phase, uint8_t subCh, uint8_t stage, uint8_t stageRaw, uint16_t iid, const std::vector<std::string>& locations, bool isTest,
+              std::optional<bool> relevant);
 // subCh < 0: Heartbeat ohne aktiven Alarm (sub_ch = null)
 json ewsAlive(int subCh);
 json ewfAlarm(bool active, uint8_t subCh);

@@ -184,12 +184,22 @@ private:
     // Dienst. Keine Umschaltung bei Testalarm, ausgeschaltetem Autoswitch
     // oder wenn schon umgeschaltet ist; eine gesperrte Umschaltung wegen
     // laufender Aufnahme (selectService) bleibt beim Warndienst-Ton stumm.
-    void handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest);
+    // relevant = Geofencing-Ergebnis (siehe ewsRelevance); false verhindert
+    // die Umschaltung, der Alarm bleibt nur informativ.
+    void handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest, bool relevant);
     bool     ewsAutoActive_ = false;
     uint32_t ewsAlertSid_ = 0;
     uint32_t ewsSavedSid_ = 0;
     uint8_t  ewsSavedScids_ = 0;
     bool     ewsHasSaved_ = false;
+    // Geofencing (ASA DE / TS 104 089 Klausel 7.5): Ortscodes des Alarms gegen
+    // die Heimatposition. std::nullopt = keine Heimatposition gesetzt, dann
+    // gilt jeder Alarm als relevant (Ausgangsverhalten). Ohne den Abgleich
+    // wuerde z. B. der 5-Minuten-Funktionstest des Bundesmux ("Eiffelturm",
+    // Ortscodes um Paris) auch in Deutschland die Umschaltung ausloesen.
+    std::optional<bool> ewsRelevance(const std::vector<std::string>& locations) const;
+    std::optional<double> homeLat_;   // set_home_location
+    std::optional<double> homeLon_;
 
     EventSink sink_;
     CoreOptions opt_;

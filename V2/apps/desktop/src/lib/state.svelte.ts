@@ -117,9 +117,14 @@ export function motFresh(): boolean {
   return !!s.slide && ui.now / 1000 - s.slide.received_at < 60;
 }
 
+/** Laeuft gerade ein Alarm, der uns betrifft? `relevant === false` heisst:
+ * der Kern hat den Alarm per Geofencing (Heimatkoordinaten, ETSI TS 104 089)
+ * als ortsfremd eingestuft - er wird weiter mitgeschrieben (EWF-Historie),
+ * aber nicht als Alarm dargestellt (kein Banner, keine rote LED, kein
+ * Alarmfenster; letzteres entscheidet die Rust-Seite in timer_cmds.rs). */
 export function alertActive(): boolean {
   const a = s.alert;
-  return !!a && (a.phase === "trigger" || a.phase === "sustain");
+  return !!a && (a.phase === "trigger" || a.phase === "sustain") && a.relevant !== false;
 }
 
 export function dlPlusTitle(): { title: string; artist: string } | null {
@@ -278,13 +283,16 @@ export function applyCoreEvent(ev: CoreEvent) {
       break;
     case "ews_alert":
       if (e.phase === "end") {
-        // Alarmfenster (timer_cmds) geht zu; Hinweis im Hauptfenster (Entscheidung 5)
-        if (s.alert && s.alert.phase !== "pre_trigger") notify("info", t("alarm.ended"), 8000);
+        // Alarmfenster (timer_cmds) geht zu; Hinweis im Hauptfenster (Entscheidung 5).
+        // Ortsfremde Alarme (Geofencing, relevant === false) sind nie aufgepoppt,
+        // darum auch kein Ende-Hinweis - sonst meldete sich der Eiffelturm-Test
+        // alle fuenf Minuten.
+        if (s.alert && s.alert.phase !== "pre_trigger" && s.alert.relevant !== false) notify("info", t("alarm.ended"), 8000);
         s.alert = null;
         s.ews_switched_from = null;
       } else {
         const dismissed = !!s.alert && s.alert.dismissed && s.alert.iid === e.iid && s.alert.sub_ch === e.sub_ch;
-        s.alert = { phase: e.phase, sub_ch: e.sub_ch, stage: e.stage, stage_raw: e.stage_raw ?? 0, iid: e.iid, locations: e.locations, location_info: [], is_test: e.is_test, dismissed };
+        s.alert = { phase: e.phase, sub_ch: e.sub_ch, stage: e.stage, stage_raw: e.stage_raw ?? 0, iid: e.iid, locations: e.locations, location_info: [], is_test: e.is_test, relevant: e.relevant ?? null, dismissed };
       }
       break;
     case "ews_switched":

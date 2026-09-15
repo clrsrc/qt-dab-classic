@@ -47,12 +47,16 @@
       <div class="row"><span class="grow dim">{t("ews_history.empty")}</span></div>
     {/if}
     {#each s.ews_history as e (`${e.iid}-${e.ended_at}`)}
-      <div class="entry">
+      <!-- relevant === false: vom Kern per Geofencing als ortsfremd eingestuft
+           (kein Alarmfenster, kein Warnton) - hier nur gedaempft protokolliert,
+           damit man sieht, dass die Testalarme weiter laufen. -->
+      <div class="entry" class:outside={e.relevant === false}>
         <div class="head">
           <span class="when">{fmtWhen(e.ended_at)}</span>
           <span class="svc">{serviceName(e.sub_ch)}</span>
           <span class="stage">{t("alarm.stage", { stage: e.stage })}</span>
           {#if e.is_test}<span class="flag">{t("ews_history.test")}</span>{/if}
+          {#if e.relevant === false}<span class="flag off" title={t("ews_history.outside_hint")}>{t("ews_history.outside")}</span>{/if}
         </div>
         {#if locations(e).length}
           <div class="locs">
@@ -74,6 +78,9 @@
   .svc { font-weight: bold; }
   .stage { color: var(--text-dim); }
   .flag { font-size: 8px; font-family: var(--mono); border: 1px solid currentColor; padding: 0 2px; color: var(--amber); }
+  .flag.off { color: var(--text-dim); }
+  .entry.outside { opacity: 0.55; }
+  .entry.outside .svc { font-weight: normal; }
   .locs { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; font-family: var(--mono); color: var(--text-dim); word-break: break-all; }
   .dim { color: var(--green-dim); }
   .row { gap: 5px; padding: 1px 4px; font-size: 10px; }

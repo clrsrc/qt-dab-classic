@@ -89,6 +89,13 @@ pub struct AlertState {
     /// Heimatkoordinaten aus den Settings, die hier nicht vorliegen).
     pub location_info: Vec<crate::ews_location::LocationInfo>,
     pub is_test: bool,
+    /// Geofencing-Urteil des Kerns (`Event::EwsAlert.relevant`, ETSI TS 104 089
+    /// Klausel 7.5/7.6): `None` = keine Heimatkoordinaten im Kern, jeder Alarm
+    /// gilt als relevant; `Some(true)` = ein Ortscode deckt den eigenen Standort
+    /// ab; `Some(false)` = keiner (z. B. der Eiffelturm-Testalarm, aus
+    /// Deutschland gesehen). Nur zur Anzeige/UI-Steuerung - die Umschaltung
+    /// entscheidet der Kern selbst, hier wird nichts nachgerechnet.
+    pub relevant: Option<bool>,
     /// Vom Nutzer per "Verstanden" quittiert (Banner aus, Alarm laeuft weiter).
     pub dismissed: bool,
 }
@@ -107,6 +114,8 @@ pub struct EwsHistoryEntry {
     pub locations: Vec<String>,
     pub location_info: Vec<crate::ews_location::LocationInfo>,
     pub is_test: bool,
+    /// Geofencing-Urteil des Kerns, siehe [`AlertState::relevant`].
+    pub relevant: Option<bool>,
 }
 
 /// Hoechstzahl der Eintraege in `AppState::ews_history`; aelteste fallen raus.
@@ -363,7 +372,7 @@ impl AppState {
                 self.audio_device_current = *current;
             }
             Event::EwsPresent => self.ews_present = true,
-            Event::EwsAlert { phase, sub_ch, stage, stage_raw, iid, locations, is_test } => {
+            Event::EwsAlert { phase, sub_ch, stage, stage_raw, iid, locations, is_test, relevant } => {
                 if *phase == EwsPhase::End {
                     if let Some(a) = self.alert.take() {
                         self.ews_history.insert(0, EwsHistoryEntry {
@@ -375,6 +384,7 @@ impl AppState {
                             locations: a.locations,
                             location_info: a.location_info,
                             is_test: a.is_test,
+                            relevant: a.relevant,
                         });
                         self.ews_history.truncate(EWS_HISTORY_MAX);
                     }
@@ -394,6 +404,7 @@ impl AppState {
                         locations: locations.clone(),
                         location_info: Vec::new(),
                         is_test: *is_test,
+                        relevant: *relevant,
                         dismissed,
                     });
                 }
@@ -491,7 +502,7 @@ mod tests {
     #[test]
     fn alert_phases_and_dismiss() {
         let mut st = AppState::default();
-        let alert = |phase| Event::EwsAlert { phase, sub_ch: 1, stage: 1, stage_raw: 0x81, iid: 7, locations: vec![], is_test: false };
+        let alert = |phase| Event::EwsAlert { phase, sub_ch: 1, stage: 1, stage_raw: 0x81, iid: 7, locations: vec![], is_test: false, relevant: None };
         st.apply(&alert(EwsPhase::Trigger));
         assert!(st.alert.is_some());
         st.alert.as_mut().unwrap().dismissed = true;

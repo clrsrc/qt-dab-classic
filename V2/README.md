@@ -99,13 +99,20 @@ pnpm tauri dev
 ## Stand M3
 
 Feature-Parität zur Classic Compact Shell: EWS-Alarm mit eigenem Alarmfenster
-(FIG 0/15, `ews_alert` inkl. rohem Status-Byte `stage_raw`), Timer (manuell und
-aus dem EPG, Vor-/Nachlauf, Import der v1-Timer), WAV-Aufnahme mit
+(FIG 0/15, `ews_alert` inkl. rohem Status-Byte `stage_raw`) und Ortsabgleich,
+Timer (manuell und aus dem EPG, Vor-/Nachlauf, Import der v1-Timer), WAV-Aufnahme mit
 Umschaltsperre, Sleep-Timer, EPG-Panel mit Jetzt/Danach, Senderlogos,
 TII-Sendestandorte mit Entfernung/Azimut, Debug-Panel (Spektrum, Konstellation,
 SNR-Verlauf, Zähler), Datei-Wiedergabe, vollständiges Einstellungs-Panel
 (Gerät/Gain je Gerät und Kanal, Audio, EWS, EPG, Aufnahmeordner, Panels,
 Sprache DE/EN), portabler Datenordner `data/`.
+
+Ortsabgleich (Geofencing) beim EWS-Alarm: Die Heimatkoordinaten gehen als
+`set_home_location` in den Kern, der die Ortscodes eines Alarms (TS 104 089
+Annex F) damit vergleicht und sein Urteil als `ews_alert.relevant` zurückmeldet.
+Nur passende Alarme schalten um und öffnen das Alarmfenster; ortsfremde (z. B.
+der Eiffelturm-Funktionstest des Bundesmux) werden still in der EWF-Historie
+vermerkt. Ohne Heimatkoordinaten bleibt es beim ungefilterten Verhalten.
 
 Portable-Paket: `.	ools\deploy-portable.ps1 -Zip` baut Kern und Shell im
 Release und packt `dist\DAB-Classic-portable\` (EXE, `core\`, `tii\`, `data\`,

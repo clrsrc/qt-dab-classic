@@ -45,6 +45,7 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 | `timeshift_skip` | `delta_s` relativ: `+` geht Richtung live, `−` zurück; über live hinaus = `timeshift_live`. Aus `live` zurück gesprungen wird `playing` (wie `timeshift_seek`) |
 | `set_ews` | `enabled`, `autoswitch` (Standard beide an). `autoswitch` steuert die automatische Umschaltung auf den Warndienst bei `trigger`/`sustain` (siehe `ews_switched`); `enabled` wirkt nur auf App-Seite (Alarmfenster/Ton) |
 | `ews_dismiss` | |
+| `set_home_location` | `lat`, `lon` (beide `number` oder `null`; fehlende Felder gelten als `null`). Heimatposition für das Geofencing der Alarm-Ortscodes (ETSI TS 104 089 Annex F, ASA DE Klausel 7.5/7.6). Der Kern rechnet damit `ews_alert.relevant` aus und schaltet nur bei relevanten Alarmen um. Ohne gesetzte Position (`null`, Ausgangszustand) gilt jeder Alarm als relevant. Die App schickt das Kommando beim Start und nach jeder Änderung der Standort-Einstellung |
 | `set_epg` | `enabled` (Standard an). Der Kern startet den SPI/EPG-Paketdienst des Ensembles (FIG 0/13 Appl-Type 7, DSCTy 60, im Bundesmux „EPG Deutschland“) selbst als Background-Slot, sobald die FIC ihn meldet – auch ohne Primary-Dienst (z. B. nach dem Scan); Kanalwechsel/`close_device` beenden ihn, `enabled: false` beendet nur die vom Kern gestarteten Dienste. `service_started{slot: background, codec: {codec: data}}` wie bei `select_service`; `state.epg_enabled` |
 | `set_scopes` | `spectrum`, `iq` (getrennt schaltbar), `rate_hz` (1–10, Standard 5, gemeinsame Rate; der Kern klemmt). Wirkt sofort und bleibt über `open_device`/`set_channel` erhalten. Beide aus (Standard): kein Datenfluss und kein Rechenaufwand |
 | `set_tii` | `enabled` (Standard an), `threshold` (Standard 6), `dx_mode` (wird gemerkt, `state.tii_dx_mode`; im Kern heute **ohne Wirkung** – in v1 war es ein Anzeigemodus des TII-Fensters) |
@@ -88,10 +89,10 @@ und die App bei Überlast verwerfen darf.
 | `audio_underrun` | `missed` |
 | `audio_devices` | `names[]`, `current?` – nach `ready` (als drittes Ereignis, nach der Viterbi-Log-Zeile), nach `get_state` (direkt nach `state_snapshot`) und nach `set_audio_device`; mit `--no-audio` leere Liste und `current: null` |
 | `ews_present` | |
-| `ews_alert` | `phase: pre_trigger\|trigger\|sustain\|end`, `sub_ch`, `stage`, `stage_raw`, `iid`, `locations[]`, `is_test` – `stage` = Bits 6..4 des Status-Bytes der FIG 0/15, `stage_raw` = das ganze Status-Byte (Bit 7 Last, Bits 6..4 Stage, Bits 3..0 IId) der ersten Trigger-Instanz; Warntag 2026: `0x01`; bei `sustain` ohne gesehenen Trigger und bei `end` der zuletzt gemerkte Wert (sonst 0). Rust liest fehlendes `stage_raw` als 0 |
+| `ews_alert` | `phase: pre_trigger\|trigger\|sustain\|end`, `sub_ch`, `stage`, `stage_raw`, `iid`, `locations[]`, `is_test` – `stage` = Bits 6..4 des Status-Bytes der FIG 0/15, `stage_raw` = das ganze Status-Byte (Bit 7 Last, Bits 6..4 Stage, Bits 3..0 IId) der ersten Trigger-Instanz; Warntag 2026: `0x01`; bei `sustain` ohne gesehenen Trigger und bei `end` der zuletzt gemerkte Wert (sonst 0). Rust liest fehlendes `stage_raw` als 0. Additiv: `relevant` (`true\|false\|null`) = Geofencing-Ergebnis des Kerns – er übersetzt jeden Ortscode aus `locations[]` (Annex-F-Quadtree, z. B. `Z1:5C+F300`) in Mittelpunkt + Näherungsradius und vergleicht ihn mit der per `set_home_location` gesetzten Position: `true` = mindestens ein Code deckt sie ab, `false` = keiner (dann **keine** Umschaltung, siehe `ews_switched`), `null` = keine Heimatposition gesetzt, also unbekannt und wie bisher immer relevant. Ein Alarm ohne brauchbare Ortscodes (leere `locations[]` wie bei `end`, oder nur unlesbare Codes) schränkt kein Gebiet ein und gilt als relevant. Nicht dekodierbare Codes werden übersprungen und zählen nicht gegen die Relevanz. Rust liest fehlendes `relevant` als `null` |
 | `ews_alive` | `sub_ch?` (Unterkanal des aktiven Alarms, höchstens 1/s Ensemble-Zeit; `null` = Heartbeat ohne Alarm, 1/s) |
 | `ewf_alarm` | `active`, `sub_ch` |
-| `ews_switched` | `to_sid`, `from_sid?` – bei `trigger`/`sustain` (kein Testalarm, `autoswitch` an, **und ein Primary-Dienst lief bereits**) wechselt der Kern den Primary-Slot auf den Audiodienst des in `ews_alert.sub_ch` gemeldeten Unterkanals (`to_sid` = Warndienst, `from_sid` = vorheriger Dienst); bei `end` zurück (`to_sid` = vorheriger Dienst, `from_sid` = Warndienst). Ohne laufenden Primary-Dienst (z. B. reiner EPG-Empfang, Headless-Betrieb ohne `select_service`) bleibt der Alarm rein informativ, es kommt kein `ews_switched`. Kommt nach dem jeweiligen `ews_alert` |
+| `ews_switched` | `to_sid`, `from_sid?` – bei `trigger`/`sustain` (kein Testalarm, `autoswitch` an, der Alarm betrifft den eigenen Standort (`ews_alert.relevant` ≠ `false`, siehe `set_home_location`) **und ein Primary-Dienst lief bereits**) wechselt der Kern den Primary-Slot auf den Audiodienst des in `ews_alert.sub_ch` gemeldeten Unterkanals (`to_sid` = Warndienst, `from_sid` = vorheriger Dienst); bei `end` zurück (`to_sid` = vorheriger Dienst, `from_sid` = Warndienst). Ohne laufenden Primary-Dienst (z. B. reiner EPG-Empfang, Headless-Betrieb ohne `select_service`) bleibt der Alarm rein informativ, es kommt kein `ews_switched`. Dasselbe gilt bei `relevant: false` – der Kern schreibt dann eine `log info`-Zeile mit dem Grund (Geofencing); das trifft z. B. den „Eiffelturm“-Funktionstest des Bundesmux, dessen Ortscodes Paris abdecken, von einem deutschen Standort aus. Die Rückschaltung bei `end` hängt nicht am Geofencing. Kommt nach dem jeweiligen `ews_alert` |
 | `recording_state` | `slot`, `sid`, `active`, `path?`, `bytes`, `seconds` (bei Start, 1 Hz während der Aufnahme, bei Ende) |
 | `timeshift_state` **LW** | `mode: live\|paused\|playing`, `buffered_s` (Inhalt des Rings), `offset_s` (Abstand Lesezeiger → live, in `live` immer 0), `capacity_s`; additiv (M4): `frame_index` (Schreibzeiger, 24-ms-Rahmen seit dem letzten Leeren) und `live_unix` (Ensemble-Uhrzeit am Schreibzeiger, 0 = unbekannt). Kommt mit **2 Hz**, solange ein Primary-Audiodienst läuft, und sofort bei jedem Zustandswechsel; nach dem Ende des Dienstes einmal mit `buffered_s` 0 |
 | `scan_progress` | `channel`, `index`, `total` |
@@ -147,6 +148,32 @@ weniger als 1 s Inhalt, entfällt der Vorlauf mit `log info`.
 (ein zusätzliches Feld in dieser Variante müsste zusammen mit den Aufrufstellen in `dab-app`
 eingebaut werden). Wer es heute nutzen will, schickt die JSON-Zeile direkt.
 
+## EWS-Geofencing (Ortscodes)
+
+Kern: `core-cpp/libdabcore/src/fic/ews-location.{h,cpp}` (reine Rechnung, ctest `ews_location`;
+Ende-zu-Ende am Warntag-Mitschnitt: ctest `dabcored_ews_geofence`). Rust-Zwilling für die Anzeige:
+`crates/dab-app/src/ews_location.rs`.
+
+Die `locations[]` einer FIG 0/15 sind keine benannten Regionen, sondern ein **Quadtree über der
+Erdkugel** (ETSI TS 104 089 Annex F): 6-Bit-Zone (36×36-Grad-Kachel bzw. Polzone) und bis zu sechs
+weitere 4-Bit-Ziffern, die die Kachel je Stufe in 4×4 Felder teilen – gerendert als
+`Z<Zone>:<Hexziffern>[+<Subcode>]`, z. B. `Z1:5C+F300`. Der Kern rechnet jeden Code auf Mittelpunkt
+und Näherungsradius (halbe Diagonale der Kachel) zurück; die Subcode-Bitmaske wird ignoriert, das
+Ergebnis ist also nie feiner als der Code selbst.
+
+Mit der per `set_home_location` gesetzten Position ergibt der Vergleich (Haversine ≤ Radius)
+`ews_alert.relevant`. Die Entscheidung fällt **im Kern**, weil die Umschaltung auf den Warndienst
+synchron im FIC-Thread passiert – für eine Rückfrage bei der App ist keine Zeit. Hintergrund
+(Auskunft Digitalradio Deutschland e. V., 09/2026): der alle fünf Minuten im Bundesmux laufende
+Alarm ist ein **Funktionstest („Eiffelturm-Alert“)** mit echten Ortscodes um Paris, damit der Handel
+das Aufwachen aus dem Standby vorführen kann (laut der ASA-Anleitung alle 5 Minuten für 30 Sekunden,
+absichtlich ohne Warndurchsage). Ein Empfänger mit deutscher Heimatposition soll ihn ignorieren; ein
+Gerät, das auf diese Pariser Position eingestellt ist, reagiert – handelsübliche ASA-Radios bekommen
+dafür den Testcode `1253-3513-3668` als „Standort-Code“ eingetippt (Eingabeformat der Geräte, nicht
+die Annex-F-Codes dieses Protokolls; echte Standortcodes adressgenau über www.asa.radio). Echte Alarme haben
+immer Vorrang: ohne gesetzte Heimatposition und bei Alarmen ohne brauchbare Ortscodes bleibt es beim
+bisherigen Verhalten (umschalten).
+
 ## Beispiel
 
 ```
@@ -161,7 +188,8 @@ eingebaut werden). Wer es heute nutzen will, schickt die JSON-Zeile direkt.
 ← {"type":"audio_format","rate":48000,"channels":2}
 ← {"type":"dls","slot":"primary","sid":53776,"text":"Aus EUDI-Wallet wird \"d-you\" ..., Falk Steiner"}
 ← {"type":"dl_plus","slot":"primary","sid":53776,"item_toggle":false,"item_running":true,"tags":[[1,"Aus EUDI-Wallet wird \"d-you\" ..."],[4,"Falk Steiner"]]}
-← {"type":"ews_alert","phase":"trigger","sub_ch":1,"stage":0,"stage_raw":1,"iid":1,"locations":["Z1:5C+F300"],"is_test":false}
+→ {"type":"set_home_location","lat":51.218,"lon":6.7617}
+← {"type":"ews_alert","phase":"trigger","sub_ch":1,"stage":0,"stage_raw":1,"iid":1,"locations":["Z1:5C+F300"],"is_test":false,"relevant":true}
 → {"type":"shutdown"}
 ← {"type":"exiting","reason":"shutdown"}
 ```

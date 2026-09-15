@@ -379,5 +379,7 @@
   "music.preview_hint": "Preview from the cut start (timeshift bar: back to live)",
   "ews_history.empty": "No alert has ended in this session yet.",
   "ews_history.test": "TEST",
+  "ews_history.outside": "OUTSIDE",
+  "ews_history.outside_hint": "Outside your own area – no alarm window, no warning tone (home coordinates in the settings).",
   "error.slot out of range": "Entry not found"
 }

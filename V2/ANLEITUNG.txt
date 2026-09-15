@@ -36,8 +36,9 @@ INHALT
   - Aufnahme als WAV, Timer zum Umschalten und Aufnehmen, Sleep-Timer
   - Timeshift: Live-Programm anhalten, zurueckspulen und die letzten
     Minuten nachtraeglich als WAV sichern
-  - Notfallwarnung (EWS nach ETSI TS 104 089) mit Alarmfenster und
-    automatischer Umschaltung auf den Warndienst
+  - Notfallwarnung (EWS nach ETSI TS 104 089) mit Alarmfenster,
+    automatischer Umschaltung auf den Warndienst und Ortsabgleich:
+    nur Alarme fuer die eigene Gegend loesen aus
   - Wiedergabe von IQ-Mitschnitten (.uff, .iq)
   - Debug-Panel mit Spektrum, Konstellation, SNR-Verlauf, Fehlerzaehlern
     und TII-Sendestandorten (Entfernung/Azimut zum eigenen Standort)
@@ -403,6 +404,30 @@ INHALT
     Das Alarmfenster schliesst, der vorherige Sender laeuft live weiter,
     ein Hinweis "Alarm beendet" erscheint fuer einige Sekunden.
 
+  Nur Alarme aus der eigenen Gegend (Heimatkoordinaten)
+    Jeder Alarm nennt ein Gebiet (Ortscodes nach Annex F der Norm). Sind
+    in den Einstellungen Heimatkoordinaten eingetragen (Abschnitt 13),
+    vergleicht der Kern das Gebiet mit dem eigenen Standort: Nur wenn das
+    gemeldete Gebiet den eigenen Standort abdeckt, wird umgeschaltet, das
+    Alarmfenster geoeffnet, der Warnton gespielt und der Alarmbalken
+    gezeigt. Alarme fuer eine andere Gegend laufen still mit und stehen
+    mit dem Vermerk "AUSSERHALB" in der EWF-Historie.
+
+    Ohne eingetragene Heimatkoordinaten bleibt es beim bisherigen
+    Verhalten: jeder empfangene Alarm wird gezeigt.
+
+    Praktischer Fall: Der Bundesmux sendet alle paar Minuten einen
+    Funktionstest-Alarm, dessen Gebiet auf dem Eiffelturm in Paris liegt
+    (damit Haendler im Laden zeigen koennen, wie ein Empfaenger aus dem
+    Standby aufwacht). Mit deutschen Heimatkoordinaten poppt der nicht
+    mehr auf, ist aber in der EWF-Historie weiter nachzulesen.
+
+  EWF-Historie
+    Der Knopf "EWF" in der Transportleiste oeffnet die Liste der
+    beendeten Alarme dieser Sitzung (Zeit, Dienst, Stufe, Ortscodes,
+    Kennzeichen "TEST" und "AUSSERHALB"). Die Liste steht nur im
+    Speicher und ist nach einem Neustart leer.
+
   Einstellungen: "Notfallwarnung (EWS) auswerten" schaltet die Auswertung
   ganz ab; "Bei Alarm automatisch umschalten" und "Warnton" sind einzeln
   waehlbar.
@@ -466,6 +491,13 @@ INHALT
   51.2180 / 6.7617) schalten Entfernung in km und Azimut (Kompassrichtung)
   je Sender frei. "TII auswerten" und die Schwelle steuern den Detektor;
   der DX-Modus protokolliert jede neue Sichtung in data\tii-files.csv.
+
+  Die gleichen Koordinaten haben einen zweiten Zweck: Sie entscheiden,
+  welche Notfallwarnungen ueberhaupt aufpoppen. Nur Alarme, deren
+  gemeldetes Gebiet den eigenen Standort abdeckt, oeffnen das Alarmfenster
+  und schalten um (Abschnitt 10); ohne Koordinaten wird wie bisher jeder
+  Alarm gezeigt. Eine Hausnummer genau muessen die Werte dafuer nicht
+  sein - die Gebiete der Norm sind einige Kilometer gross.
 
 
 14. SPRACHE

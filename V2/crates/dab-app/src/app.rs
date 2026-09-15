@@ -200,6 +200,11 @@ impl App {
             .cmd(Command::SetVolume { percent: s.volume_percent })
             .cmd(Command::SetAgc { enabled: s.agc })
             .cmd(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch })
+            // Heimatkoordinaten fuer das EWS-Geofencing: der Kern entscheidet
+            // damit selbst (synchron im FIC-Callback), ob er auf den Warndienst
+            // umschaltet, und meldet sein Urteil als `EwsAlert.relevant` zurueck.
+            // Ohne Koordinaten (None/None) bleibt es beim ungefilterten Verhalten.
+            .cmd(Command::SetHomeLocation { lat: s.home_lat, lon: s.home_lon })
             .cmd(Command::SetEpg { enabled: s.epg_enabled });
         fx.append(self.debug_startup());
         fx.append(self.timeshift_startup());
@@ -593,6 +598,12 @@ impl App {
         }
         if old.ews_enabled != s.ews_enabled || old.ews_autoswitch != s.ews_autoswitch {
             fx = fx.cmd(Command::SetEws { enabled: s.ews_enabled, autoswitch: s.ews_autoswitch });
+        }
+        if old.home_lat != s.home_lat || old.home_lon != s.home_lon {
+            // Geofencing im Kern nachziehen (siehe `startup`); die gleichen
+            // Koordinaten dienen weiterhin der TII-Entfernungsanzeige, die
+            // `debug_on_settings` behandelt.
+            fx = fx.cmd(Command::SetHomeLocation { lat: s.home_lat, lon: s.home_lon });
         }
         if old.epg_enabled != s.epg_enabled {
             fx = fx.cmd(Command::SetEpg { enabled: s.epg_enabled });
@@ -1007,6 +1018,7 @@ mod tests {
             iid: 1,
             locations: vec!["Z1:5C+F300".into(), "bad-code".into()],
             is_test: false,
+            relevant: None,
         };
         let fx = a.handle_event(&ev, now);
         let alert = a.state.alert.as_ref().expect("Alarm gesetzt");
@@ -1025,7 +1037,7 @@ mod tests {
         // Phase "end": keine Ortscodes mehr zu uebersetzen, aber der Alarm
         // wandert in die Sitzungs-Historie (Bugfixes.txt #10) und wird als
         // EwsHistory nachgereicht.
-        let end = Event::EwsAlert { phase: EwsPhase::End, sub_ch: 1, stage: 0, stage_raw: 0, iid: 1, locations: vec![], is_test: false };
+        let end = Event::EwsAlert { phase: EwsPhase::End, sub_ch: 1, stage: 0, stage_raw: 0, iid: 1, locations: vec![], is_test: false, relevant: None };
         let fx = a.handle_event(&end, now);
         assert!(a.state.alert.is_none());
         assert_eq!(a.state.ews_history.len(), 1);
@@ -1035,6 +1047,68 @@ mod tests {
             [AppEvent::EwsHistory { history }] => assert_eq!(history, &a.state.ews_history),
             other => panic!("EwsHistory-Ereignis erwartet, nicht {other:?}"),
         }
+    }
+
+    #[test]
+    fn home_location_goes_to_the_core_on_startup_and_on_change() {
+        let now = Instant::now();
+        let mut s = Settings::default();
+        s.autostart = false;
+        s.home_lat = Some(51.2180);
+        s.home_lon = Some(6.7617);
+        let tmp = std::env::temp_dir().join(format!("dabclassic-app-home-{}", std::process::id()));
+        let mut a = App::with(DataDirs::with_root(&tmp, true), s, Presets::default());
+        let fx = a.startup(now);
+        assert!(
+            fx.commands.contains(&Command::SetHomeLocation { lat: Some(51.2180), lon: Some(6.7617) }),
+            "Startwerte enthalten die Heimatkoordinaten fuers Geofencing"
+        );
+
+        // Aenderung ueber die Einstellungen: genau einmal nachziehen.
+        let fx = a.home_set(Some(48.8584), Some(2.2945));
+        assert!(fx.commands.contains(&Command::SetHomeLocation { lat: Some(48.8584), lon: Some(2.2945) }));
+        // Unveraenderte Einstellungen schicken nichts.
+        let same = a.settings.clone();
+        let fx = a.update_settings(same);
+        assert!(!fx.commands.iter().any(|c| matches!(c, Command::SetHomeLocation { .. })));
+        // Loeschen schickt None/None (Kern schaltet das Geofencing ab).
+        let fx = a.home_set(None, None);
+        assert!(fx.commands.contains(&Command::SetHomeLocation { lat: None, lon: None }));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn ews_alert_carries_the_cores_relevance_verdict_into_state_and_history() {
+        let now = Instant::now();
+        let mut a = app();
+        // Eiffelturm-Testalarm des Bundesmux, von einer deutschen Heimat aus
+        // gesehen: der Kern hat bereits entschieden (relevant = false), die
+        // App reicht das Urteil nur weiter und rechnet nichts nach.
+        let ev = Event::EwsAlert {
+            phase: EwsPhase::Trigger,
+            sub_ch: 1,
+            stage: 0,
+            stage_raw: 0x01,
+            iid: 3,
+            locations: vec!["Z1:5C+F300".into()],
+            is_test: false,
+            relevant: Some(false),
+        };
+        a.handle_event(&ev, now);
+        assert_eq!(a.state.alert.as_ref().expect("Alarm gesetzt").relevant, Some(false));
+
+        let end = Event::EwsAlert { phase: EwsPhase::End, sub_ch: 1, stage: 0, stage_raw: 0, iid: 3, locations: vec![], is_test: false, relevant: Some(false) };
+        let fx = a.handle_event(&end, now);
+        assert_eq!(a.state.ews_history[0].relevant, Some(false), "auch in der Sitzungs-Historie");
+        match fx.events.as_slice() {
+            [AppEvent::EwsHistory { history }] => assert_eq!(history[0].relevant, Some(false)),
+            other => panic!("EwsHistory-Ereignis erwartet, nicht {other:?}"),
+        }
+
+        // Ohne Heimatkoordinaten im Kern bleibt es beim Ausgangsverhalten (None).
+        let plain = Event::EwsAlert { phase: EwsPhase::Trigger, sub_ch: 1, stage: 0, stage_raw: 0x01, iid: 4, locations: vec![], is_test: false, relevant: None };
+        a.handle_event(&plain, now);
+        assert_eq!(a.state.alert.as_ref().expect("Alarm gesetzt").relevant, None);
     }
 
     #[test]
@@ -1052,7 +1126,7 @@ mod tests {
         // current aus zu rechnen.
         let fx = a.step_service(-1).unwrap();
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 3, scids: 0, slot: ServiceSlot::Primary }]);
-        a.handle_event(&Event::EwsAlert { phase: EwsPhase::Trigger, sub_ch: 1, stage: 1, stage_raw: 0x81, iid: 1, locations: vec![], is_test: false }, now);
+        a.handle_event(&Event::EwsAlert { phase: EwsPhase::Trigger, sub_ch: 1, stage: 1, stage_raw: 0x81, iid: 1, locations: vec![], is_test: false, relevant: None }, now);
         let fx = a.command(Command::EwsDismiss).unwrap();
         assert_eq!(fx.commands, vec![Command::EwsDismiss]);
         assert!(a.state.alert.as_ref().unwrap().dismissed);

@@ -101,9 +101,13 @@ json audioDevices(const std::vector<std::string>& names, int current) {
 }
 
 json ewsPresent() { return ev("ews_present"); }
-json ewsAlert(EwsPhase phase, uint8_t subCh, uint8_t stage, uint8_t stageRaw, uint16_t iid, const std::vector<std::string>& loc, bool test) {
+json ewsAlert(EwsPhase phase, uint8_t subCh, uint8_t stage, uint8_t stageRaw, uint16_t iid, const std::vector<std::string>& loc, bool test,
+              std::optional<bool> relevant) {
     auto j = ev("ews_alert"); j["phase"] = ewsPhaseName(phase); j["sub_ch"] = subCh; j["stage"] = stage;
-    j["stage_raw"] = stageRaw; j["iid"] = iid; j["locations"] = loc; j["is_test"] = test; return j;
+    j["stage_raw"] = stageRaw; j["iid"] = iid; j["locations"] = loc; j["is_test"] = test;
+    // Ohne Heimatposition bleibt die Relevanz unbekannt: JSON null (Rust None).
+    if (relevant.has_value()) j["relevant"] = *relevant; else j["relevant"] = nullptr;
+    return j;
 }
 json ewsAlive(int subCh) {
     auto j = ev("ews_alive");

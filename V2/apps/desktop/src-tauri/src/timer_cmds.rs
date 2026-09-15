@@ -154,9 +154,16 @@ fn open_alarm(handle: &AppHandle) {
 /// Statusleisten-Hinweis im Hauptfenster.
 pub fn on_core_event(handle: &AppHandle, shared: &Shared, ev: &Event) {
     match ev {
-        Event::EwsAlert { phase: EwsPhase::Trigger | EwsPhase::Sustain, .. } => {
+        Event::EwsAlert { phase: EwsPhase::Trigger | EwsPhase::Sustain, relevant, .. } => {
+            // Geofencing (ETSI TS 104 089 Klausel 7.5/7.6): `relevant == Some(false)`
+            // heisst, dass kein Ortscode des Alarms den eigenen Standort abdeckt -
+            // z. B. der Eiffelturm-Testalarm des Bundesmux, von Deutschland aus
+            // gesehen. Der Alarm ist echt und wird von dab_app normal in die
+            // EWF-Historie geschrieben, er soll nur nicht aufpoppen und keinen
+            // Warnton machen. `None` = der Kern kennt keine Heimatkoordinaten,
+            // dann bleibt es beim ungefilterten Verhalten.
             let dismissed = lock_app(shared).map(|a| a.state.alert.as_ref().map(|x| x.dismissed).unwrap_or(false)).unwrap_or(false);
-            if !dismissed {
+            if !dismissed && *relevant != Some(false) {
                 open_alarm(handle);
             }
         }

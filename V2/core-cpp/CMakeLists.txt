@@ -119,6 +119,13 @@ if(DABCORE_BUILD_TESTS)
                    libdabcore/src/backend/timeshift-buffer.cpp)
     target_include_directories(test_timeshift_buffer PRIVATE ${DABCORE_SRC}/backend)
     add_test(NAME timeshift_buffer COMMAND test_timeshift_buffer)
+    # EWS-Ortscodes (TS 104 089 Annex F) als reine Rechnung: die beiden
+    # Rechenbeispiele der Norm, die Warntag-2026-Codes, Geofencing gegen
+    # Heimatkoordinaten (Duesseldorf vs. Eiffelturm-Funktionstest)
+    add_executable(test_ews_location tests/test-ews-location.cpp
+                   libdabcore/src/fic/ews-location.cpp)
+    target_include_directories(test_ews_location PRIVATE ${DABCORE_SRC}/fic)
+    add_test(NAME ews_location COMMAND test_ews_location)
     add_test(NAME dabcored_ready
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
@@ -163,6 +170,13 @@ if(DABCORE_BUILD_TESTS)
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass
                 -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-music-export.ps1)
+    # EWS-Geofencing am 2-min-Ausschnitt des Warntag-Mitschnitts: mit Heimat
+    # Duesseldorf ist der Alarm relevant und schaltet auf den Warndienst, mit
+    # Heimat Lissabon nicht (relevant=false, kein ews_switched)
+    add_test(NAME dabcored_ews_geofence
+        COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
+                powershell -NoProfile -ExecutionPolicy Bypass
+                -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/test-ews-geofence.ps1)
     # state_snapshot (running[] mit dls/codec, ensemble als [eid, name]),
     # audio_devices nach ready/get_state, set_scopes (spectrum + iq_samples
     # mit Rate und Groesse), stdin-EOF bei laufendem Dienst -> Ende < 1 s

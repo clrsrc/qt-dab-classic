@@ -215,6 +215,11 @@ pub enum Command {
     // EWS
     SetEws { enabled: bool, autoswitch: bool },
     EwsDismiss,
+    /// Heimatkoordinaten fuer das Geofencing (ETSI TS 104 089 Annex F):
+    /// der Kern vergleicht die Location-Codes eines Alarms damit und setzt
+    /// `Event::EwsAlert.relevant` entsprechend; `None`/fehlend = kein
+    /// Standort bekannt, jeder Alarm gilt als relevant (Ausgangsverhalten).
+    SetHomeLocation { lat: Option<f64>, lon: Option<f64> },
 
     // SPI/EPG: den Paketdienst des Ensembles (FIG 0/13 Appl-Type 7) automatisch
     // als Background-Slot laufen lassen (Logos, EPG). Standard an; `false`
@@ -309,6 +314,14 @@ pub enum Event {
         iid: u16,
         locations: Vec<String>,
         is_test: bool,
+        /// Geofencing-Ergebnis des Kerns (Annex F Location-Codes gegen die
+        /// per `SetHomeLocation` gesetzten Heimatkoordinaten): `None` = kein
+        /// Standort bekannt (immer relevant), `Some(true)` = mindestens ein
+        /// Code deckt den Standort ab, `Some(false)` = keiner (z. B. der
+        /// "Eiffelturm"-Funktionstest, gesehen von einem deutschen Standort).
+        /// Additiv, aeltere Kerne senden das Feld nicht -> `None`.
+        #[serde(default)]
+        relevant: Option<bool>,
     },
     /// Lebenszeichen der EWS-Signalisierung: `sub_ch` = Unterkanal des
     /// aktiven Alarms (hoechstens 1/s), `None` = Heartbeat ohne Alarm (1/s).
@@ -534,18 +547,37 @@ mod tests {
             iid: 1,
             locations: vec!["Z1:5C+F300".into()],
             is_test: false,
+            relevant: Some(false),
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("\"type\":\"ews_alert\""));
         assert!(s.contains("\"stage_raw\":129"));
+        assert!(s.contains("\"relevant\":false"));
         let back: Event = serde_json::from_str(&s).unwrap();
         assert_eq!(back, ev);
-        // Aeltere Kerne ohne stage_raw: Feld fehlt -> 0
+        // Aeltere Kerne ohne stage_raw/relevant: Felder fehlen -> Default
         let old = r#"{"type":"ews_alert","phase":"trigger","sub_ch":1,"stage":1,"iid":1,"locations":[],"is_test":false}"#;
         match serde_json::from_str::<Event>(old).unwrap() {
-            Event::EwsAlert { stage_raw, .. } => assert_eq!(stage_raw, 0),
+            Event::EwsAlert { stage_raw, relevant, .. } => {
+                assert_eq!(stage_raw, 0);
+                assert_eq!(relevant, None);
+            }
             _ => panic!(),
         }
+    }
+
+    #[test]
+    fn set_home_location_roundtrip() {
+        let cmd = Command::SetHomeLocation { lat: Some(51.218), lon: Some(6.7617) };
+        let s = serde_json::to_string(&cmd).unwrap();
+        assert!(s.contains("\"type\":\"set_home_location\""));
+        let back: Command = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, cmd);
+
+        let cleared = Command::SetHomeLocation { lat: None, lon: None };
+        let s2 = serde_json::to_string(&cleared).unwrap();
+        let back2: Command = serde_json::from_str(&s2).unwrap();
+        assert_eq!(back2, cleared);
     }
 
     #[test]

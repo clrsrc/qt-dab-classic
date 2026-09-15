@@ -29,7 +29,8 @@
       if (p.status === "not_found") return { level: "warn", text: t("stations.not_found", vars) };
       return { level: "info", text: t("stations.selected", vars) };
     }
-    if (s.alert?.phase === "pre_trigger") return { level: "warn", text: `${t("alarm.pre")} · SubCh ${s.alert.sub_ch}` };
+    // Ortsfremde Alarme (Geofencing, relevant === false) bleiben still, auch in der Vorwarnung.
+    if (s.alert?.phase === "pre_trigger" && s.alert.relevant !== false) return { level: "warn", text: `${t("alarm.pre")} · SubCh ${s.alert.sub_ch}` };
     if (s.log_tail.length) return { level: "warn", text: s.log_tail[s.log_tail.length - 1] };
     if (nextT) return { level: "info", text: t("timer.next", { name: timerLabel(nextT), time: fmtDateTime(nextT.start_unix) }) };
     return { level: "info", text: s.core_alive ? "" : t("core.starting") };

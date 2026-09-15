@@ -128,6 +128,8 @@ export interface EwsHistoryEntry {
   locations: string[];
   location_info: EwsLocationInfo[];
   is_test: boolean;
+  /** Geofencing-Urteil des Kerns, siehe `Alert.relevant`. */
+  relevant: boolean | null;
 }
 
 export interface ScanResult {
@@ -149,6 +151,11 @@ export interface Alert {
   /** Ortscodes uebersetzt (Mittelpunkt, Entfernung/Richtung von zu Hause). */
   location_info: EwsLocationInfo[];
   is_test: boolean;
+  /** Geofencing-Urteil des Kerns (ETSI TS 104 089 Klausel 7.5/7.6): `null` =
+   * keine Heimatkoordinaten hinterlegt, jeder Alarm gilt; `true` = ein Ortscode
+   * deckt den eigenen Standort ab; `false` = keiner (z. B. der Eiffelturm-
+   * Testalarm). Nur lesen, nie nachrechnen - der Kern entscheidet. */
+  relevant: boolean | null;
   dismissed: boolean;
 }
 

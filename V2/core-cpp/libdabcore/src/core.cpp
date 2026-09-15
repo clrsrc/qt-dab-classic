@@ -9,6 +9,7 @@
 #include "support/dab-channels.h"
 #include "frontend/ofdm-handler.h"
 #include "frontend/receiver-callbacks.h"
+#include "fic/ews-location.h"
 #include "backend/msc-handler.h"
 #include "backend/backend.h"
 #include "backend/backend-callbacks.h"
@@ -240,11 +241,25 @@ std::string DabCore::currentChannel() const {
     return state_["channel"].is_string() ? state_["channel"].get<std::string>() : "";
 }
 
+// Geofencing: deckt einer der Ortscodes des Alarms die Heimatposition ab?
+// Ohne gesetzte Heimatposition bleibt die Antwort unbekannt (std::nullopt),
+// der Alarm gilt dann wie bisher immer als relevant.
+std::optional<bool> DabCore::ewsRelevance(const std::vector<std::string>& locations) const {
+    double lat = 0, lon = 0;
+    {
+        std::lock_guard<std::mutex> lk(stateM_);
+        if (!homeLat_ || !homeLon_) return std::nullopt;
+        lat = *homeLat_;
+        lon = *homeLon_;
+    }
+    return ewsAlertRelevantForHome(locations, lat, lon);
+}
+
 // Entscheidung 5 / v1 radio.cpp ewsStart: bei Trigger/Sustain auf den
 // Warndienst (den Audiodienst auf dem gemeldeten Unterkanal) wechseln,
 // bei End zurueck auf den Dienst, der vorher lief. Laeuft im OFDM-Thread
 // (FIC-Callback), wie die anderen ews*-Callbacks auch.
-void DabCore::handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest) {
+void DabCore::handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest, bool relevant) {
     bool autoswitch;
     {
         std::lock_guard<std::mutex> lk(stateM_);
@@ -253,6 +268,15 @@ void DabCore::handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest) {
     if (!autoswitch || isTest) return;
     if (phase == 1 || phase == 2) {   // Trigger, Sustain
         if (ewsAutoActive_) return;   // schon auf dem Warndienst
+        // Nicht fuer den eigenen Standort bestimmt (z. B. der "Eiffelturm"-
+        // Funktionstest des Bundesmux, dessen Ortscodes Paris abdecken, von
+        // einem deutschen Standort aus gesehen): melden, aber nicht
+        // umschalten. Die Rueckschaltung bei End bleibt davon unberuehrt.
+        if (!relevant) {
+            sink_(events::log("info", "EWS: Alarm deckt den eingestellten Standort nicht ab "
+                                      "(Geofencing) - keine Umschaltung"));
+            return;
+        }
         uint32_t targetSid = 0;
         uint8_t targetScids = 0;
         uint32_t curSid = 0;
@@ -439,9 +463,12 @@ void DabCore::wireCallbacks() {
             timeshift_->dropToLive("Notfallwarnung");
         // Erst die Meldung selbst, dann ihre Folgen (Umschalten): die App
         // soll den Alarm sehen, bevor ews_switched eintrifft.
+        // Geofencing: nur der Kern hat Ortscodes und Heimatposition zugleich,
+        // und nur hier kann vor der (synchronen) Umschaltung entschieden werden.
+        const std::optional<bool> relevant = ewsRelevance(loc);
         sink_(events::ewsAlert(p, static_cast<uint8_t>(subChId), static_cast<uint8_t>(stage),
-                               static_cast<uint8_t>(stageRaw), static_cast<uint16_t>(iid), loc, isTest));
-        if (phase != 0) handleEwsAutoswitch(phase, static_cast<uint32_t>(subChId), isTest);
+                               static_cast<uint8_t>(stageRaw), static_cast<uint16_t>(iid), loc, isTest, relevant));
+        if (phase != 0) handleEwsAutoswitch(phase, static_cast<uint32_t>(subChId), isTest, relevant.value_or(true));
     };
     cb.ewsAlive = [this](int subChId) { sink_(events::ewsAlive(subChId)); };
     cb.ewsPresent = [this] { sink_(events::ewsPresent()); };
@@ -783,6 +810,17 @@ bool DabCore::handle(const json& c) {
         std::lock_guard<std::mutex> lk(stateM_);
         state_["ews_enabled"] = c.value("enabled", true);
         state_["ews_autoswitch"] = c.value("autoswitch", true);
+        return true;
+    }
+    if (type == "set_home_location") {
+        // Heimatkoordinaten fuer das Geofencing der EWS-Ortscodes. Fehlendes
+        // Feld oder null loescht die jeweilige Koordinate; ohne beide gilt
+        // wieder jeder Alarm als relevant.
+        std::lock_guard<std::mutex> lk(stateM_);
+        homeLat_ = c.contains("lat") && c["lat"].is_number()
+                       ? std::optional<double>(c["lat"].get<double>()) : std::nullopt;
+        homeLon_ = c.contains("lon") && c["lon"].is_number()
+                       ? std::optional<double>(c["lon"].get<double>()) : std::nullopt;
         return true;
     }
     if (type == "set_scopes") {

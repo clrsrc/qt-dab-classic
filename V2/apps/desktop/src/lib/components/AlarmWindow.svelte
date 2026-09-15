@@ -19,7 +19,11 @@
   });
 
   const alert = $derived(s.alert);
-  const active = $derived(!!alert && (alert.phase === "trigger" || alert.phase === "sustain"));
+  // `relevant === false`: der Kern hat den Alarm per Geofencing als ortsfremd
+  // eingestuft. Die Rust-Seite oeffnet dieses Fenster dafuer gar nicht erst
+  // (timer_cmds.rs); steht es wegen eines vorherigen Alarms noch offen, bleibt
+  // es hier wenigstens stumm.
+  const active = $derived(!!alert && (alert.phase === "trigger" || alert.phase === "sustain") && alert.relevant !== false);
   const service = $derived.by(() => {
     const a = s.alert;
     if (!a) return "";
