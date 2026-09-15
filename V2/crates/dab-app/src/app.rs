@@ -148,6 +148,15 @@ pub struct App {
     /// Titelerkennung der Musik-Trennung (crate::music, Entscheidungen 6, 7).
     pub music: crate::music::MusicDetector,
     pending: Option<Pending>,
+    /// SIds, deren `service_stopped` wir noch erwarten, weil wir sie selbst
+    /// durch eine neuere Auswahl ersetzt haben (Fund 15.09.2026: bei
+    /// schnellem Umschalten - z. B. mehrfach hintereinander Favoriten
+    /// anklicken - kommt der `service_stopped` des VERDRAENGTEN Dienstes oft
+    /// erst an, wenn `state.current` laengst wieder denselben SId zeigt (weil
+    /// er zwischendurch erneut angewaehlt wurde); ohne diese Liste wuerde er
+    /// dann faelschlich als "kein Dienst" geloescht, obwohl Audio laeuft.
+    /// Siehe `select_service` (Eintragen) und `handle_event` (Abgleich).
+    expected_stops: std::collections::VecDeque<u32>,
 }
 
 impl App {
@@ -177,6 +186,7 @@ impl App {
             stations_ctl: Default::default(),
             music: Default::default(),
             pending: None,
+            expected_stops: Default::default(),
         };
         app.stations_load();
         app.timeshift_init();
@@ -287,6 +297,19 @@ impl App {
 
     /// Wendet ein Kern-Ereignis an und fuehrt die Preset-Zustandsmaschine weiter.
     pub fn handle_event(&mut self, ev: &Event, now: Instant) -> Effects {
+        // `service_stopped` eines Dienstes, den WIR selbst durch eine neuere
+        // Auswahl verdraengt haben (siehe `select_service`): kommt oft erst
+        // an, nachdem `state.current` (bei schnellem Umschalten sogar
+        // wiederholt) laengst weitergezogen ist. Ignorieren statt an
+        // state/epg/tii/timeshift/music weiterzureichen, sonst loescht ein
+        // veralteter Stop die Anzeige eines laengst wieder aktiven Dienstes
+        // ("kein Dienst", obwohl Audio laeuft - Live-Test Stefan 15.09.2026).
+        if let Event::ServiceStopped { slot: ServiceSlot::Primary, sid } = ev {
+            if let Some(pos) = self.expected_stops.iter().position(|s| s == sid) {
+                self.expected_stops.remove(pos);
+                return Effects::default();
+            }
+        }
         self.state.apply(ev);
         let mut fx = self.media_on_event(ev);
         match ev {
@@ -393,7 +416,13 @@ impl App {
     fn pending_found(&mut self, p: Pending, s: ServiceInfo) -> Effects {
         self.pending = None;
         self.state.pending = None;
-        let mut fx = Effects::default().cmd(Command::SelectService { sid: s.sid, scids: s.scids, slot: ServiceSlot::Primary });
+        // `select_service` statt eines selbst gebauten Kommandos: sonst fehlt
+        // Preset-/Senderlisten-Aufrufen die sofortige optimistische Anzeige
+        // (Bugfixes.txt #5/#7) UND die `expected_stops`-Vormerkung (Fund
+        // 15.09.2026, siehe `handle_event`) - beide Faelle sind hier vorher
+        // bereits geprueft (kein `recording`/`scan.active`, siehe `tune_to`),
+        // der Aufruf kann also nicht mehr fehlschlagen.
+        let mut fx = self.select_service(s.sid, s.scids).unwrap_or_default();
         // Favoriten-Import: SId/EId nachtragen, Namen aktualisieren.
         if let Some(slot) = p.slot {
             if let Some(preset) = self.presets.slots.get_mut(slot).and_then(|x| x.as_mut()) {
@@ -525,6 +554,15 @@ impl App {
         }
         self.pending = None;
         self.state.pending = None;
+        // Der bisherige Dienst wird im Kern verdraengt (core.cpp selectService
+        // stoppt ihn synchron vor dem Start des neuen) - dessen spaeter
+        // eintreffendes `service_stopped` darf `state.current` nicht mehr
+        // loeschen, siehe `expected_stops` und `handle_event`.
+        if let Some(old) = self.state.current.as_ref() {
+            if old.sid != sid {
+                self.expected_stops.push_back(old.sid);
+            }
+        }
         // Kopfzeile sofort auf den neuen Dienst umstellen: `service_started`
         // kommt aus dem Kern bewusst erst mit dem ersten dekodierten
         // Audioblock (V2/docs/protocol.md), ohne Fallback bei verlorenem
@@ -820,6 +858,37 @@ mod tests {
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xD220, scids: 0, slot: ServiceSlot::Primary }]);
         assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::Selected, .. }));
         assert!(!a.is_pending());
+        // Bugfixes.txt #5/#7 galt bisher nur select_service()/step_service();
+        // pending_found() (Preset-/Senderlisten-Aufruf) baute das Kommando
+        // bislang selbst und liess state.current bis zum echten
+        // service_started unveraendert (Fund 15.09.2026).
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD220), "Preset-Aufruf muss sofort anzeigen, nicht erst nach service_started");
+    }
+
+    /// Fund 15.09.2026 (Stefans Live-Test): schnelles Umschalten (Preset A ->
+    /// Preset B, bevor A jemals ein echtes `service_started` bekommen hat)
+    /// darf die Anzeige von B nicht loeschen, wenn As verspaetetes
+    /// `service_stopped` eintrifft - vorher geschah das, obwohl B laengst
+    /// (optimistisch oder echt) angezeigt wurde und ggf. schon Audio lief.
+    #[test]
+    fn stale_service_stopped_for_a_superseded_selection_is_ignored() {
+        let now = Instant::now();
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf"), (0xD220, "Dlf Kultur")], now);
+        a.select_service(0xD210, 0).unwrap(); // Preset A angewaehlt, noch kein service_started
+        let fx = a.select_service(0xD220, 0).unwrap(); // Preset B verdraengt A, bevor A startete
+        assert!(fx.commands.contains(&Command::SelectService { sid: 0xD220, scids: 0, slot: ServiceSlot::Primary }));
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD220));
+
+        // As (verspaetetes) service_stopped darf B nicht von der Anzeige nehmen.
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD210 }, now);
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD220), "veraltetes service_stopped von A hat B faelschlich geloescht");
+
+        // Ein ECHTES service_stopped fuer den gerade aktiven Dienst B (z. B.
+        // Empfang verloren) muss weiterhin ganz normal loeschen.
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD220 }, now);
+        assert!(a.state.current.is_none(), "ein echtes service_stopped des aktiven Dienstes muss weiterhin loeschen");
     }
 
     #[test]

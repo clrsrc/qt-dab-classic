@@ -78,7 +78,7 @@
         src={s.logo_data_url}
         name={svc?.name ?? ""}
         size="medium"
-        px={slide ? 84 : 48}
+        px={slide ? 96 : 64}
         zoomable
       />
       {#if slide}
@@ -138,7 +138,7 @@
   .name { font-size: 16px; font-weight: bold; color: var(--green-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
   .name.pending { color: var(--amber); animation: blink 1s steps(2, start) infinite; }
   .media { display: flex; gap: 6px; align-items: center; }
-  .media img { height: 84px; max-width: calc(100% - 90px); object-fit: contain; }
+  .media img { height: 96px; max-width: calc(100% - 100px); object-fit: contain; }
   .slide-btn { all: unset; cursor: zoom-in; display: inline-flex; line-height: 0; min-width: 0; }
   .dialog.zoom { padding: 8px; display: flex; }
   .dialog.zoom img { max-width: min(80vw, 480px); max-height: min(80vh, 480px); object-fit: contain; }
