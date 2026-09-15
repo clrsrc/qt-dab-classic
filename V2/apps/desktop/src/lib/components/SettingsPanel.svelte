@@ -26,6 +26,18 @@
     const lon = which === "lon" ? v : (ui.settings?.home_lon ?? null);
     run(debugApi.homeSet(lat, lon));
   };
+  // ASA-"Standort-Code" (ETSI TS 104 089 Annex A, z. B. von asa.radio) als
+  // Alternative zur direkten Grad-Eingabe; wird einmalig in home_lat/lon
+  // umgerechnet, nicht selbst gespeichert.
+  let homeCode = $state("");
+  const applyHomeCode = () => {
+    const code = homeCode.trim();
+    if (!code) return;
+    debugApi
+      .homeCodeDecode(code)
+      .then(([lat, lon]) => run(debugApi.homeSet(lat, lon)))
+      .catch((e) => notify("warn", tError(e)));
+  };
   const setTii = (patch: { enabled?: boolean; threshold?: number; dx_mode?: boolean }) => {
     const st = ui.settings;
     if (!st) return;
@@ -255,6 +267,20 @@
           <span class="k">{t("tii.home_lat")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-90" max="90" value={st.home_lat ?? ""} placeholder="51.2180" onchange={(e) => setHome(e, "lat")} />
           <span class="k">{t("tii.home_lon")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-180" max="180" value={st.home_lon ?? ""} placeholder="6.7617" onchange={(e) => setHome(e, "lon")} />
           <span class="k">{t("tii.home_hint")}</span>
+        </span>
+
+        <span class="lbl">{t("tii.home_code")}</span>
+        <span class="row">
+          <input
+            type="text"
+            class="ppm"
+            style="width:150px"
+            placeholder="1253-3513-3668"
+            bind:value={homeCode}
+            onkeydown={(e) => e.key === "Enter" && applyHomeCode()}
+          />
+          <button class="btn mini" onclick={applyHomeCode}>{t("tii.home_code_apply")}</button>
+          <span class="k">{t("tii.home_code_hint")}</span>
         </span>
 
         <span class="lbl">{t("tii.enabled")}</span>

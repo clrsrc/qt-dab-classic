@@ -476,6 +476,7 @@ pub fn run() {
             debug_cmds::tii_set,
             debug_cmds::tii_list,
             debug_cmds::home_set,
+            debug_cmds::home_code_decode,
             stations_cmds::stations_list,
             stations_cmds::station_tune,
             stations_cmds::stations_clear,

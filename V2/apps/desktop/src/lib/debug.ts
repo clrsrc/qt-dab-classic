@@ -97,6 +97,8 @@ export interface DebugTransport {
   tiiSet(enabled: boolean, threshold: number, dxMode: boolean): Promise<void>;
   tiiList(): Promise<TiiSeen[]>;
   homeSet(lat: number | null, lon: number | null): Promise<void>;
+  /** ASA-"Standort-Code" (z. B. "1253-3513-3668") -> [lat, lon]; wirft bei ungueltiger Pruefsumme/Format. */
+  homeCodeDecode(code: string): Promise<[number, number]>;
 }
 
 class TauriDebugTransport implements DebugTransport {
@@ -117,6 +119,9 @@ class TauriDebugTransport implements DebugTransport {
   }
   homeSet(lat: number | null, lon: number | null) {
     return invoke<void>("home_set", { lat, lon });
+  }
+  homeCodeDecode(code: string) {
+    return invoke<[number, number]>("home_code_decode", { code });
   }
 }
 

@@ -124,6 +124,45 @@ fn decode(code: &str) -> Option<(f64, f64, f64)> {
     Some((lat, lon, radius_km))
 }
 
+/// ETSI TS 104 089 Annex A ("DAB location code presentation format"): die
+/// fuer Zifferntasten/QR-Codes eingebbare Form eines Ortscodes, z. B.
+/// "1253-3513-3668" (der ASA-"Standort-Code" von asa.radio bzw. der
+/// ASA-Funktionstest-Anleitung). Kein eigenes Geokodierverfahren - derselbe
+/// Ortscode wie in FIG 0/15 (max. Aufloesung, 6 Hexziffern, keine
+/// Subcode-Bitmaske, da ein Standort ein Punkt ist), nur oktal + 6-Bit-
+/// Pruefsumme (modulo 61) kodiert: 3 Gruppen a 4 Ziffern "1".."8"
+/// (Oktalziffer 0..7 + 1), macht 36 Bit = 30-Bit-Code (6 Bit Zone + 24 Bit
+/// Ortscode) gefolgt von der Pruefsumme. Verifiziert an beiden
+/// Rechenbeispielen der Norm (BBC Broadcasting House, Svalbard Museum) und
+/// am realen ASA-DE-Funktionstestcode (Eiffelturm), siehe Tests.
+pub fn decode_presentation_code(code: &str) -> Option<(f64, f64)> {
+    let stripped: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+    let digits: String = stripped.split('-').collect();
+    if digits.len() != 12 {
+        return None;
+    }
+    let mut bits: u64 = 0;
+    for c in digits.chars() {
+        let d = c.to_digit(10)?;
+        if !(1..=8).contains(&d) {
+            return None;
+        }
+        bits = (bits << 3) | (d as u64 - 1);
+    }
+    let checksum = bits & 0x3F;
+    let value30 = (bits >> 6) & 0x3FFF_FFFF;
+    if value30 % 61 != checksum {
+        return None; // Tippfehler oder kein gueltiger Standort-Code
+    }
+    let zone = (value30 >> 24) & 0x3F;
+    let loc24 = value30 & 0xFF_FFFF;
+    let hex: String = (0..6)
+        .rev()
+        .map(|i| std::char::from_digit(((loc24 >> (i * 4)) & 0xF) as u32, 16).unwrap().to_ascii_uppercase())
+        .collect();
+    decode(&format!("Z{zone}:{hex}")).map(|(lat, lon, _radius)| (lat, lon))
+}
+
 /// Alle Ortscodes eines Alarms uebersetzen; mit Heimatkoordinaten (falls in
 /// den Einstellungen gesetzt) zusaetzlich Entfernung/Richtung wie bei TII.
 pub fn translate(locations: &[String], home: Option<(f64, f64)>) -> Vec<LocationInfo> {
@@ -194,6 +233,56 @@ mod tests {
         assert_eq!(decode("Z1:"), None); // keine Ziffern
         assert_eq!(decode("Z99:5C"), None); // Zone ausserhalb 0..41
         assert_eq!(decode("Z1:GG"), None); // kein Hex
+    }
+
+    /// Annex A Beispiel 1: BBC Broadcasting House (Z10:B736BB).
+    #[test]
+    fn decodes_presentation_code_bbc_example() {
+        let (lat, lon) = decode_presentation_code("2366-7443-8484").expect("gueltiger Standort-Code");
+        assert!((lat - 51.5187412).abs() < 0.01, "lat={lat}");
+        assert!((lon - -0.1434571).abs() < 0.01, "lon={lon}");
+    }
+
+    /// Annex A Beispiel 2: Svalbard Museum (Z0:152FF1), Polzone.
+    #[test]
+    fn decodes_presentation_code_svalbard_example() {
+        let (lat, lon) = decode_presentation_code("1116-3388-7268").expect("gueltiger Standort-Code");
+        assert!((lat - 78.222609).abs() < 0.01, "lat={lat}");
+        assert!((lon - 15.651605).abs() < 0.02, "lon={lon}");
+    }
+
+    /// Realer ASA-DE-Funktionstestcode aus der Handout-Anleitung
+    /// (dabplus.de/asa.radio): liegt am Eiffelturm (48,8584N 2,2945E).
+    #[test]
+    fn decodes_presentation_code_asa_functional_test() {
+        let (lat, lon) = decode_presentation_code("1253-3513-3668").expect("gueltiger Standort-Code");
+        assert!((lat - 48.8584).abs() < 0.1, "lat={lat}");
+        assert!((lon - 2.2945).abs() < 0.1, "lon={lon}");
+    }
+
+    /// Ohne Bindestriche/mit Leerzeichen muss dieselbe Position herauskommen.
+    #[test]
+    fn decodes_presentation_code_ignores_hyphen_placement_and_whitespace() {
+        let a = decode_presentation_code("1253-3513-3668").unwrap();
+        let b = decode_presentation_code(" 125335133668 ").unwrap();
+        let c = decode_presentation_code("12-53-35-13-36-68").unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+    }
+
+    /// Ein einziger falscher Zeichenwert muss an der Pruefsumme scheitern
+    /// (Tippfehler beim manuellen Eintippen erkennen).
+    #[test]
+    fn rejects_presentation_code_with_bad_checksum() {
+        assert_eq!(decode_presentation_code("1253-3513-3669"), None);
+    }
+
+    #[test]
+    fn rejects_malformed_presentation_codes() {
+        assert_eq!(decode_presentation_code("1253-3513-366"), None); // zu kurz
+        assert_eq!(decode_presentation_code("1253-3513-93668"), None); // zu lang
+        assert_eq!(decode_presentation_code("1253-3513-9668"), None); // Ziffer 9 ungueltig (nur 1..8)
+        assert_eq!(decode_presentation_code("abcd-efgh-ijkl"), None); // keine Ziffern
     }
 
     #[test]

@@ -68,3 +68,11 @@ pub fn tii_list(shared: State<'_, Shared>) -> R<Vec<TiiSeen>> {
 pub fn home_set(handle: AppHandle, shared: State<'_, Shared>, lat: Option<f64>, lon: Option<f64>) -> R<()> {
     act(&handle, &shared, |a| Ok(((), a.home_set(lat, lon))))
 }
+
+/// ASA-"Standort-Code" (ETSI TS 104 089 Annex A, z. B. "1253-3513-3668",
+/// wie auf asa.radio adressgenau erzeugt) in Dezimalgrad umrechnen - reine
+/// Rechnung ohne Kern-/App-Zustand, `home_set` traegt das Ergebnis ein.
+#[tauri::command]
+pub fn home_code_decode(code: String) -> R<(f64, f64)> {
+    dab_app::ews_location::decode_presentation_code(&code).ok_or_else(|| "ungueltiger Standort-Code".to_string())
+}
