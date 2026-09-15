@@ -63,8 +63,14 @@ Write-Host ("Fall 1 (Duesseldorf): {0} ews_alert ({1}), {2} ews_switched" -f $al
     (($alerts | ForEach-Object { "$($_.phase)/relevant=$($_.relevant)" }) -join ' '), $switched.Count)
 if ($trigger.Count -lt 1) { $fail += 'Fall 1: kein ews_alert mit phase=trigger' }
 elseif ($trigger[0].relevant -ne $true) { $fail += "Fall 1: trigger relevant=$($trigger[0].relevant), erwartet true" }
-if (@($alerts | Where-Object { $_.locations.Count -gt 0 -and $_.relevant -ne $true }).Count -gt 0) {
-    $fail += 'Fall 1: ein Alarm mit Ortscodes wurde als nicht relevant gemeldet'
+# pre_trigger ist rein informativ (ETSI Klausel 7.5.1: Alert matching greift erst
+# bei Trigger; core.cpp ruft handleEwsAutoswitch auch nur bei phase != 0 auf) und
+# hat - anders als trigger/sustain - KEINEN eigenen C/N-Sammel-Mechanismus in
+# fib-decoder.cpp: sein "relevant" kann auf einem unvollstaendigen Ortscode-
+# Ausschnitt der ersten FIG-0/15-Instanz beruhen. Nur die Phasen pruefen, die
+# tatsaechlich die Umschaltung ausloesen.
+if (@($alerts | Where-Object { $_.phase -ne 'pre_trigger' -and $_.locations.Count -gt 0 -and $_.relevant -ne $true }).Count -gt 0) {
+    $fail += 'Fall 1: ein Trigger/Sustain/End-Alarm mit Ortscodes wurde als nicht relevant gemeldet'
 }
 if ($switched.Count -lt 1) { $fail += 'Fall 1: kein ews_switched trotz relevantem Alarm' }
 elseif ($switched[0].to_sid -ne 4292) { $fail += "Fall 1: ews_switched to_sid $($switched[0].to_sid), erwartet 4292 (ASA DE)" }

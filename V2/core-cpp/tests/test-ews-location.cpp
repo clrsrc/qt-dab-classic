@@ -10,8 +10,10 @@
 #include <vector>
 
 using dabcore::decodeEwsLocation;
+using dabcore::encodeEwsLocation;
 using dabcore::ewsAlertRelevantForHome;
 using dabcore::haversineKm;
+using dabcore::HomeLocation;
 
 static int failures = 0;
 #define CHECK(cond, msg) do { if (!(cond)) { std::printf("FEHLER %s:%d: %s\n", __FILE__, __LINE__, msg); failures++; } } while (0)
@@ -21,9 +23,17 @@ static const double kDuesseldorfLat = 51.2180, kDuesseldorfLon = 6.7617;   // Se
 static const double kEiffelLat = 48.8584, kEiffelLon = 2.2945;             // Eiffelturm
 static const double kLissabonLat = 38.7223, kLissabonLon = -9.1393;        // klar ausserhalb
 
-// Ortscodes des Warntag-2026-Mitschnitts (Bundesmux 5C), Trigger-Phase.
+// Komplettes Alarmgebiet des Warntag-2026-Mitschnitts (Bundesmux 5C,
+// Trigger-Phase, alle 19 Ortscodes - siehe project_v2_tauri-Memory). Fuer den
+// exakten Ziffernvergleich (Klausel 7.5.4) zaehlt jeder einzelne Code: ein
+// unvollstaendiger Ausschnitt kann faelschlich "nicht relevant" ergeben, auch
+// wenn die eigene Position tatsaechlich im Alarmgebiet liegt (nur ein anderer
+// der 19 Codes deckt sie ab) - anders als bei der alten Distanznaeherung, wo
+// grosszuegige Umkreise das kaschiert haetten.
 static const std::vector<std::string> kWarntagTrigger = {
-    "Z1:5C+F300", "Z1:95+7FFF", "Z1:86+88CC", "Z1:92+7733", "Z1:9+0113"};
+    "Z1:5C+F300", "Z1:95+7FFF", "Z1:86+88CC", "Z1:92+7733", "Z1:9+0113", "Z1:99+7FFF",
+    "Z1:86A+8808", "Z1:8B+EEEF", "Z1:96+0077", "Z1:8+0088", "Z1:5D+F800", "Z1:4F+EC00",
+    "Z1:82+C808", "Z1:5E+3100", "Z1:86E3", "Z1:99F+0133", "Z1:9A0C", "Z1:9A4", "Z1:8A3"};
 
 // Synthetischer Code fuer den "Eiffelturm"-Funktionstest: die Position des
 // Eiffelturms nach Annex F.3/F.4 kodiert (Zone 1, Ziffern 8-9-4 = ~0,56 Grad
@@ -84,6 +94,38 @@ static void testMalformed() {
     std::printf("Fehlerhafte Codes: ok\n");
 }
 
+static int hexVal(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+// Umkehrung von decodeEwsLocation() (ETSI TS 104 089 Klausel 7.5.4 braucht den
+// eigenen Standort als Ziffernfolge, nicht als Koordinate). Rundreise
+// decode->encode muss denselben Code liefern, sonst wuerde der spaetere
+// Ziffernvergleich systematisch danebenliegen.
+static void testEncodeRoundtrip() {
+    static const struct { int zone; const char* hex; } kCases[] = {
+        {10, "B736BB"},  // BBC Broadcasting House
+        {0, "152FF1"},   // Svalbard Museum (Nordpol-Zone)
+        {41, "500000"},  // Suedpol-Zone, aeusserer Ring
+        {1, "894095"},   // ASA-DE-Funktionstestcode (Eiffelturm)
+    };
+    for (const auto& tc : kCases) {
+        const std::string code = "Z" + std::to_string(tc.zone) + ":" + tc.hex;
+        auto decoded = decodeEwsLocation(code);
+        CHECK(decoded.has_value(), code.c_str());
+        if (!decoded) continue;
+        auto [lat, lon, r] = *decoded;
+        const HomeLocation home = encodeEwsLocation(lat, lon);
+        CHECK(home.zone == tc.zone, "encodeEwsLocation: Zone stimmt nach Rundreise nicht");
+        for (int i = 0; i < 6; ++i) {
+            CHECK(home.digits[i] == hexVal(tc.hex[i]), "encodeEwsLocation: Ziffer stimmt nach Rundreise nicht");
+        }
+    }
+    std::printf("Encode-Rundreise: ok\n");
+}
+
 static void testHaversine() {
     // Duesseldorf -> Langenberg, wie im Rust-Test von dab_app::tii.
     double d = haversineKm(51.217964, 6.761675, 51.356256, 7.134128);
@@ -114,12 +156,45 @@ static void testGeofencing() {
     std::printf("Geofencing: ok\n");
 }
 
+// Annex D.2.3 (Subcode-Gruppen): ein Stem-Code + 16-Bit-Bitmaske darf nur
+// dann treffen, wenn das Bit fuer die naechste eigene Ziffer gesetzt ist -
+// anders als die reine Anzeige-Dekodierung (die den Subcode ignoriert und die
+// ganze Stem-Kachel als Flaeche zeigt), MUSS das Geofencing hier praeziser
+// sein als der grobe Distanzvergleich, den es ersetzt.
+static void testSubcodeMatching() {
+    // Duesseldorf liegt in Zone 1; sein eigener Standort-Code faengt mit "9"
+    // an (siehe Warntag-Ortscode "Z1:9..."). Die naechste eigene Ziffer nach
+    // dem zweistelligen Stem "9?" bestimmt, welches Subcode-Bit zaehlt -
+    // ermittelt, indem der tatsaechliche Standort-Code berechnet und die
+    // Stem-Ziffer 1:1 uebernommen wird, damit der Test nicht von einer
+    // angenommenen Ziffer abhaengt, die sich bei einer Kachel-Neuvermessung
+    // aendern koennte.
+    const HomeLocation home = encodeEwsLocation(kDuesseldorfLat, kDuesseldorfLon);
+    char stem[3];
+    std::snprintf(stem, sizeof(stem), "%X%X", home.digits[0], home.digits[1]);
+    const int childDigit = home.digits[2];
+    const int childBit = 1 << childDigit;
+    char withBitSet[32];
+    std::snprintf(withBitSet, sizeof(withBitSet), "Z1:%s+%04X", stem, childBit);
+    // alle Bits AUSSER dem eigenen gesetzt: Stem passt, Kindzelle nicht.
+    char withoutBitSet[32];
+    std::snprintf(withoutBitSet, sizeof(withoutBitSet), "Z1:%s+%04X", stem, (~childBit) & 0xFFFF);
+
+    CHECK(ewsAlertRelevantForHome({withBitSet}, kDuesseldorfLat, kDuesseldorfLon),
+          "Subcode-Bit der eigenen Kindzelle gesetzt -> relevant");
+    CHECK(!ewsAlertRelevantForHome({withoutBitSet}, kDuesseldorfLat, kDuesseldorfLon),
+          "Subcode-Bit der eigenen Kindzelle NICHT gesetzt -> nicht relevant, obwohl der Stem passt");
+    std::printf("Subcode-Ziffernvergleich: ok\n");
+}
+
 int main() {
     testStandardExamples();
     testWarntagCodes();
     testMalformed();
+    testEncodeRoundtrip();
     testHaversine();
     testGeofencing();
+    testSubcodeMatching();
     if (failures) { std::printf("%d Fehler\n", failures); return 1; }
     std::printf("OK\n");
     return 0;

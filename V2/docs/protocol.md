@@ -157,22 +157,42 @@ Ende-zu-Ende am Warntag-Mitschnitt: ctest `dabcored_ews_geofence`). Rust-Zwillin
 Die `locations[]` einer FIG 0/15 sind keine benannten Regionen, sondern ein **Quadtree über der
 Erdkugel** (ETSI TS 104 089 Annex F): 6-Bit-Zone (36×36-Grad-Kachel bzw. Polzone) und bis zu sechs
 weitere 4-Bit-Ziffern, die die Kachel je Stufe in 4×4 Felder teilen – gerendert als
-`Z<Zone>:<Hexziffern>[+<Subcode>]`, z. B. `Z1:5C+F300`. Der Kern rechnet jeden Code auf Mittelpunkt
-und Näherungsradius (halbe Diagonale der Kachel) zurück; die Subcode-Bitmaske wird ignoriert, das
-Ergebnis ist also nie feiner als der Code selbst.
+`Z<Zone>:<Hexziffern>[+<Subcode>]`, z. B. `Z1:5C+F300`. Zur Anzeige (Alarmfenster, EWF-Historie)
+rechnet der Kern jeden Code auf Mittelpunkt und Näherungsradius (halbe Diagonale der Kachel) zurück
+(`decodeEwsLocation`); die Subcode-Bitmaske wird dafür ignoriert, das Ergebnis ist also nie feiner
+als der Code selbst.
 
-Mit der per `set_home_location` gesetzten Position ergibt der Vergleich (Haversine ≤ Radius)
-`ews_alert.relevant`. Die Entscheidung fällt **im Kern**, weil die Umschaltung auf den Warndienst
-synchron im FIC-Thread passiert – für eine Rückfrage bei der App ist keine Zeit. Hintergrund
-(Auskunft Digitalradio Deutschland e. V., 09/2026): der alle fünf Minuten im Bundesmux laufende
-Alarm ist ein **Funktionstest („Eiffelturm-Alert“)** mit echten Ortscodes um Paris, damit der Handel
-das Aufwachen aus dem Standby vorführen kann (laut der ASA-Anleitung alle 5 Minuten für 30 Sekunden,
-absichtlich ohne Warndurchsage). Ein Empfänger mit deutscher Heimatposition soll ihn ignorieren; ein
-Gerät, das auf diese Pariser Position eingestellt ist, reagiert – handelsübliche ASA-Radios bekommen
-dafür den Testcode `1253-3513-3668` als „Standort-Code“ eingetippt (Eingabeformat der Geräte, nicht
-die Annex-F-Codes dieses Protokolls; echte Standortcodes adressgenau über www.asa.radio). Echte Alarme haben
-immer Vorrang: ohne gesetzte Heimatposition und bei Alarmen ohne brauchbare Ortscodes bleibt es beim
-bisherigen Verhalten (umschalten).
+**Fürs Matching selbst** (`ews_alert.relevant`) verwendet der Kern **nicht** diese Näherung, sondern
+den von ETSI TS 104 089 Klausel 7.5.4 vorgeschriebenen **Ziffernvergleich**: aus der per
+`set_home_location` gesetzten Position wird einmalig der eigene Standort-Code bei maximaler Auflösung
+berechnet (`encodeEwsLocation`, Umkehrung von `decodeEwsLocation`). Für jeden Alarm-Ortscode wird der
+eigene Code links-bündig auf dessen Ziffernzahl gekürzt und auf exakte Übereinstimmung von Zone und
+Ziffern geprüft; trägt der Code zusätzlich einen Subcode (Annex D.2.3 – ein Stem-Code, eine Ziffer
+kürzer, plus 16-Bit-Bitmaske über die möglichen Kindzellen), muss zusätzlich das Bit der eigenen
+nächsten Ziffer gesetzt sein. `relevant: true`, sobald irgendein Code im Alarm-Satz trifft. Kein
+Distanz-/Trigonometrie-Aufwand – der Vergleich ist reine Ganzzahl-/Bit-Arithmetik, entsprechend der
+Auskunft von Digitalradio Deutschland e. V., der Algorithmus sei „sehr daten- und rechenzeitsparsam“.
+
+Die Entscheidung fällt **im Kern**, weil die Umschaltung auf den Warndienst synchron im FIC-Thread
+passiert – für eine Rückfrage bei der App ist keine Zeit. Wichtig dabei: die Trigger-Phase kann sich
+über bis zu vier FIG-0/15-Instanzen aufbauen (Annex E, C/N-Flag startet den Satz, NFF = 0 beendet ihn);
+`ews_alert` für `trigger` wird deshalb erst emittiert, wenn das Alarmgebiet vollständig gesammelt ist,
+sonst würde ein Ortscode, der erst in einer späteren Instanz kommt, fälschlich als „nicht relevant“
+gewertet. `pre_trigger` sammelt (noch) nicht über mehrere Instanzen und kann daher kurzzeitig auf einem
+unvollständigen Ausschnitt beruhen – unschädlich, da `pre_trigger` nie eine Umschaltung auslöst (nur
+`trigger`/`sustain`/`end` tun das), höchstens der Statusleisten-Hinweis kurz ungenau ist, bis das
+folgende `trigger`-Ereignis nachzieht.
+
+Hintergrund (Auskunft Digitalradio Deutschland e. V., 09/2026): der alle fünf Minuten im Bundesmux
+laufende Alarm ist ein **Funktionstest („Eiffelturm-Alert“)** mit echten Ortscodes um Paris, damit der
+Handel das Aufwachen aus dem Standby vorführen kann (laut der ASA-Anleitung alle 5 Minuten für
+30 Sekunden, absichtlich ohne Warndurchsage). Ein Empfänger mit deutscher Heimatposition soll ihn
+ignorieren; ein Gerät, das auf diese Pariser Position eingestellt ist, reagiert – handelsübliche
+ASA-Radios bekommen dafür den Testcode `1253-3513-3668` als „Standort-Code“ eingetippt (ETSI TS 104 089
+Annex A, oktal + Prüfsumme kodierte Form desselben Ortscodes, siehe `decode_presentation_code` in
+`crates/dab-app/src/ews_location.rs`; echte Standortcodes adressgenau über www.asa.radio). Echte Alarme
+haben immer Vorrang: ohne gesetzte Heimatposition und bei Alarmen ohne brauchbare Ortscodes bleibt es
+beim bisherigen Verhalten (umschalten).
 
 ## Beispiel
 

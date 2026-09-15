@@ -1018,20 +1018,39 @@ static const char *phaseNames [] = {"Pre-trigger", "Trigger",
 	      if (std::find (theEws. locations. begin (),
 	                     theEws. locations. end (), c) == theEws. locations. end ())
 	         theEws. locations. push_back (c);
+	   if (newAlert)
+	      logf ("info", "EWS: TRIGGER subCh %d stage %d (status 0x%02X) IId %d, Gebiet wird gesammelt (C/N/NFF)",
+	               subChId, stage, status, iid);
+//
+//	Der Kern (core.cpp) entscheidet anhand der Ortscodes dieses Ereignisses
+//	ueber Geofencing/Umschaltung (Klausel 7.5.4) - das darf erst passieren,
+//	wenn das Alarmgebiet vollstaendig ist, sonst wertet er nur die erste,
+//	moeglicherweise unvollstaendige FIG-0/15-Instanz aus (ein Ortscode, der
+//	den eigenen Standort abdeckt, aber erst in einer spaeteren Instanz kommt,
+//	wuerde faelschlich als "nicht relevant" gemeldet). Deshalb erst bei
+//	NFF == 0 (Annex E: "an alert set starts with C/N = 0; the instance with
+//	NFF = 0 completes the area description") emittieren, mit dem
+//	akkumulierten theEws.locations statt der lokalen codes dieser einen
+//	Instanz. Kommt die abschliessende Instanz gar nicht durch, greift die
+//	Sustain-Phase (oben) als Ausweich: die feuert ohnehin bei ihrer ersten
+//	Instanz mit dem bis dahin akkumulierten Gebiet.
 	   if ((NFF == 0) && !theEws. setComplete) {
 	      theEws. setComplete = true;
 	      logf ("info", "EWS: alert area complete, %d location code(s): %s",
 	               (int)theEws. locations. size (),
 	               joinCodes (theEws. locations). c_str ());
-	   }
-	   if (newAlert) {
-	      logf ("info", "EWS: TRIGGER subCh %d stage %d (status 0x%02X) IId %d, %d location code(s) in this instance",
-	               subChId, stage, status, iid, (int)codes. size ());
-	      emitCb (cb -> ewsAlert, 1, (int)subChId, (int)stage, (int)status, (int)iid, codes);
+	      emitCb (cb -> ewsAlert, 1, (int)subChId, (int)stage, (int)status, (int)iid, theEws. locations);
 	   }
 	   ewsAliveThrottled (subChId);
 	}
 	else {					// Pre-trigger: informational only
+//	Anders als Trigger (oben) sammelt Pre-trigger die Ortscodes NICHT ueber
+//	mehrere Instanzen (kein eigener C/N/NFF-Zustand) - "codes" kann also nur
+//	die erste, moeglicherweise unvollstaendige FIG-0/15-Instanz enthalten.
+//	Unschaedlich: core.cpp ruft handleEwsAutoswitch nur bei phase != 0 auf,
+//	Pre-trigger loest also nie eine (Fehl-)Umschaltung aus, hoechstens einen
+//	kurzzeitig ungenauen "relevant"-Wert fuer den Statusleisten-Hinweis, der
+//	mit dem folgenden (vollstaendigen) Trigger-Ereignis richtiggestellt wird.
 	   if (key != ewsPreTriggerKey) {
 	      ewsPreTriggerKey = key;
 	      logf ("info", "EWS: %s subCh %d stage %d IId %d, trigger at second %d, area %s",
