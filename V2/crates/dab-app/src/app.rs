@@ -419,10 +419,20 @@ impl App {
         // `select_service` statt eines selbst gebauten Kommandos: sonst fehlt
         // Preset-/Senderlisten-Aufrufen die sofortige optimistische Anzeige
         // (Bugfixes.txt #5/#7) UND die `expected_stops`-Vormerkung (Fund
-        // 15.09.2026, siehe `handle_event`) - beide Faelle sind hier vorher
-        // bereits geprueft (kein `recording`/`scan.active`, siehe `tune_to`),
-        // der Aufruf kann also nicht mehr fehlschlagen.
-        let mut fx = self.select_service(s.sid, s.scids).unwrap_or_default();
+        // 15.09.2026, siehe `handle_event`). `tune_to` hat `recording`/
+        // `scan.active` nur beim KLICK geprueft; `pending_found` laeuft
+        // spaeter (nach dem Kanalwechsel), in der Zwischenzeit kann z. B. ein
+        // Timer eine Aufnahme gestartet haben - select_service kann also doch
+        // noch scheitern. Vorher wurde das SelectService-Kommando hier immer
+        // unbedingt gebaut, also auch waehrend einer Aufnahme gesendet
+        // (Inkonsistenz zur manuellen Umschaltung); jetzt greift dieselbe
+        // Sperre wie ueberall sonst, aber ehrlich gemeldet statt eines
+        // faelschlich "Selected" trotz ausgebliebener Umschaltung.
+        let fx_select = match self.select_service(s.sid, s.scids) {
+            Ok(fx) => fx,
+            Err(e) => return Effects::default().ev(AppEvent::Notice { level: NoticeLevel::Warn, text: e.to_string() }),
+        };
+        let mut fx = fx_select;
         // Favoriten-Import: SId/EId nachtragen, Namen aktualisieren.
         if let Some(slot) = p.slot {
             if let Some(preset) = self.presets.slots.get_mut(slot).and_then(|x| x.as_mut()) {
@@ -912,6 +922,30 @@ mod tests {
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }]);
         assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::Selected, slot: Some(1), .. }));
         assert!(!a.is_pending());
+    }
+
+    /// Fund 15.09.2026: `tune_to` prueft `recording`/`scan.active` nur beim
+    /// Klick; startet zwischen Klick und dem tatsaechlichen `ServiceAdded`
+    /// (z. B. durch einen Timer) eine Aufnahme, darf `pending_found` NICHT
+    /// mehr unbedingt umschalten UND nicht mehr "Selected" behaupten, obwohl
+    /// nichts passiert ist.
+    #[test]
+    fn recall_blocked_by_recording_reports_the_reason_instead_of_pretending_success() {
+        let now = Instant::now();
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf")], now);
+        a.presets.set(1, preset("11D", 0xE1C0, "WDR 5"));
+        a.preset_recall(1, now).unwrap();
+        a.state.recording = true; // Aufnahme startet waehrend des Kanalwechsels
+        let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C0, "WDR 5") }, now + Duration::from_secs(2));
+        assert!(fx.commands.is_empty(), "waehrend einer Aufnahme darf keine Umschaltung gesendet werden");
+        assert!(
+            matches!(&fx.events[0], AppEvent::Notice { level: NoticeLevel::Warn, .. }),
+            "muss den Grund melden statt Selected vorzutaeuschen: {:?}",
+            fx.events
+        );
+        assert!(!fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { status: PresetStatus::Selected, .. })));
     }
 
     #[test]
