@@ -59,6 +59,12 @@ RecFormat recFormatFromJson(const json& f) {
     }
     return fmt;
 }
+
+std::string toHex(uint32_t v) {
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%X", v);
+    return buf;
+}
 } // namespace
 
 // Ein laufender Dienst: Backend (eigener Thread im mscHandler), seine
@@ -663,8 +669,20 @@ void DabCore::onMotObject(RunningService* rs, const std::vector<uint8_t>& data, 
         // serviceScope aus dem Inhalt (TS 102 371) ist eindeutig und geht vor
         // der Dateinamen-Heuristik, die bei manchen Multiplexen die SId eines
         // anderen Dienstes im Ensemble treffen kann (Bugfixes.txt #3: EPG von
-        // ENERGY landete unter DLF).
+        // ENERGY landete unter DLF). Diagnose-Logs (Fund 15.09.2026: der Fehler
+        // trat trotz dieses Fixes wieder auf), bis ein Live-Mitschnitt zeigt, ob
+        // ENERGYs EPG-Objekte gar keinen serviceScope tragen (Fallback-Zweig)
+        // oder ob process_476/process_serviceScope ihn falsch dekodiert
+        // (Abweichungs-Zweig) - beides wuerde optisch gleich aussehen.
         uint32_t scopeSid = rs->epg->scopeSid();
+        if (scopeSid == 0) {
+            sink_(events::log("info", "EPG: kein serviceScope im Inhalt, Dateiname-Schaetzung SId " +
+                                       toHex(sid) + " fuer " + name));
+        } else if (scopeSid != sid) {
+            sink_(events::log("info", "EPG: serviceScope SId " + toHex(scopeSid) +
+                                       " weicht von Dateiname-Schaetzung SId " + toHex(sid) +
+                                       " ab fuer " + name + " - serviceScope gewinnt"));
+        }
         if (scopeSid != 0) sid = scopeSid;
         if (sid == 0) {
             sink_(events::log("debug", "EPG-Objekt ohne SId (weder Inhalt noch Name): " + name));

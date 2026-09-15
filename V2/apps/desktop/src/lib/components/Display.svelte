@@ -23,6 +23,13 @@
     void openUrl(url);
   };
   const slide = $derived(slideUrl());
+  // Bugfixes.txt #12 galt nur dem Logo (Logo.svelte); das meist groessere und
+  // zuerst ins Auge fallende MOT-SlideShow-Bild daneben hatte gar keine
+  // Vergroesserung - hier nachgezogen (Fund aus Stefans Live-Test 15.09.2026).
+  let slideZoomed = $state(false);
+  function onSlideKey(e: KeyboardEvent) {
+    if (slideZoomed && e.key === "Escape") slideZoomed = false;
+  }
   const headline = $derived.by(() => {
     if (s.pending) return s.pending.name ? t("display.searching_service", { name: s.pending.name, channel: s.pending.channel }) : t("display.searching", { channel: s.pending.channel });
     if (svc) return svc.name.trim();
@@ -74,7 +81,18 @@
         px={slide ? 84 : 48}
         zoomable
       />
-      {#if slide}<img src={slide} alt={s.slide?.name ?? "slide"} />{/if}
+      {#if slide}
+        <button type="button" class="slide-btn" onclick={() => (slideZoomed = true)} aria-label={s.slide?.name || t("logo.alt")}>
+          <img src={slide} alt={s.slide?.name ?? "slide"} draggable="false" />
+        </button>
+      {/if}
+    </div>
+  {/if}
+  {#if slideZoomed && slide}
+    <div class="overlay" onmousedown={(e) => e.target === e.currentTarget && (slideZoomed = false)} role="presentation">
+      <div class="dialog zoom" role="dialog" aria-modal="true" aria-label={s.slide?.name || t("logo.alt")}>
+        <img src={slide} alt={s.slide?.name ?? "slide"} draggable="false" />
+      </div>
     </div>
   {/if}
   {#if s.now_next && (s.now_next.now || s.now_next.next)}
@@ -108,6 +126,7 @@
     {#if s.muted}<span class="dim">MUTE</span>{/if}
   </div>
 </section>
+<svelte:window onkeydown={onSlideKey} />
 
 <style>
   .display { padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; flex: none; }
@@ -120,6 +139,9 @@
   .name.pending { color: var(--amber); animation: blink 1s steps(2, start) infinite; }
   .media { display: flex; gap: 6px; align-items: center; }
   .media img { height: 84px; max-width: calc(100% - 90px); object-fit: contain; }
+  .slide-btn { all: unset; cursor: zoom-in; display: inline-flex; line-height: 0; min-width: 0; }
+  .dialog.zoom { padding: 8px; display: flex; }
+  .dialog.zoom img { max-width: min(80vw, 480px); max-height: min(80vh, 480px); object-fit: contain; }
   .dlp a, .ticker a { color: inherit; text-decoration: underline; text-decoration-style: dotted; cursor: pointer; }
   .dlp a:hover, .ticker a:hover { color: var(--green-hi); }
   .epgline { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
