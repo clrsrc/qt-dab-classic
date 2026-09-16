@@ -89,7 +89,13 @@ uint16_t	rawContentType = 0;
                  break;
 
               case 03: {
+//	Review G4: Laengenfeld und Parameterdaten nur innerhalb des
+//	Segments (reference) lesen
+                 if (pointer + 1 >= reference)
+                    return;
                  if ((segment [pointer + 1] & 0x80) != 0) {
+                    if (pointer + 2 >= reference)
+                       return;
                     length = (segment [pointer + 1] & 0x7F) << 8 |
                               segment [pointer + 2];
                     pointer = pointer + 3 ;
@@ -100,9 +106,12 @@ uint16_t	rawContentType = 0;
                  }
 	         switch (paramId) {
 	            case 12: {	// contentName 6.2.2.1.1
+                       if (pointer >= reference)
+                          return;
                        uint8_t charSet = segment [pointer] >> 4;
 	               std::string nameText;
-                       for (int i = 1; i < length; i ++) {
+                       for (int i = 1; (i < length) &&
+                                       (pointer + i < reference); i ++) {
 	                  if (i < 64)
                              nameText. push_back ((char)segment [pointer + i]);
 	               }

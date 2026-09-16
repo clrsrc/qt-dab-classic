@@ -87,6 +87,8 @@ private:
 	void		process_FIG0		(uint8_t *);
 	void		process_FIG1		(uint8_t *);
 	void		FIG0Extension0		(uint8_t *);
+//	Rekonfiguration (Review M1): bekannte Dienste erneut melden
+	void		reannounceServices	();
 	void		FIG0Extension1		(uint8_t *);
 	void		FIG0Extension2		(uint8_t *);
 	void		FIG0Extension3		(uint8_t *);

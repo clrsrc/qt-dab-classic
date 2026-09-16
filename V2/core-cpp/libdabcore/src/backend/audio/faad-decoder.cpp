@@ -36,7 +36,8 @@
 }
 
 	faadDecoder::~faadDecoder	() {
-	NeAACDecClose   (aacHandle);
+	if (aacHandle != nullptr)	// Review M3: nach Init-Fehler schon geschlossen
+	   NeAACDecClose   (aacHandle);
 }
 
 static
@@ -99,7 +100,10 @@ uint8_t channels;
 /*      If some error initializing occured, skip the file */
 	   fprintf (stderr, "Error initializing decoder library: %s\n",
 	                         NeAACDecGetErrorMessage (-init_result));
+//	Review 16.09.2026 M3: Handle nach dem Schliessen auf nullptr, sonst
+//	schloss der Destruktor es ein zweites Mal (Doppel-Free).
 	   NeAACDecClose (aacHandle);
+	   aacHandle = nullptr;
 	   processorOK = false;
 	   return false;
 	}

@@ -126,6 +126,15 @@ if(DABCORE_BUILD_TESTS)
                    libdabcore/src/fic/ews-location.cpp)
     target_include_directories(test_ews_location PRIVATE ${DABCORE_SRC}/fic)
     add_test(NAME ews_location COMMAND test_ews_location)
+    # fibDecoder mit synthetischen FIBs (Review 16.09.2026): CU-Grenze 864
+    # (M4), LTO-Vorzeichen (G1), leere Komponentenliste (G5), abgeschnittene
+    # FIG-Eintraege (G9), announcement-Felder (SId, 16 Flags, Cluster,
+    # Subkanal der Durchsage aus FIG 0/19)
+    add_executable(test_fib_decoder tests/test-fib-decoder.cpp)
+    target_link_libraries(test_fib_decoder PRIVATE dabcore)
+    target_include_directories(test_fib_decoder PRIVATE
+        ${DABCORE_SRC}/fic ${DABCORE_SRC}/frontend ${DABCORE_SRC}/support ${DABCORE_SRC}/dsp)
+    add_test(NAME fib_decoder COMMAND test_fib_decoder)
     add_test(NAME dabcored_ready
         COMMAND ${CMAKE_COMMAND} -E env DABCORED=$<TARGET_FILE:dabcored>
                 powershell -NoProfile -ExecutionPolicy Bypass

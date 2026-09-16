@@ -408,6 +408,10 @@ BitWriter	au_bw;
 void    mp4Processor::handle_PAD (const std::vector<uint8_t> &v,
                                           int startIndex) {
 int16_t count = v [startIndex + 1];
+//	Review G4: count < 3 ergaebe negative Indizes (L0/L1), ein zu grosses
+//	count liest hinter die AU bzw. den outVector
+	if ((count < 3) || (startIndex + 2 + count > (int)v. size ()))
+	   return;
 uint8_t *buffer = dynVec (uint8_t, count);
         memcpy (buffer, &v [startIndex + 2], count);
         uint8_t L0  = buffer [count - 1];

@@ -78,7 +78,8 @@ public:
 
 	void		set_FECscheme		(const int, int);
 
-	void		check_announcements	(uint8_t, uint8_t, uint8_t);
+//	clusterId, AswFlags (16 Bit, FIG 0/19), newFlag, subChId der Durchsage
+	void		check_announcements	(uint8_t, uint16_t, uint8_t, uint8_t);
 
 	ensemble	*theEnsemble;
 	
@@ -124,6 +125,6 @@ private:
 	int	findIndex_SC_P_Table	(uint16_t SCId);
 	int	SCIds_of		(uint32_t SId, uint16_t subCh);
 
-	ReceiverCallbacks	*cb;		// announcement (int, int)
+	ReceiverCallbacks	*cb;		// announcement (sid, flags, cluster, subCh)
 };
 

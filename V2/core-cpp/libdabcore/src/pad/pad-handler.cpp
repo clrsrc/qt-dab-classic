@@ -240,11 +240,15 @@ std::vector<uint8_t> data;		// for the local addition
 //	The CI flag in the F_PAD data is set, so we have local CI's
 //	7.4.2.2: Contents indicators are one byte long
 
-	while (((b [base] & 037) != 0) && (CI_Index < 4))
+//	Review G4: b [0 .. last] ist gueltig; ohne Untergrenze las die
+//	Schleife bei fehlerhaften Laengen vor den Puffer
+	while ((base >= 0) && ((b [base] & 037) != 0) && (CI_Index < 4))
 	   CI_table [CI_Index ++] = b [base --];
 
 	if (CI_Index < 4) 	// we have a "0" indicator, adjust base
 	   base -= 1;
+	if (CI_Index == 0)
+	   return;
 
 //	The space for the CI's does belong to the CPadfield, so
 //	do not forget to take into account the '0'field if CI_Index < 4
@@ -261,6 +265,8 @@ std::vector<uint8_t> data;		// for the local addition
 	   int16_t length	= lengthTable [CI_table [i] >> 5];
 
 	   if (appType == 1) {	// length spec
+	      if (base < 1)	// Review G4
+	         return;
 	      dataGroupLength = ((b [base] & 077) << 8) | b [base - 1];
 	      base -= 4;
 	      last_appType = 1;
@@ -268,6 +274,8 @@ std::vector<uint8_t> data;		// for the local addition
 	   }
 
 //	collect data, reverse the reversed bytes
+	   if (base - (length - 1) < 0)	// Review G4: Feld passt nicht mehr
+	      return;
 	   data. resize (length);
 	   for (int16_t j = 0; j < length; j ++)
 	      data [j] = b [base - j];

@@ -99,7 +99,7 @@ public:
     bool hasAmp() const override { return true; }
     // AGC-Stufen: VGA 0..62 in 2er-Schritten -> Stufe 0..31; AMP getrennt
     int gainStepCount() const override { return 32; }
-    int gainStep() const override { return gain_.vga / 2; }
+    int gainStep() const override { std::lock_guard<std::mutex> lk(gainM_); return gain_.vga / 2; }
     int gainAcqIncrement() const override { return 4; }     // VGA +8
     int gainDefaultStep() const override { return 20; }     // VGA 40
     // VGA +-4 je Probe: die SNR-EMA des ofdmHandlers (0,85) daempft kleine

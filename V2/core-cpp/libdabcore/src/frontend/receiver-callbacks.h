@@ -35,7 +35,9 @@ struct ReceiverCallbacks {
     std::function<void(uint32_t mjd, int utcHour, int utcMinute, int utcSeconds, int ltoMinutes,
                        int year, int month, int day, int hour, int minute)> clockTime;
     std::function<void()>                     changeInConfiguration;
-    std::function<void(int sid, int flags)>   announcement;
+    // Durchsage (FIG 0/18 x 0/19): sid = angekuendigter Dienst, flags = ASu & ASw
+    // (16 Bit, 0 = Ende), clusterId, subChId = Subkanal der Durchsage (FIG 0/19)
+    std::function<void(int sid, int flags, int clusterId, int subChId)> announcement;
     std::function<void(int)>                  nrServices;
     std::function<void(int lto, int ecc)>     ltoEcc;
     std::function<void()>                     freqListChanged;

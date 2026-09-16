@@ -2,6 +2,7 @@
 #include "file-source.h"
 
 #include <chrono>
+#include <thread>
 #include <vector>
 
 // Ausgaberate des Dumps: die Leser liefern immer 2,048 MS/s (nach Resampling).
@@ -80,6 +81,15 @@ int32_t FileSourceBase::samples() {
 
 bool FileSourceBase::waitForSamples(int32_t n, int timeoutMs) {
     if (samples() >= n) return true;
+    // Review 16.09.2026 G8: nach dem Dateiende (running_ = false, kein
+    // loop) kam die Antwort sofort und der OFDM-Thread drehte bis zum
+    // close_device mit 100 % eines Kerns. Jetzt wird die Wartezeit auch
+    // dann ausgesessen; der Aufrufer (sampleReader) prueft sein eigenes
+    // running-Flag zwischen zwei Aufrufen, stop() bleibt also reaktiv.
+    if (!running_.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeoutMs));
+        return samples() >= n;
+    }
     std::unique_lock<std::mutex> lk(m_);
     return dataCv_.wait_for(lk, std::chrono::milliseconds(timeoutMs),
                             [this, n] { return samples() >= n || !running_.load(); })

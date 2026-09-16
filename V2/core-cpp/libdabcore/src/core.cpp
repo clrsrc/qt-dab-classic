@@ -181,6 +181,9 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
     msc_ = std::make_unique<mscHandler>(params_->dabMode, cpuSupport_);
     wireCallbacks();
     autoPending_ = opt_.autoServices;
+    // Aktionsthread (Review K1): fuehrt Dienstwechsel aus FIC-Callbacks
+    // ausserhalb des fibLocker aus, siehe Sperrordnung in core.h.
+    actionThread_ = std::thread([this] { runActions(); });
 
     sink_(events::ready(version(), 1, availableAacDecoders()));
     sink_(events::log("info", std::string("Viterbi: ") +
@@ -209,10 +212,57 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
 }
 
 DabCore::~DabCore() {
+    stopActionThread();   // zuerst: danach legt niemand mehr Dienste an
     stopSpike();
     closeDevice();
     stopFrameDump();
     joinExportThread();
+}
+
+// --- Aktionsthread (Review K1) --------------------------------------------------
+
+void DabCore::enqueueAction(Action a) {
+    std::lock_guard<std::mutex> lk(actionM_);
+    a.generation = actionGeneration_;
+    actions_.push_back(std::move(a));
+    actionCv_.notify_one();
+}
+
+// Kanalwechsel / close_device: alles, was noch fuer das alte Ensemble
+// eingereiht war (Autoauswahl, EPG-Start, EWS), ist hinfaellig.
+void DabCore::invalidateActions() {
+    std::lock_guard<std::mutex> lk(actionM_);
+    ++actionGeneration_;
+    actions_.clear();
+}
+
+void DabCore::runActions() {
+    for (;;) {
+        Action a;
+        {
+            std::unique_lock<std::mutex> lk(actionM_);
+            actionCv_.wait(lk, [this] { return actionStop_ || !actions_.empty(); });
+            if (actionStop_) return;
+            a = std::move(actions_.front());
+            actions_.pop_front();
+            if (a.generation != actionGeneration_) continue;
+        }
+        switch (a.kind) {
+        case Action::Select:      selectService(a.sid, a.scids, a.slot, a.autoEpg); break;
+        case Action::Ews:         handleEwsAutoswitch(a.phase, a.subChId, a.isTest, a.relevant); break;
+        case Action::Reconfigure: reconcileServices(); break;
+        }
+    }
+}
+
+void DabCore::stopActionThread() {
+    {
+        std::lock_guard<std::mutex> lk(actionM_);
+        actionStop_ = true;
+        actions_.clear();
+    }
+    actionCv_.notify_all();
+    if (actionThread_.joinable()) actionThread_.join();
 }
 
 // audio_devices kommt nach ready, auf get_state und nach set_audio_device;
@@ -263,15 +313,30 @@ std::optional<bool> DabCore::ewsRelevance(const std::vector<std::string>& locati
 
 // Entscheidung 5 / v1 radio.cpp ewsStart: bei Trigger/Sustain auf den
 // Warndienst (den Audiodienst auf dem gemeldeten Unterkanal) wechseln,
-// bei End zurueck auf den Dienst, der vorher lief. Laeuft im OFDM-Thread
-// (FIC-Callback), wie die anderen ews*-Callbacks auch.
+// bei End zurueck auf den Dienst, der vorher lief. Laeuft im Aktionsthread
+// (Review K1; vorher im OFDM-Thread unter dem fibLocker, was mit dem
+// Kommandothread in selectService verklemmen konnte).
 void DabCore::handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest, bool relevant) {
+    if (phase == 3) {   // End (auch erzwungen durch set_ews aus/autoswitch aus)
+        if (!ewsAutoActive_) return;
+        uint32_t backSid = ewsSavedSid_;
+        uint8_t backScids = ewsSavedScids_;
+        bool hadSaved = ewsHasSaved_;
+        uint32_t alertSid = ewsAlertSid_;
+        ewsAutoActive_ = false;
+        ewsHasSaved_ = false;
+        if (hadSaved && backSid != 0) {
+            selectService(backSid, backScids, Slot::Primary);
+            sink_(events::ewsSwitched(backSid, static_cast<int64_t>(alertSid)));
+        }
+        return;
+    }
     bool autoswitch;
     {
         std::lock_guard<std::mutex> lk(stateM_);
         autoswitch = state_.value("ews_autoswitch", true);
     }
-    if (!autoswitch || isTest) return;
+    if (!autoswitch || isTest || !ewsEnabled_.load()) return;
     if (phase == 1 || phase == 2) {   // Trigger, Sustain
         if (ewsAutoActive_) return;   // schon auf dem Warndienst
         // Nicht fuer den eigenen Standort bestimmt (z. B. der "Eiffelturm"-
@@ -325,18 +390,6 @@ void DabCore::handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest, bool
         if (nowPrimary != targetSid) return;   // Umschalten wurde abgelehnt
         ewsAutoActive_ = true;
         sink_(events::ewsSwitched(targetSid, haveCur ? static_cast<int64_t>(curSid) : -1));
-    } else if (phase == 3) {   // End
-        if (!ewsAutoActive_) return;
-        uint32_t backSid = ewsSavedSid_;
-        uint8_t backScids = ewsSavedScids_;
-        bool hadSaved = ewsHasSaved_;
-        uint32_t alertSid = ewsAlertSid_;
-        ewsAutoActive_ = false;
-        ewsHasSaved_ = false;
-        if (hadSaved && backSid != 0) {
-            selectService(backSid, backScids, Slot::Primary);
-            sink_(events::ewsSwitched(backSid, static_cast<int64_t>(alertSid)));
-        }
     }
 }
 
@@ -421,20 +474,22 @@ void DabCore::wireCallbacks() {
         }
     };
     cb.changeInConfiguration = [this] {
+        // Review M1: der fibDecoder meldet direkt danach alle Dienste der
+        // neuen Konfiguration erneut (addToEnsemble -> service_added), die
+        // Liste fuellt sich also wieder; laufende Dienste prueft der
+        // Aktionsthread gegen die neue FIC (reconcileServices).
         { std::lock_guard<std::mutex> lk(stateM_); state_["services"] = json::array(); }
         sink_(events::ensembleReconfigured());
+        Action a;
+        a.kind = Action::Reconfigure;
+        enqueueAction(a);
     };
-    cb.announcement = [this](int sid, int flags) {
-        uint8_t subCh = 0;
-        if (ofdm_) {
-            int idx = ofdm_->fic().getServiceComp(static_cast<uint32_t>(sid), 0);
-            if (idx >= 0) {
-                audiodata ad;
-                ofdm_->fic().audioData(idx, ad);
-                if (ad.defined) subCh = static_cast<uint8_t>(ad.subchId);
-            }
-        }
-        sink_(events::announcement(static_cast<uint16_t>(flags), subCh, flags != 0));
+    cb.announcement = [this](int sid, int flags, int clusterId, int subChId) {
+        // Verkehrsfunk-Vorbereitung: sub_ch ist der Subkanal der Durchsage
+        // aus FIG 0/19 (vorher: der des angekuendigten Dienstes)
+        sink_(events::announcement(static_cast<uint32_t>(sid), static_cast<uint16_t>(flags),
+                                   static_cast<uint8_t>(subChId), flags != 0,
+                                   static_cast<uint8_t>(clusterId)));
     };
     cb.nrServices = [](int) {};
     cb.ltoEcc = [this](int lto, int) { lto_.store(lto); };
@@ -456,9 +511,20 @@ void DabCore::wireCallbacks() {
         sink_(events::log("info", std::string("FIG 0/0 Alarm-Flag ") + (active ? "gesetzt" : "geloescht")));
     };
     cb.ewfAlarm = [this](bool active, int subChId) {
+        if (!ewsEnabled_.load()) return;   // Review G11
         sink_(events::ewfAlarm(active, static_cast<uint8_t>(subChId < 0 ? 0 : subChId)));
     };
     cb.ewsAlert = [this](int phase, int subChId, int stage, int stageRaw, int iid, const std::vector<std::string>& loc) {
+        // Review G11: set_ews.enabled=false -> keine EWS-Ereignisse, keine
+        // Umschaltung; nur ein End schaltet noch zurueck, falls der Kern vor
+        // dem Abschalten umgeschaltet hatte.
+        if (!ewsEnabled_.load()) {
+            if (phase == 3) {
+                Action a; a.kind = Action::Ews; a.phase = 3;
+                enqueueAction(a);
+            }
+            return;
+        }
         EwsPhase p = phase == 0 ? EwsPhase::PreTrigger : phase == 1 ? EwsPhase::Trigger
                    : phase == 2 ? EwsPhase::Sustain : EwsPhase::End;
         // v1 radio.cpp: Stufe 7 ("Test") ist eine Testwarnung, keine echte.
@@ -474,10 +540,20 @@ void DabCore::wireCallbacks() {
         const std::optional<bool> relevant = ewsRelevance(loc);
         sink_(events::ewsAlert(p, static_cast<uint8_t>(subChId), static_cast<uint8_t>(stage),
                                static_cast<uint8_t>(stageRaw), static_cast<uint16_t>(iid), loc, isTest, relevant));
-        if (phase != 0) handleEwsAutoswitch(phase, static_cast<uint32_t>(subChId), isTest, relevant.value_or(true));
+        // Umschaltung im Aktionsthread (Review K1): hier laeuft der OFDM-
+        // Thread unter dem fibLocker und darf serviceM_ nicht nehmen.
+        if (phase != 0) {
+            Action a;
+            a.kind = Action::Ews;
+            a.phase = phase;
+            a.subChId = static_cast<uint32_t>(subChId);
+            a.isTest = isTest;
+            a.relevant = relevant.value_or(true);
+            enqueueAction(a);
+        }
     };
-    cb.ewsAlive = [this](int subChId) { sink_(events::ewsAlive(subChId)); };
-    cb.ewsPresent = [this] { sink_(events::ewsPresent()); };
+    cb.ewsAlive = [this](int subChId) { if (ewsEnabled_.load()) sink_(events::ewsAlive(subChId)); };
+    cb.ewsPresent = [this] { if (ewsEnabled_.load()) sink_(events::ewsPresent()); };
     cb.log = [this](const char* level, const std::string& text) { sink_(events::log(level, text)); };
 }
 
@@ -538,9 +614,11 @@ void DabCore::maybeStartEpg(const ServiceInfo& s) {
     if (!ofdm_->fic().is_SPI(s.sid)) return;
     if (msc_->serviceRuns(s.sid, s.subCh)) return;
     sink_(events::log("info", "SPI/EPG-Dienst erkannt: " + s.name + " (SId " + std::to_string(s.sid) + ")"));
-    selectService(s.sid, s.scids, Slot::Background);
-    std::lock_guard<std::mutex> lk(serviceM_);
-    if (auto* rs = findLocked(Slot::Background, s.sid)) rs->autoEpg = true;
+    // Start im Aktionsthread (Review K1): wird aus dem FIC-Callback gerufen
+    Action a;
+    a.kind = Action::Select;
+    a.sid = s.sid; a.scids = s.scids; a.slot = Slot::Background; a.autoEpg = true;
+    enqueueAction(a);
 }
 
 void DabCore::setEpg(bool enabled) {
@@ -709,13 +787,20 @@ void DabCore::maybeAutoSelect(const ServiceInfo& s, bool seenBefore) {
     auto slotFor = [this](const std::string& wanted) {
         return (!opt_.autoServices.empty() && wanted == opt_.autoServices[0]) ? Slot::Primary : Slot::Background;
     };
+    // Der eigentliche Start laeuft im Aktionsthread (Review K1)
+    auto select = [this](uint32_t sid, uint8_t scids, Slot slot) {
+        Action a;
+        a.kind = Action::Select;
+        a.sid = sid; a.scids = scids; a.slot = slot;
+        enqueueAction(a);
+    };
     for (size_t i = 0; i < autoPending_.size(); ++i) {
         int m = serviceMatch(s, autoPending_[i]);
         if (m == 2) {
             std::string wanted = autoPending_[i];
             autoPending_.erase(autoPending_.begin() + static_cast<long>(i));
             autoCandidates_.erase(wanted);
-            selectService(s.sid, s.scids, slotFor(wanted));
+            select(s.sid, s.scids, slotFor(wanted));
             return;
         }
         if (m == 1 && !autoCandidates_.count(autoPending_[i])) {
@@ -732,12 +817,12 @@ void DabCore::maybeAutoSelect(const ServiceInfo& s, bool seenBefore) {
             ServiceInfo cand = it->second;
             autoPending_.erase(autoPending_.begin() + static_cast<long>(i));
             autoCandidates_.erase(it);
-            selectService(cand.sid, cand.scids, slotFor(wanted));
+            select(cand.sid, cand.scids, slotFor(wanted));
         }
     }
     if (opt_.autoAllAudio && s.isAudio) {
         if (msc_->serviceRuns(s.sid, s.subCh)) return;
-        selectService(s.sid, s.scids, Slot::Background);
+        select(s.sid, s.scids, Slot::Background);
     }
 }
 
@@ -825,11 +910,27 @@ bool DabCore::handle(const json& c) {
     if (type == "stop_frame_dump") { stopFrameDump(); return true; }
     if (type == "set_epg") { setEpg(c.value("enabled", true)); return true; }
     if (type == "set_ews") {
-        std::lock_guard<std::mutex> lk(stateM_);
-        state_["ews_enabled"] = c.value("enabled", true);
-        state_["ews_autoswitch"] = c.value("autoswitch", true);
+        const bool enabled = c.value("enabled", true);
+        const bool autoswitch = c.value("autoswitch", true);
+        {
+            std::lock_guard<std::mutex> lk(stateM_);
+            state_["ews_enabled"] = enabled;
+            state_["ews_autoswitch"] = autoswitch;
+        }
+        ewsEnabled_.store(enabled);
+        // Review G11: Abschalten waehrend einer laufenden Umschaltung ->
+        // zurueck auf den vorherigen Dienst (wie ein End), sonst bliebe der
+        // Warndienst stehen, weil das echte End nicht mehr ausgewertet wird.
+        if (!enabled || !autoswitch) {
+            Action a; a.kind = Action::Ews; a.phase = 3;
+            enqueueAction(a);
+        }
         return true;
     }
+    // ews_dismiss: die App blendet den Alarm aus; der Kern hat dazu keinen
+    // Zustand (Umschaltung endet mit dem End der FIG 0/15). Bewusst ohne
+    // Wirkung und ohne Log (Review G11).
+    if (type == "ews_dismiss") return true;
     if (type == "set_home_location") {
         // Heimatkoordinaten fuer das Geofencing der EWS-Ortscodes. Fehlendes
         // Feld oder null loescht die jeweilige Koordinate; ohne beide gilt
@@ -1023,10 +1124,14 @@ void DabCore::wireBackend(RunningService* rs) {
     }
 }
 
-void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
+void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot, bool autoEpg) {
     std::lock_guard<std::mutex> lk(serviceM_);
     if (closing_ || !ofdm_) {
         sink_(events::log("warn", "select_service ohne geoeffnete Quelle"));
+        return;
+    }
+    if (retuning_) {   // Review M2: ofdm_->start() wuerde das Backend gleich loeschen
+        sink_(events::log("warn", "select_service waehrend des Kanalwechsels verworfen: SId " + std::to_string(sid)));
         return;
     }
     auto& fic = ofdm_->fic();
@@ -1050,18 +1155,77 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
             stopOneLocked(p);
         }
     }
+    startServiceLocked(index, sid, scids, slot, autoEpg);
+}
 
+// Review M1: nach FIG 0/0 Change-Flag jeden laufenden Dienst gegen die
+// neue Konfiguration pruefen. Gleicher Subkanal mit gleichen CU-Daten:
+// weiterlaufen lassen; verschoben: Backend + Pipeline neu anlegen (die App
+// sieht service_stopped/service_started fuer dieselbe SId); nicht mehr
+// vorhanden: stoppen. Eine laufende Aufnahme endet dabei (die alten
+// Subkanaldaten wuerden ohnehin nur noch Rauschen liefern).
+void DabCore::reconcileServices() {
+    std::lock_guard<std::mutex> lk(serviceM_);
+    if (closing_ || retuning_ || !ofdm_) return;
+    auto& fic = ofdm_->fic();
+    struct Item { RunningService* rs; uint32_t sid; uint8_t scids; Slot slot; bool autoEpg; };
+    std::vector<Item> items;
+    for (auto& rs : services_) items.push_back({rs.get(), rs->sid, rs->scids, rs->slot, rs->autoEpg});
+    int kept = 0, restarted = 0, stopped = 0;
+    for (auto& it : items) {
+        int index = fic.getServiceComp_SCIds(it.sid, it.scids);
+        if (index < 0) index = fic.getServiceComp(it.sid, 0);
+        std::unique_ptr<descriptorType> fresh;
+        if (index >= 0) {
+            if (fic.serviceType(index) == 0) {
+                auto ad = std::make_unique<audiodata>();
+                fic.audioData(index, *ad);
+                if (ad->defined) fresh = std::move(ad);
+            } else {
+                auto pd = std::make_unique<packetdata>();
+                fic.packetData(index, *pd);
+                if (pd->defined) fresh = std::move(pd);
+            }
+        }
+        const descriptorType* old = it.rs->descriptor.get();
+        if (fresh && old &&
+            fresh->subchId == old->subchId && fresh->startAddr == old->startAddr &&
+            fresh->length == old->length && fresh->protLevel == old->protLevel &&
+            fresh->shortForm == old->shortForm && fresh->bitRate == old->bitRate) {
+            ++kept;
+            continue;
+        }
+        if (it.rs->audio && it.rs->audio->recording())
+            sink_(events::log("warn", "Rekonfiguration: Aufnahme von " + it.rs->name + " endet"));
+        stopOneLocked(it.rs);
+        if (!fresh) {
+            sink_(events::log("warn", "Rekonfiguration: SId " + std::to_string(it.sid) +
+                                      " nicht mehr im Ensemble, Dienst beendet"));
+            ++stopped;
+            continue;
+        }
+        if (startServiceLocked(index, it.sid, it.scids, it.slot, it.autoEpg)) ++restarted;
+        else ++stopped;
+    }
+    updateServiceState();
+    sink_(events::log("info", "Rekonfiguration: " + std::to_string(kept) + " Dienste unveraendert, " +
+                              std::to_string(restarted) + " neu gestartet, " + std::to_string(stopped) + " beendet"));
+}
+
+bool DabCore::startServiceLocked(int index, uint32_t sid, uint8_t scids, Slot slot, bool autoEpg) {
+    auto& fic = ofdm_->fic();
     auto rs = std::make_unique<RunningService>();
     rs->slot = slot; rs->sid = sid; rs->scids = scids;
+    rs->autoEpg = autoEpg;
     rs->cb = std::make_unique<BackendCallbacks>();
     uint8_t tmid = fic.serviceType(index);
     if (tmid == 0) {
         auto ad = std::make_unique<audiodata>();
         fic.audioData(index, *ad);
-        if (!ad->defined) { sink_(events::log("warn", "Audiodienst noch nicht vollstaendig in der FIC")); return; }
+        if (!ad->defined) { sink_(events::log("warn", "Audiodienst noch nicht vollstaendig in der FIC")); return false; }
         if (ad->ASCTy != DAB_PLUS) {
             sink_(events::log("error", "MP2-Dienst (DAB alt) wird nicht unterstuetzt: " + trimRight(ad->serviceName)));
-            return;
+            return false;
         }
         rs->isAudio = true;
         rs->subCh = static_cast<uint8_t>(ad->subchId);
@@ -1075,11 +1239,22 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
     } else {
         auto pd = std::make_unique<packetdata>();
         fic.packetData(index, *pd);
-        if (!pd->defined) { sink_(events::log("warn", "Paketdienst noch nicht vollstaendig in der FIC")); return; }
+        if (!pd->defined) { sink_(events::log("warn", "Paketdienst noch nicht vollstaendig in der FIC")); return false; }
         rs->isAudio = false;
         rs->subCh = static_cast<uint8_t>(pd->subchId);
         rs->name = trimRight(pd->serviceName);
         rs->descriptor = std::move(pd);
+    }
+    // Review M4: Subkanal muss im CIF (864 CU) liegen, sonst liest der
+    // MSC-Pfad hinter den CIF-Vektor (FIG 0/1 filtert das schon; hier die
+    // Sicherung fuer den Deskriptor, der ins Backend geht)
+    {
+        const descriptorType& d = *rs->descriptor;
+        if (d.startAddr < 0 || d.length <= 0 || d.startAddr + d.length > 864) {
+            sink_(events::log("error", "Dienst " + rs->name + ": Subkanal CU " + std::to_string(d.startAddr) +
+                                       "+" + std::to_string(d.length) + " ausserhalb des CIF, nicht gestartet"));
+            return false;
+        }
     }
     wireBackend(rs.get());
     rs->backend = msc_->startBackend(*rs->descriptor, rs->cb.get(),
@@ -1105,12 +1280,13 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot) {
     attachTimeshiftLocked(raw);
     services_.push_back(std::move(rs));
     // Headless --wav: Dump des Primary-Dienstes ab dem ersten PCM-Block
-    if (slot == Slot::Primary && raw->audio && !opt_.autoWav.empty() && !autoWavStarted_) {
+    if (slot == Slot::Primary && raw->audio && !opt_.autoWav.empty() && !autoWavStarted_.load()) {
         std::string err;
-        if (raw->audio->startWav(opt_.autoWav, err)) autoWavStarted_ = true;
+        if (raw->audio->startWav(opt_.autoWav, err)) autoWavStarted_.store(true);
         else sink_(events::log("error", err));
     }
     updateServiceState();
+    return true;
 }
 
 void DabCore::stopOneLocked(RunningService* rs) {
@@ -1351,8 +1527,22 @@ void DabCore::startExportThread(double fromS, double toS, const std::string& pat
 
 void DabCore::openDevice(const json& source) {
     closeDevice();
-    { std::lock_guard<std::mutex> lk(stateM_); state_["source"] = source; }
     const std::string kind = source.value("kind", "");
+    // Review G10: state_snapshot.source muss vollstaendig sein (dab-api
+    // SourceKind: File braucht `loop`), auch wenn der Client Felder
+    // weggelassen hat - deshalb normalisiert ablegen, nicht das Kommando.
+    json norm = source;
+    if (kind == "file") {
+        norm = {{"kind", "file"}, {"path", source.value("path", "")},
+                {"loop", source.value("loop", false)}, {"fast", source.value("fast", opt_.fastReplay)}};
+    } else if (kind == "hack_rf") {
+        norm = {{"kind", "hack_rf"}, {"serial", nullptr}};
+        if (source.contains("serial") && source["serial"].is_string()) norm["serial"] = source["serial"];
+    } else if (kind == "rtl_sdr") {
+        norm = {{"kind", "rtl_sdr"},
+                {"index", source.contains("index") && source["index"].is_number() ? source["index"].get<int>() : 0}};
+    }
+    { std::lock_guard<std::mutex> lk(stateM_); state_["source"] = norm; }
     if (kind == "file") {
         const std::string path = source.value("path", "");
         if (path == "spike") {
@@ -1461,10 +1651,19 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
         sink_(events::log("warn", "set_channel ohne Geraet: " + channel));
         return false;
     }
+    // Review M2/K1: eingereihte Aktionen des alten Kanals verwerfen und bis
+    // ofdm_->start() keinen Dienst anlegen lassen (resetChannel loescht
+    // dort alle Backends).
+    invalidateActions();
     {
         std::lock_guard<std::mutex> lk(serviceM_);
+        retuning_ = true;
         stopAllServicesLocked();
     }
+    struct RetuneGuard {
+        DabCore* c;
+        ~RetuneGuard() { std::lock_guard<std::mutex> lk(c->serviceM_); c->retuning_ = false; }
+    } retuneGuard{this};
     const bool trace = std::getenv("DABCORE_TRACE") != nullptr;
     auto t0 = std::chrono::steady_clock::now();
     ofdm_->stop();
@@ -1522,9 +1721,9 @@ void DabCore::emitGain() {
     {
         std::lock_guard<std::mutex> lk(stateM_);
         state_["gain"] = {{"lna", g.lna}, {"vga", g.vga}, {"amp", g.amp}};
-        state_["agc"] = agc_;
+        state_["agc"] = agc_.load();
     }
-    sink_(events::gainChanged(g.lna, g.vga, g.amp, agc_));
+    sink_(events::gainChanged(g.lna, g.vga, g.amp, agc_.load()));
 }
 
 void DabCore::setGain(const json& gain) {
@@ -1603,6 +1802,7 @@ void DabCore::startScan(const std::vector<std::string>& channelsIn, const std::s
     hooks.emit = sink_;
     hooks.finished = [this] { scanFinished(); };
 
+    invalidateActions();   // keine Autoauswahl/EPG-Starts mehr in den Scan hinein
     {
         std::lock_guard<std::mutex> lk(serviceM_);
         stopAllServicesLocked();
@@ -1736,11 +1936,12 @@ void DabCore::closeDevice() {
         sink_(events::deviceClosed());
     }
     stopScan();
+    invalidateActions();   // Review K1: nichts mehr fuer diese Quelle starten
     if (ofdm_ || source_) {
         if (source_ && source_->dumping()) stopIqDump();
         // Erst die Dienste (Backends + Pipelines), waehrend der OFDM-Thread
-        // noch laeuft; closing_ verhindert, dass der OFDM-Thread (Auto-
-        // Auswahl) zwischendurch neue Backends anlegt.
+        // noch laeuft; closing_ verhindert, dass der Aktionsthread (Auto-
+        // Auswahl, EPG, EWS) zwischendurch neue Backends anlegt.
         {
             std::lock_guard<std::mutex> lk(serviceM_);
             closing_ = true;

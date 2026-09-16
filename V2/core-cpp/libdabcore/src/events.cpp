@@ -88,8 +88,10 @@ json motObject(uint16_t eid, uint32_t sid, uint16_t ct, const std::string& name,
 json epgObject(uint16_t eid, uint32_t sid, uint32_t date, const std::string& name, const std::string& xml) {
     auto j = ev("epg_object"); j["eid"] = eid; j["sid"] = sid; j["date_yyyymmdd"] = date; j["name"] = name; j["xml"] = xml; return j;
 }
-json announcement(uint16_t kind, uint8_t subCh, bool active) {
-    auto j = ev("announcement"); j["kind"] = kind; j["sub_ch"] = subCh; j["active"] = active; return j;
+json announcement(uint32_t sid, uint16_t kind, uint8_t subCh, bool active, uint8_t cluster) {
+    auto j = ev("announcement");
+    j["sid"] = sid; j["kind"] = kind; j["sub_ch"] = subCh; j["active"] = active; j["cluster"] = cluster;
+    return j;
 }
 
 json audioFormat(uint32_t rate, uint8_t ch) { auto j = ev("audio_format"); j["rate"] = rate; j["channels"] = ch; return j; }

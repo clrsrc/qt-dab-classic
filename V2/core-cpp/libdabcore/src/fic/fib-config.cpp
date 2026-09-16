@@ -148,7 +148,8 @@ int	fibConfig::getServiceComp	(const std::string &service) {
 	      continue;
 	   for (auto & SId_element: SId_table) {
 	      if (SId_element. SId == serv. SId)
-	         return SId_element. comps [0];
+	         return SId_element. comps. empty () ? -1 :	// Review G5
+	                SId_element. comps [0];
 	   }
 	}
 	
@@ -164,6 +165,11 @@ int	fibConfig::getServiceComp	(const uint32_t SId,
 	                                          const int compnr) {
 	for (auto &SId_element : SId_table) {
            if (SId_element. SId == SId) {
+//	Review G5: FIG 0/2 mit 0 Komponenten legt eine SId mit leerem
+//	comps an; ohne Pruefung indizierte das einen leeren Vektor.
+              if ((compnr < 0) ||
+                  (compnr >= (int)SId_element. comps. size ()))
+                 return -1;
               return SId_element. comps [compnr];
            }
         }
@@ -368,15 +374,27 @@ void	fibConfig::set_FECscheme	(const int subChId, int FEC_scheme) {
 	}
 }
 
-void	fibConfig::check_announcements (uint8_t clusterId, 
-	                                uint8_t AswFlags, uint8_t newFlag) {
+//	FIG 0/19 gegen die FIG-0/18-Tabelle: fuer jeden Dienst des Clusters
+//	die Schnittmenge aus unterstuetzten (ASu) und geschalteten (ASw) Flags.
+//	Verkehrsfunk-Vorbereitung (16.09.2026): AswFlags als volle 16 Bit,
+//	subChId = Subkanal, auf dem die Durchsage laeuft (nicht der des
+//	angekuendigten Dienstes), und clusterId gehen bis zum Ereignis durch.
+//	v1 wertete nur Eintraege mit New-Flag aus; ein Empfaenger, der waehrend
+//	einer laufenden Durchsage einschaltet, sieht aber nur Wiederholungen
+//	(New = 0) und erfuhr so nie davon. Jetzt zaehlt nur die Aenderung
+//	gegenueber dem gemerkten Zustand (serv. announcing).
+void	fibConfig::check_announcements (uint8_t clusterId,
+	                                uint16_t AswFlags, uint8_t newFlag,
+	                                uint8_t subChId) {
+	(void)newFlag;
 	for (auto &ac : announcement_table) {
-	   if ((ac. clusterId == clusterId) && newFlag) {
+	   if (ac. clusterId == clusterId) {
 	      uint16_t flags = (ac. asuFlags & AswFlags);
 	      for (auto &serv : SId_table) {
 	         if ((serv. SId == ac. SId) &&
 	                      (serv. announcing != flags)) {
-	            emitCb (cb -> announcement, (int)ac. SId, (int)flags);
+	            emitCb (cb -> announcement, (int)ac. SId, (int)flags,
+	                    (int)clusterId, (int)subChId);
 	            serv. announcing = flags;
 	         }
 	      }

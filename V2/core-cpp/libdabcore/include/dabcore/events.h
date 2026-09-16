@@ -75,7 +75,12 @@ json motObject(uint16_t eid, uint32_t sid, uint16_t contentType, const std::stri
 // EPG-Sendeplan (sid/date aus dem MOT-Namen) oder Service-Information
 // (sid = 0, date = 0; v1: list.xml) als XML-Text des epg-compilers.
 json epgObject(uint16_t eid, uint32_t sid, uint32_t dateYyyymmdd, const std::string& name, const std::string& xml);
-json announcement(uint16_t kind, uint8_t subCh, bool active);
+// Durchsage (FIG 0/18 x 0/19, Verkehrsfunk-Vorbereitung 16.09.2026):
+// sid = angekuendigter Dienst, kind = ASu & ASw (16 Flags, Bit 0 Alarm,
+// Bit 1 Verkehr, ...), sub_ch = Subkanal der Durchsage aus FIG 0/19,
+// active = kind != 0, cluster = Cluster-Id. dab-api kennt bisher
+// kind/sub_ch/active; sid/cluster sind additiv (serde ignoriert Unbekanntes).
+json announcement(uint32_t sid, uint16_t kind, uint8_t subCh, bool active, uint8_t cluster);
 
 json audioFormat(uint32_t rate, uint8_t channels);
 json audioLevel(float left, float right);

@@ -164,6 +164,7 @@ bool RtlSdrSource::applyTunerGain() {
 
 // lna = Tuner-Gain in 0,1 dB; naechster Tabellenwert wird genommen
 DeviceGain RtlSdrSource::setGain(const DeviceGain& g) {
+    std::lock_guard<std::mutex> lk(gainM_);   // Review G7
     if (!gains_.empty()) {
         int best = 0;
         for (size_t i = 0; i < gains_.size(); i++)
@@ -182,6 +183,7 @@ void RtlSdrSource::setGainStep(int step, bool amp) {
     (void)amp;
     if (gains_.empty()) return;
     int idx = std::clamp(step, 0, static_cast<int>(gains_.size()) - 1);
+    std::lock_guard<std::mutex> lk(gainM_);   // Review G7
     if (idx == gainIndex_) return;
     gainIndex_ = idx;
     gain_.lna = gains_[idx];

@@ -40,7 +40,7 @@ public:
 	}
 
 	uint8_t		eccByte;
-	uint8_t		lto;
+	int8_t		lto;	// FIG 0/9, vorzeichenbehaftet (Review G1)
 	uint16_t	EId;
 	std::string		ensembleName;
 	bool		namePresent;

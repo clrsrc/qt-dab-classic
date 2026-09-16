@@ -169,6 +169,7 @@ DeviceGain HackRfSource::setGain(const DeviceGain& g) {
     int vga = g.vga < 0 ? 0 : g.vga > 62 ? 62 : g.vga;
     n.vga = vga & ~0x01;
     n.amp = g.amp;
+    std::lock_guard<std::mutex> lk(gainM_);   // Review G7
     gain_ = n;
     if (theDevice_ != nullptr) applyGain();
     return gain_;
@@ -188,6 +189,7 @@ bool HackRfSource::applyGain() {
 // AGC-Stufe (VGA/2) und AMP; nur geaenderte Register schreiben
 void HackRfSource::setGainStep(int step, bool amp) {
     int vga = (step < 0 ? 0 : step > 31 ? 31 : step) * 2;
+    std::lock_guard<std::mutex> lk(gainM_);   // Review G7
     if (vga != gain_.vga) {
         gain_.vga = vga;
         if (theDevice_ != nullptr) {
@@ -251,7 +253,10 @@ bool HackRfSource::restart(int32_t freq, int32_t skipped) {
     toSkip = skipped;
     errorReported_.store(false);
     int64_t adjustedFreq = freq + static_cast<int64_t>(ppm_) * (freq / 1000000);
-    applyGain();
+    {
+        std::lock_guard<std::mutex> lk(gainM_);   // Review G7
+        applyGain();
+    }
     int rc = hackrf_set_antenna_enable(theDevice_, antennaEnable_ ? 1 : 0);
     if (rc != HACKRF_SUCCESS) std::fprintf(stderr, "hackrf antenna: %s\n", errName(rc).c_str());
 

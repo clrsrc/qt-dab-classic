@@ -440,8 +440,12 @@ std::string s;
 	      }
 	      case 0x01: {
 	         std::string s;
-	         if (at (v, index + 1) == 1)
-	            s = stringTable [at (v, index + 2)];
+	         if (at (v, index + 1) == 1) {
+//	Review G2: Token 0..19, wie bei den anderen Tabellenzugriffen
+	            uint8_t tok = at (v, index + 2);
+	            if (tok < 20)
+	               s = stringTable [tok];
+	         }
 	         else {
 	            std::string text;
 	            for (int i = 0; i < at (v, index + 1); i++)
@@ -1683,7 +1687,11 @@ int endPoint	= setLength (v, index);
 	uint8_t ecc = at (v, index + 1);
 	uint16_t eid = (at (v, index + 2) << 8) | at (v, index + 3);
 	uint32_t SId = 0;
-	int upTo = (at (v, index) % bitTable [3]) ? 4 : 2;
+//	Review 16.09.2026 G3: Bit-Test wie getBit () oben mit "&"; v1 hatte
+//	"%" (prueft das untere Nibble = SCIdS statt Bit 4 = lange SId) - bei
+//	Sekundaerkomponenten wurde die SId dadurch 32 statt 16 Bit gelesen
+//	und der serviceScope traf einen falschen Dienst.
+	int upTo = (at (v, index) & bitTable [3]) ? 4 : 2;
 	for (int i = 0; i < upTo; i ++) {
 	   SId = SId << 8;
 	   SId |= at (v, index + 4 + i);

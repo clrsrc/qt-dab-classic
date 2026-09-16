@@ -104,7 +104,7 @@ public:
     DeviceGain setGain(const DeviceGain& g) override;
     // AGC-Stufen = Index in die aufsteigende Tuner-Gain-Tabelle
     int gainStepCount() const override { return static_cast<int>(gains_.size()); }
-    int gainStep() const override { return gainIndex_; }
+    int gainStep() const override { std::lock_guard<std::mutex> lk(gainM_); return gainIndex_; }
     int gainAcqIncrement() const override { return 3; }
     int gainDefaultStep() const override { return defaultIndex_; }
     void setGainStep(int step, bool amp) override;

@@ -123,18 +123,31 @@ std::vector<std::string> chars;
 //	passed the crc and we start unpacking the bits into FIGs
 void	fibDecoder::processFIB (uint8_t *p, uint16_t fib) {
 int8_t	availableBytes	= 30;
-uint8_t	*d		= p;
+uint8_t	*p_fig		= p;
+//	Review 16.09.2026 G9: die FIG-Handler lesen Eintraege fester Groesse
+//	und pruefen die FIG-Laenge nur grob (while (used <= Length)). Bei einem
+//	verstuemmelten letzten FIG (CRC-16 laesst statistisch Fehler durch)
+//	lasen sie bis zu einigen Byte hinter das FIB-Ende - beim dritten FIB
+//	in fremden Speicher. Deshalb bekommt jeder Handler eine mit Nullen
+//	aufgefuellte Kopie des FIG (1 Bit je Byte, wie das FIB selbst); die
+//	Kopie ist gross genug fuer den laengsten moeglichen Ueberlauf
+//	(FIG 1/x: 22 Byte fest, FIG 0/2: bis 35 Byte je Eintrag).
+static	const int figPadBytes	= 32 + 40;
+uint8_t	figCopy [figPadBytes * 8];
 
 	fibLocker. lock();
 	(void)fib;
 	while (availableBytes > 0) {
-	   uint8_t FIGtype	= getBits_3 (d, 0);
-	   uint8_t FIGlength	= getBits_5 (d, 3);
+	   uint8_t FIGtype	= getBits_3 (p_fig, 0);
+	   uint8_t FIGlength	= getBits_5 (p_fig, 3);
 	   if ((FIGlength >= availableBytes) ||
 	       ((FIGtype == 0x07) && (FIGlength == 0x3F))) {
 	      fibLocker. unlock ();
 	      return;
 	   }
+	   memset (figCopy, 0, sizeof (figCopy));
+	   memcpy (figCopy, p_fig, (FIGlength + 1) * 8);
+	   uint8_t *d = figCopy;
 
 	   switch (FIGtype) {
 	      case 0:
@@ -142,7 +155,7 @@ uint8_t	*d		= p;
 	            process_FIG0 (d);
 	         break;
 
-	      case 1:			
+	      case 1:
 	         if (availableBytes >= 2)
 	            process_FIG1 (d);
 	         break;
@@ -158,7 +171,7 @@ uint8_t	*d		= p;
 	   }
 //
 	   availableBytes -= (FIGlength + 1);
-	   d = d + (FIGlength + 1) * 8;
+	   p_fig = p_fig + (FIGlength + 1) * 8;
 	}
 	fibLocker. unlock();
 }
@@ -316,8 +329,51 @@ static	uint8_t prevChangeFlag	= 0;
 	   nextConfig		->  reset ();
 //	   cleanupServiceList ();
 	   emitCb (cb -> changeInConfiguration);
+//	Review 16.09.2026 M1: die Labels (theEnsemble) bleiben erhalten, FIG 1/x
+//	meldet bekannte SIds nicht noch einmal - die Dienstliste des Kerns
+//	bliebe nach ensemble_reconfigured leer. Deshalb alle bekannten Dienste
+//	gegen die neue Konfiguration pruefen und erneut melden; Dienste ohne
+//	Subkanal in der neuen Konfiguration fallen aus der Label-Liste, damit
+//	ein spaeteres FIG 1/x sie wieder anlegen kann.
+	   reannounceServices ();
 	}
 	prevChangeFlag	= changeFlag;
+}
+
+//	Nach einer Rekonfiguration (FIG 0/0 Change-Flag): alle Dienste, deren
+//	Komponente in der jetzt gueltigen Konfiguration einen Subkanal hat,
+//	noch einmal ueber addToEnsemble melden (der Kern baut daraus seine
+//	Dienstliste neu auf); die anderen aus theEnsemble entfernen.
+void	fibDecoder::reannounceServices () {
+	if (!channelConnected)
+	   return;
+	int reported = 0, dropped = 0;
+	for (size_t i = 0; i < theEnsemble. primaries. size (); ) {
+	   ensemble::service &serv = theEnsemble. primaries [i];
+	   int subChId = currentConfig -> subChId_for_SId (0, serv. SId);
+	   if (subChId < 0) {
+	      theEnsemble. primaries. erase (theEnsemble. primaries. begin () + i);
+	      dropped ++;
+	      continue;
+	   }
+	   emitCb (cb -> addToEnsemble, serv. name, serv. SId, subChId, true);
+	   reported ++;
+	   i ++;
+	}
+	for (size_t i = 0; i < theEnsemble. secondaries. size (); ) {
+	   ensemble::service &seco = theEnsemble. secondaries [i];
+	   int subChId = currentConfig -> subChId_for_SId (seco. SCIds, seco. SId);
+	   if (subChId < 0) {
+	      theEnsemble. secondaries. erase (theEnsemble. secondaries. begin () + i);
+	      dropped ++;
+	      continue;
+	   }
+	   emitCb (cb -> addToEnsemble, seco. name, seco. SId, -1, false);
+	   reported ++;
+	   i ++;
+	}
+	logf ("info", "FIG 0/0: Ensemble-Rekonfiguration, %d Dienste erneut gemeldet, %d entfallen",
+	         reported, dropped);
 }
 //
 //	Subchannel organization 6.2.1
@@ -331,7 +387,8 @@ const uint8_t	CN_bit	= getBits_1 (d, 8 + 0);
 const uint8_t	OE_bit	= getBits_1 (d, 8 + 1);
 const uint8_t	PD_bit	= getBits_1 (d, 8 + 2);
 
-	while (used <= Length)
+//	Review G9: ein Eintrag hat mindestens 3 Byte (Kurzform)
+	while (used + 2 <= Length)
 	   used = HandleFIG0Extension1 (d, used, CN_bit, OE_bit, PD_bit);
 }
 //
@@ -390,6 +447,18 @@ static	int table_2 [] = {27, 21, 18, 15};
 	if (localBase -> subChId_exists (subChId))
 	   return bitOffset / 8;
 //
+//	Review 16.09.2026 M4: ein CIF hat 864 CUs; startAddr und Length sind
+//	10-Bit-Felder (bis 1023). Ein per CRC faelschlich akzeptiertes FIB
+//	wuerde sonst einen Subkanal jenseits des CIF-Vektors anlegen, den
+//	subChId_exists danach vor der echten FIG 0/1 schuetzt und den der
+//	MSC-Pfad ungeprueft ausliest (Heap-Over-Read). Solche Eintraege werden
+//	verworfen; die naechste FIG 0/1 liefert den richtigen.
+	if ((channel. Length <= 0) ||
+	    (channel. startAddr + channel. Length > 864)) {
+	   logf ("debug", "FIG 0/1: Subkanal %d mit CU %d+%d verworfen (> 864)",
+	            subChId, channel. startAddr, channel. Length);
+	   return bitOffset / 8;
+	}
 	localBase -> add_to_subChannel_table (channel);
 	return bitOffset / 8;	// we return bytes
 }
@@ -403,7 +472,8 @@ const uint8_t	CN_bit	= getBits_1 (d, 8 + 0);
 const uint8_t	OE_bit	= getBits_1 (d, 8 + 1);
 const uint8_t	PD_bit	= getBits_1 (d, 8 + 2);
 
-	while (used <= Length) {
+//	Review G9: mindestens SId (2 Byte) + Zaehlbyte
+	while (used + 2 <= Length) {
 	   used = HandleFIG0Extension2 (d, used, CN_bit, OE_bit, PD_bit);
 	}
 }
@@ -482,7 +552,8 @@ const uint8_t CN_bit  = getBits_1 (d, 8 + 0);
 const uint8_t OE_bit  = getBits_1 (d, 8 + 1);
 const uint8_t PD_bit  = getBits_1 (d, 8 + 2);
 
-	while (used <= Length)
+//	Review G9: ein Eintrag hat mindestens 5 Byte
+	while (used + 4 <= Length)
 	   used = HandleFIG0Extension3 (d, used, CN_bit, OE_bit, PD_bit);
 }
 //
@@ -673,11 +744,13 @@ int16_t	used	= 2;		// offset in bytes
         if (signbit != 0)
            currentConfig -> dateTime [7] = - currentConfig -> dateTime [7];
 
-	uint8_t	LTO	= currentConfig -> dateTime [6];
+//	Review 16.09.2026 G1: LTO ist vorzeichenbehaftet (-12..+12 h); als
+//	uint8_t wurde -1 zu 255 und der epg-compiler rechnete mit +255 h.
+	int	LTO	= currentConfig -> dateTime [6];
 	uint8_t ecc	= getBits (d, used * 8 + 8, 8);
 	theEnsemble.	eccByte	= ecc;
-	theEnsemble.	lto	= LTO;
-	emitCb (cb -> ltoEcc, (int)LTO, (int)ecc);
+	theEnsemble.	lto	= (int8_t)LTO;
+	emitCb (cb -> ltoEcc, LTO, (int)ecc);
 }
 
 int	monthLength [] {
@@ -687,9 +760,10 @@ int	monthLength [] {
 //	we add (or subtract) a number of Hours (half hours)
 void	fibDecoder::adjustTime (int32_t *dateTime) {
 //	first adjust the half hour  in the amount of minutes
+//	(dateTime [7] ist +-30 oder 0, FIG 0/9; v1 verglich mit 1 und
+//	verlor die halbe Stunde)
 	(void)dateTime;
-	currentConfig -> dateTime [4] += 
-	            (currentConfig -> dateTime [7] == 1) ? 30 : 0;
+	currentConfig -> dateTime [4] += currentConfig -> dateTime [7];
 	if (currentConfig -> dateTime [4] >= 60) {
 	    currentConfig -> dateTime [4] -= 60;
 	    currentConfig -> dateTime [3] ++;
@@ -1244,7 +1318,9 @@ int16_t	bitOffset	= used * 8;
 	         emitCb (cb -> ewfAlarm, active, ewfAlarmSubChId);
 	      }
 	   }
-	   currentConfig -> check_announcements (clusterId, AswFlags, newFlag);
+//	Verkehrsfunk-Vorbereitung: der Subkanal der Durchsage (subChId aus
+//	FIG 0/19) geht mit; die 16 ASw-Flags bleiben vollstaendig erhalten.
+	   currentConfig -> check_announcements (clusterId, AswFlags, newFlag, subChId);
 	}
 }
 //

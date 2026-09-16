@@ -260,6 +260,10 @@ int	dataProcessor::addPacket (const uint8_t *vec,
 void	dataProcessor::handle_RSpackets (const std::vector<uint8_t> &vec) {
 	for (int baseP = 0; baseP < RSDIMS * FRAMESIZE; ) {
 	   int16_t packetLength = (((vec [baseP] & 0xc0) >> 6) + 1) * 24;
+//	Review G4: liefert die RS-Korrektur Muell, kann das letzte Paket
+//	ueber das Ende der Nutzdaten (RSDIMS * FRAMESIZE) hinausragen
+	   if (baseP + packetLength > RSDIMS * FRAMESIZE)
+	      break;
 	   handle_RSpacket (&(vec. data ()) [baseP], packetLength);
 	   baseP += packetLength;
 	}

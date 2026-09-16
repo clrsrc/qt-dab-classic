@@ -7,6 +7,7 @@
 #include <complex>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 
 // Gain-Satz DeviceGain: siehe dabcore/gain.h (HackRF: LNA/VGA/AMP, RTL-SDR:
@@ -41,8 +42,11 @@ public:
     // --- Gain / Korrektur (Geraete; Dateien ignorieren das) ---------------
     // Setzt den Gain-Satz; ungueltige Werte werden gerundet/geklemmt.
     // Rueckgabe: der tatsaechlich eingestellte Satz.
-    virtual DeviceGain setGain(const DeviceGain& g) { (void)g; return gain_; }
-    virtual DeviceGain gain() const { return gain_; }
+    // Review 16.09.2026 G7: gain_ wird vom Kommandothread (set_gain), vom
+    // OFDM-Thread (AGC -> setGainStep) und vom Scan-Thread gelesen und
+    // geschrieben; gainM_ schuetzt den Satz und die Geraeteaufrufe dazu.
+    virtual DeviceGain setGain(const DeviceGain& g) { (void)g; return gain(); }
+    virtual DeviceGain gain() const { std::lock_guard<std::mutex> lk(gainM_); return gain_; }
     virtual bool hasAmp() const { return false; }
     // Abstrakte Gain-Stufen fuer die AGC (device/agc-controller.h):
     // HackRF Stufe = VGA/2 (0..31), RTL-SDR Stufe = Index in die
@@ -75,6 +79,7 @@ protected:
     void reportError(const std::string& msg) { if (errorCb_) errorCb_(msg); }
 
     int32_t lastFrequency_ = 0;
+    mutable std::mutex gainM_;   // schuetzt gain_ (und Gain-Register-Zugriffe)
     DeviceGain gain_;
     int ppm_ = 0;
     std::function<void(const std::string&)> errorCb_;

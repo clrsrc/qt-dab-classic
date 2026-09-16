@@ -131,7 +131,11 @@ int16_t	currentblk	= (blkno - 4) % numberofblocksperCIF;
 	for (auto & b: theBackends) {
 	   int16_t startAddr	= b -> startAddr;
 	   int16_t Length	= b -> Length;
-	   if (Length > 0) 		// Length = 0? should not happen
+//	Review 16.09.2026 M4: ein CIF hat 864 CUs (cifVector = 864 * 64);
+//	nur innerhalb dieser Grenze lesen (FIG 0/1 wird schon gefiltert,
+//	das hier ist die letzte Sicherung vor dem memcpy)
+	   if ((Length > 0) && (startAddr >= 0) &&
+	       (startAddr + Length <= 864))
 	      (void) b -> process (&cifVector [startAddr * CUSize],
 	                                      Length * CUSize);
 	}

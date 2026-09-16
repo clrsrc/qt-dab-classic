@@ -17,7 +17,9 @@
 #include "dabcore/gain.h"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -126,10 +128,20 @@ private:
     void stopIqDump();
 
     // Dienste (serviceM_ haelt der Aufrufer nicht; die Methoden sperren selbst)
-    void selectService(uint32_t sid, uint8_t scids, Slot slot);
+    // autoEpg: vom Kern gestarteter SPI/EPG-Hintergrunddienst (set_epg false
+    // beendet nur diese)
+    void selectService(uint32_t sid, uint8_t scids, Slot slot, bool autoEpg = false);
+    // Backend + Pipeline fuer die FIC-Komponente ficIndex anlegen und in
+    // services_ eintragen (serviceM_ gehalten). false: nicht gestartet
+    // (Log kam schon).
+    bool startServiceLocked(int ficIndex, uint32_t sid, uint8_t scids, Slot slot, bool autoEpg);
     void stopService(Slot slot, int64_t sid);      // sid < 0: alle im Slot
     void stopAllServicesLocked();
     void stopOneLocked(RunningService* rs);
+    // Review M1: nach einer Ensemble-Rekonfiguration (FIG 0/0) laufende
+    // Dienste gegen die neue FIC pruefen: verschobene Subkanaele neu starten,
+    // verschwundene Dienste stoppen. Laeuft im Aktionsthread.
+    void reconcileServices();
     RunningService* findLocked(Slot slot, int64_t sid);
     void wireBackend(RunningService* rs);
     // MOT-Objekt eines Paketdienstes einordnen (v1 handle_motObject):
@@ -186,7 +198,13 @@ private:
     // laufender Aufnahme (selectService) bleibt beim Warndienst-Ton stumm.
     // relevant = Geofencing-Ergebnis (siehe ewsRelevance); false verhindert
     // die Umschaltung, der Alarm bleibt nur informativ.
+    // Laeuft im Aktionsthread (Review K1), nicht mehr im FIC-Callback.
+    // phase 3 (End) schaltet immer zurueck, auch wenn set_ews inzwischen
+    // enabled/autoswitch abgeschaltet hat (sonst bliebe der Warndienst stehen).
     void handleEwsAutoswitch(int phase, uint32_t subChId, bool isTest, bool relevant);
+    // set_ews.enabled (Review G11): false unterdrueckt alle EWS-Ereignisse
+    // (ews_alert/ews_alive/ews_present/ewf_alarm) und die Umschaltung.
+    std::atomic<bool> ewsEnabled_{true};
     bool     ewsAutoActive_ = false;
     uint32_t ewsAlertSid_ = 0;
     uint32_t ewsSavedSid_ = 0;
@@ -225,7 +243,9 @@ private:
     uint8_t cpuSupport_ = 0;
 
     // Gain / AGC / Scan
-    bool agc_ = true;                          // set_agc (Nutzerwunsch)
+    // set_agc (Nutzerwunsch); atomar, weil emitGain auch aus dem AGC-Apply-
+    // Callback im OFDM-Thread liest (Review G7)
+    std::atomic<bool> agc_{true};
     int ppm_ = 0;
     std::optional<DeviceGain> pendingGain_;   // set_gain vor open_device
     // AgcController (device/agc-controller.h) je geoeffnetem Geraet; agcM_
@@ -244,9 +264,51 @@ private:
     std::atomic<bool> scanning_{false};
 
     // Dienste / Audio
+    //
+    // Sperrordnung (Review 16.09.2026 K1, Deadlock fibLocker <-> serviceM_):
+    //   serviceM_  ->  fibLocker (ofdm_->fic())  ->  mscHandler::locker
+    //   serviceM_  ->  stateM_  ->  (keine weitere)
+    //   serviceM_  ->  primaryAudioM_
+    // Der OFDM-Thread haelt in den FIC-Callbacks (addToEnsemble, ewsAlert,
+    // changeInConfiguration, ...) den fibLocker des fibDecoders und darf
+    // deshalb serviceM_ NIE nehmen. Alles, was aus einem FIC-Callback einen
+    // Dienst starten oder stoppen will (Headless-Autoauswahl, SPI/EPG-
+    // Hintergrunddienst, EWS-Umschaltung, Rekonfiguration), wird als Action
+    // eingereiht und vom Aktionsthread (runActions) ausserhalb des fibLocker
+    // ausgefuehrt. Kommandothread, Scan-Thread und Aktionsthread nehmen
+    // serviceM_ und duerfen darunter die FIC abfragen.
     std::mutex serviceM_;
     bool closing_ = false;
+    // Review M2: waehrend tuneChannel (zwischen stopAllServicesLocked und
+    // ofdm_->start(), das per resetChannel alle Backends loescht) darf kein
+    // Dienst angelegt werden - sonst zeigt RunningService::backend ins Leere.
+    bool retuning_ = false;
     std::vector<std::unique_ptr<RunningService>> services_;
+
+    // --- Aktionsthread (Review K1) ---
+    struct Action {
+        enum Kind { Select, Ews, Reconfigure };
+        Kind kind = Select;
+        uint64_t generation = 0;      // Kanalwechsel/close_device verwerfen aeltere
+        uint32_t sid = 0;             // Select
+        uint8_t scids = 0;
+        Slot slot = Slot::Primary;
+        bool autoEpg = false;
+        int phase = 0;                // Ews
+        uint32_t subChId = 0;
+        bool isTest = false;
+        bool relevant = true;
+    };
+    void enqueueAction(Action a);
+    void invalidateActions();         // Warteschlange leeren, Generation erhoehen
+    void runActions();                // Schleife des Aktionsthreads
+    void stopActionThread();
+    std::mutex actionM_;
+    std::condition_variable actionCv_;
+    std::deque<Action> actions_;
+    uint64_t actionGeneration_ = 0;
+    bool actionStop_ = false;
+    std::thread actionThread_;
     std::unique_ptr<IAudioSink> audioSink_;
     AacDecoderKind aacKind_;
     std::mutex frameDumpM_;
@@ -268,7 +330,7 @@ private:
     std::vector<std::string> autoPending_;   // noch nicht gefundene --service
     std::map<std::string, ServiceInfo> autoCandidates_;   // Teilstring-Treffer je --service
     std::chrono::steady_clock::time_point autoCandidateSince_{};
-    bool autoWavStarted_ = false;
+    std::atomic<bool> autoWavStarted_{false};   // Aktions- und Kommandothread
     // EPG/SPI-Hintergrunddienst
     std::atomic<bool> epgEnabled_{true};
     std::atomic<int> lto_{0};                // FIG 0/9 LTO (Stunden), fuer den epg-compiler
