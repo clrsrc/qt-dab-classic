@@ -9,6 +9,7 @@
   import type { TrafficEntry } from "$lib/core";
   import { t } from "$lib/i18n.svelte";
   import { s, ui, patchSettings } from "$lib/state.svelte";
+  import { playRecording, playback } from "$lib/playback.svelte";
 
   const KIND_KEYS = ["alarm", "road", "transport", "warning", "news", "weather", "event", "special", "programme", "sport", "financial"] as const;
 
@@ -42,6 +43,10 @@
     <span>{t("panel.traffic")}</span>
     <span class="grow"></span>
     <span class="k" title={t("traffic.support_hint")}>{supported ? t("traffic.supported") : t("traffic.unsupported")}</span>
+    <label class="inl" title={t("traffic.record_hint")}>
+      <input type="checkbox" checked={ui.settings?.announcement_record ?? true} onchange={(e) => void patchSettings({ announcement_record: (e.currentTarget as HTMLInputElement).checked })} />
+      {t("traffic.record")}
+    </label>
     <label class="inl" title={t("traffic.autoswitch_hint")}>
       <input type="checkbox" checked={ui.settings?.traffic_autoswitch ?? false} onchange={(e) => void patchSettings({ traffic_autoswitch: (e.currentTarget as HTMLInputElement).checked })} />
       {t("traffic.autoswitch")}
@@ -60,6 +65,11 @@
           {#if e.ended_at === null}<span class="flag live">{t("traffic.running")}</span>{/if}
           {#if e.switched}<span class="flag sw" title={t("traffic.switched_hint")}>{t("traffic.switched")}</span>{/if}
           <span class="dur">{fmtDuration(e)}</span>
+          {#if e.file && e.ended_at !== null}
+            <button class="btn mini play" class:on={playback.path === e.file} title={e.file} onclick={() => void playRecording(e.file!, `${e.announcing_service ?? ""} ${fmtWhen(e.started_at)}`)}>▶ {t("traffic.play")}</button>
+          {:else if e.file}
+            <span class="flag rec">{t("traffic.recording")}</span>
+          {/if}
         </div>
         <div class="meta">
           {e.channel} · {e.ensemble} · {t("traffic.cluster", { cluster: e.cluster })}
@@ -88,6 +98,8 @@
   .flag { font-size: 8px; font-family: var(--mono); border: 1px solid currentColor; padding: 0 2px; color: var(--amber); }
   .flag.live { color: var(--green); }
   .flag.sw { color: var(--text-dim); }
+  .flag.rec { color: var(--red, #e04040); }
+  .play { margin-left: 4px; }
   .meta { margin-top: 2px; font-size: 9px; color: var(--text-dim); }
   .dim { color: var(--green-dim); }
   .row { gap: 5px; padding: 1px 4px; font-size: 10px; }

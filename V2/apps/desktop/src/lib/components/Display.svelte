@@ -26,12 +26,19 @@
     openUrl(url).catch((x) => notify("warn", tError(x)));
   };
   const slide = $derived(slideUrl());
+  const slideSrc = (x: { mime: string; data_b64: string }) => `data:${x.mime || "image/jpeg"};base64,${x.data_b64}`;
+  // Vergroesserung: Index im Streifen (-1 = zu).
+  let zoomIdx = $state(-1);
+  const zoomSrc = $derived(zoomIdx >= 0 && zoomIdx < s.slides.length ? slideSrc(s.slides[zoomIdx]) : null);
   // Bugfixes.txt #12 galt nur dem Logo (Logo.svelte); das meist groessere und
   // zuerst ins Auge fallende MOT-SlideShow-Bild daneben hatte gar keine
   // Vergroesserung - hier nachgezogen (Fund aus Stefans Live-Test 15.09.2026).
-  let slideZoomed = $state(false);
+  const slideZoomed = $derived(zoomSrc !== null);
   function onSlideKey(e: KeyboardEvent) {
-    if (slideZoomed && e.key === "Escape") slideZoomed = false;
+    if (!slideZoomed) return;
+    if (e.key === "Escape") zoomIdx = -1;
+    else if (e.key === "ArrowLeft" && zoomIdx > 0) zoomIdx--;
+    else if (e.key === "ArrowRight" && zoomIdx < s.slides.length - 1) zoomIdx++;
   }
   // Offene Vergroesserung anmelden, damit Escape nicht zusaetzlich Timeshift
   // auf live springen laesst (lib/hotkeys.ts, Befund 5).
@@ -82,7 +89,7 @@
     {/if}
     <span class="dim">{fileText}</span>
   </div>
-  {#if slide || s.logo_data_url}
+  {#if slide || s.logo_data_url || s.slides.length}
     <div class="media">
       <Logo
         eid={s.ensemble?.eid ?? null}
@@ -90,20 +97,28 @@
         src={s.logo_data_url}
         name={svc?.name ?? ""}
         size="medium"
-        px={slide ? 96 : 64}
+        px={s.slides.length ? 96 : 64}
         zoomable
       />
-      {#if slide}
-        <button type="button" class="slide-btn" onclick={() => (slideZoomed = true)} aria-label={s.slide?.name || t("logo.alt")}>
-          <img src={slide} alt={s.slide?.name ?? "slide"} draggable="false" />
-        </button>
-      {/if}
+      <!-- Bilderstreifen: bis zu 5 verschiedene Slideshow-Bilder, neuestes rechts (Stefan 16.09.2026). -->
+      <div class="strip">
+        {#each s.slides as sl, i (sl.data_b64.slice(0, 64) + sl.name)}
+          <button type="button" class="slide-btn" class:newest={i === s.slides.length - 1} onclick={() => (zoomIdx = i)} aria-label={sl.name || t("logo.alt")}>
+            <img src={slideSrc(sl)} alt={sl.name ?? "slide"} draggable="false" />
+          </button>
+        {/each}
+      </div>
     </div>
   {/if}
-  {#if slideZoomed && slide}
-    <div class="overlay" onmousedown={(e) => e.target === e.currentTarget && (slideZoomed = false)} role="presentation">
-      <div class="dialog zoom" role="dialog" aria-modal="true" aria-label={s.slide?.name || t("logo.alt")}>
-        <img src={slide} alt={s.slide?.name ?? "slide"} draggable="false" />
+  {#if zoomSrc}
+    <div class="overlay" onmousedown={(e) => e.target === e.currentTarget && (zoomIdx = -1)} role="presentation">
+      <div class="dialog zoom" role="dialog" aria-modal="true" aria-label={s.slides[zoomIdx]?.name || t("logo.alt")}>
+        <img src={zoomSrc} alt={s.slides[zoomIdx]?.name ?? "slide"} draggable="false" />
+        <div class="zoomnav">
+          <button class="btn mini" disabled={zoomIdx <= 0} onclick={() => zoomIdx--}>◀</button>
+          <span>{zoomIdx + 1} / {s.slides.length}</span>
+          <button class="btn mini" disabled={zoomIdx >= s.slides.length - 1} onclick={() => zoomIdx++}>▶</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -149,11 +164,14 @@
   .tech .ts.paused { color: var(--amber, #e8b23a); animation: blink 1s steps(2, start) infinite; }
   .name { font-size: 16px; font-weight: bold; color: var(--green-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
   .name.pending { color: var(--amber); animation: blink 1s steps(2, start) infinite; }
-  .media { display: flex; gap: 6px; align-items: center; }
-  .media img { height: 96px; max-width: calc(100% - 100px); object-fit: contain; }
-  .slide-btn { all: unset; cursor: zoom-in; display: inline-flex; line-height: 0; min-width: 0; }
-  .dialog.zoom { padding: 8px; display: flex; }
-  .dialog.zoom img { max-width: min(80vw, 480px); max-height: min(80vh, 480px); object-fit: contain; }
+  .media { display: flex; gap: 6px; align-items: center; min-width: 0; }
+  .strip { display: flex; gap: 4px; align-items: center; flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; justify-content: flex-end; }
+  .strip img { height: 128px; max-width: 220px; object-fit: contain; border: 1px solid transparent; }
+  .slide-btn { all: unset; cursor: zoom-in; display: inline-flex; line-height: 0; min-width: 0; flex: 0 0 auto; }
+  .slide-btn.newest img { border-color: var(--green-dim); }
+  .dialog.zoom { padding: 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .dialog.zoom img { max-width: min(90vw, 640px); max-height: min(80vh, 640px); object-fit: contain; }
+  .zoomnav { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--text-dim); }
   .dlp a, .ticker a { color: inherit; text-decoration: underline; text-decoration-style: dotted; cursor: pointer; }
   .dlp a:hover, .ticker a:hover { color: var(--green-hi); }
   .epgline { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

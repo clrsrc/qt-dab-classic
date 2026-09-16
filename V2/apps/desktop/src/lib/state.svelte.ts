@@ -28,6 +28,7 @@ export function emptyState(): AppState {
     dls: "",
     dl_plus: null,
     slide: null,
+    slides: [],
     level: [0, 0],
     gain: { lna: 40, vga: 40, amp: false },
     agc: true,
@@ -153,6 +154,7 @@ function clearService() {
   s.dls = "";
   s.dl_plus = null;
   s.slide = null;
+  s.slides = [];
   s.level = [0, 0];
   s.logo_data_url = null;
   s.now_next = null;
@@ -281,6 +283,13 @@ export function applyCoreEvent(ev: CoreEvent) {
     case "mot_slide":
       if (e.slot === "primary") {
         s.slide = { sid: e.sid, mime: e.mime, name: e.name, data_b64: e.data_b64, received_at: Math.floor(Date.now() / 1000) };
+        // Bilderstreifen im Display (Stefan 16.09.2026): jedes neue Bild
+        // rechts anhaengen, bis 5 verschiedene da sind, dann rutscht das
+        // aelteste links raus. Gleicher Inhalt (Wiederholung im Carousel)
+        // zaehlt nicht als neu, sondern wandert nur ans rechte Ende.
+        const same = s.slides.findIndex((x) => x.data_b64 === e.data_b64);
+        if (same >= 0) s.slides.splice(same, 1);
+        s.slides = [...s.slides, s.slide].slice(-5);
       }
       break;
     case "audio_level":

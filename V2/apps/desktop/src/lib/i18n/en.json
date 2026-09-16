@@ -397,5 +397,12 @@
   "tii.home_status_set": "Geofencing active: {lat} / {lon} – emergency alerts for other areas are only logged",
   "tii.home_status_unset": "No home coordinates – every emergency alert (including the ASA functional test every 5 minutes) is shown",
   "ews_history.no_home": "no geofencing",
-  "ews_history.no_home_hint": "No home coordinates in the settings – all alerts count as relevant."
+  "ews_history.no_home_hint": "No home coordinates in the settings – all alerts count as relevant.",
+  "traffic.record": "record",
+  "traffic.record_hint": "Record announcements and emergency alerts in the background as MP3 (subfolder \"durchsagen\" of the recording folder), independent of what you listen to.",
+  "traffic.recording": "RECORDING",
+  "traffic.play": "play",
+  "ews_history.play": "play",
+  "playback.title": "Playback",
+  "playback.close": "Close playback"
 }

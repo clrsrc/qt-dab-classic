@@ -29,6 +29,9 @@ pub struct Settings {
     /// laufenden Dienst auf den Durchsage-Dienst umschalten, danach zurueck.
     /// Standard aus - die Liste im Panel "Verkehr" fuellt sich unabhaengig davon.
     pub traffic_autoswitch: bool,
+    /// Durchsagen und Notfallwarnungen im Background-Slot als MP3 mitschneiden
+    /// (crate::traffic, Unterordner "durchsagen" des Aufnahmeordners), Standard an.
+    pub announcement_record: bool,
     pub record_pre_s: u32,
     pub record_post_s: u32,
     /// Musik-Trennung (Titelerkennung aus DL+/DLS, Schnitt aus dem Timeshift-Ring)
@@ -110,6 +113,7 @@ impl Default for Settings {
             ews_enabled: true,
             ews_autoswitch: true,
             traffic_autoswitch: false,
+            announcement_record: true,
             record_pre_s: 2 * 60,
             record_post_s: 5 * 60,
             music_enabled: false,

@@ -516,6 +516,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            recording_bytes,
             get_state,
             get_settings,
             update_settings,
@@ -577,4 +578,24 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");
+}
+
+/// Inhalt eines Mitschnitts (MP3/WAV) fuer die Wiedergabe im Frontend
+/// (Durchsagen-/EWF-Liste). Nur Dateien unterhalb des Aufnahmeordners bzw.
+/// des Datenordners - kein allgemeiner Dateizugriff.
+#[tauri::command]
+fn recording_bytes(shared: State<'_, Shared>, path: String) -> Result<tauri::ipc::Response, String> {
+    let (allowed, requested) = {
+        let a = lock_app(&shared)?;
+        let mut allowed = vec![a.recording_dir(), a.dirs.root.clone()];
+        allowed.retain(|d| d.exists());
+        (allowed, std::path::PathBuf::from(&path))
+    };
+    let canon = requested.canonicalize().map_err(|e| format!("{path}: {e}"))?;
+    let inside = allowed.iter().any(|d| d.canonicalize().map(|c| canon.starts_with(c)).unwrap_or(false));
+    if !inside {
+        return Err("Datei liegt ausserhalb des Aufnahmeordners".into());
+    }
+    let bytes = std::fs::read(&canon).map_err(|e| format!("{path}: {e}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
 }

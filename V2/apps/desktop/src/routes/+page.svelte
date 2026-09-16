@@ -10,6 +10,7 @@
   import ChannelBar from "$lib/components/ChannelBar.svelte";
   import Dialogs from "$lib/components/Dialogs.svelte";
   import Display from "$lib/components/Display.svelte";
+import Player from "$lib/components/Player.svelte";
   import EpgPanel from "$lib/components/EpgPanel.svelte";
   import EwsHistoryPanel from "$lib/components/EwsHistoryPanel.svelte";
 import TrafficPanel from "$lib/components/TrafficPanel.svelte";
@@ -53,6 +54,7 @@ import TrafficPanel from "$lib/components/TrafficPanel.svelte";
   <TitleBar />
   <AlarmBanner />
   <Display />
+  <Player />
   <Transport />
   <TimeshiftBar />
   {#if panels?.presets}<PresetBar />{/if}

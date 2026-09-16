@@ -8,6 +8,7 @@
   import { t } from "$lib/i18n.svelte";
   import { s, ui } from "$lib/state.svelte";
   import { compass, fmtDistance } from "$lib/tii";
+  import { playRecording, playback } from "$lib/playback.svelte";
 
   function fmtWhen(unix: number): string {
     const d = new Date(unix * 1000);
@@ -61,6 +62,9 @@
           <span class="stage">{t("alarm.stage", { stage: e.stage })}</span>
           {#if e.is_test}<span class="flag">{t("ews_history.test")}</span>{/if}
           {#if e.relevant === false}<span class="flag off" title={t("ews_history.outside_hint")}>{t("ews_history.outside")}</span>{/if}
+          {#if e.file}
+            <button class="btn mini play" class:on={playback.path === e.file} title={e.file} onclick={() => void playRecording(e.file!, `${serviceName(e.sub_ch)} ${fmtWhen(e.ended_at)}`)}>▶ {t("ews_history.play")}</button>
+          {/if}
         </div>
         {#if locations(e).length}
           <div class="locs">
@@ -87,6 +91,7 @@
   .stage { color: var(--text-dim); }
   .flag { font-size: 8px; font-family: var(--mono); border: 1px solid currentColor; padding: 0 2px; color: var(--amber); }
   .flag.off { color: var(--text-dim); }
+  .play { margin-left: auto; }
   .entry.outside { opacity: 0.55; }
   .entry.outside .svc { font-weight: normal; }
   .locs { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; font-family: var(--mono); color: var(--text-dim); word-break: break-all; }

@@ -85,7 +85,9 @@ export interface AppState {
   current: { sid: number; scids: number; codec: Codec | null; stereo: boolean } | null;
   dls: string;
   dl_plus: { item_running: boolean; item_toggle: boolean; tags: [number, string][] } | null;
-  slide: { sid: number; mime: string; name: string; data_b64: string; received_at: number } | null;
+  slide: Slide | null;
+  /** Letzte bis zu 5 verschiedene Slideshow-Bilder des Dienstes, aelteste zuerst (nur Frontend, Display-Streifen). */
+  slides: Slide[];
   level: [number, number];
   gain: Gain;
   agc: boolean;
@@ -122,6 +124,15 @@ export interface AppState {
   traffic_supported: boolean;
 }
 
+/** MOT-SlideShow-Bild des laufenden Dienstes (Kern-Ereignis mot_slide). */
+export interface Slide {
+  sid: number;
+  mime: string;
+  name: string;
+  data_b64: string;
+  received_at: number;
+}
+
 /** Eine Durchsage (dab_app::traffic::TrafficEntry, FIG 0/18 + 0/19). */
 export interface TrafficEntry {
   id: number;
@@ -139,6 +150,8 @@ export interface TrafficEntry {
   services: string[];
   /** Die App hat waehrend der Durchsage auf den Durchsage-Dienst umgeschaltet. */
   switched: boolean;
+  /** Mitschnitt (MP3) im Unterordner "durchsagen", sobald vorhanden. */
+  file: string | null;
 }
 
 /** Abgeschlossener Alarm (dab_app::state::EwsHistoryEntry). */
@@ -153,6 +166,8 @@ export interface EwsHistoryEntry {
   is_test: boolean;
   /** Geofencing-Urteil des Kerns, siehe `Alert.relevant`. */
   relevant: boolean | null;
+  /** Mitschnitt des Warndienstes (MP3), falls aufgezeichnet. */
+  file: string | null;
 }
 
 export interface ScanResult {
@@ -242,6 +257,8 @@ export interface Settings {
   ews_autoswitch: boolean;
   /** Bei Verkehrsdurchsagen (FIG 0/19) auf den Durchsage-Dienst umschalten, danach zurueck. */
   traffic_autoswitch: boolean;
+  /** Durchsagen und Notfallwarnungen im Hintergrund als MP3 mitschneiden. */
+  announcement_record: boolean;
   record_pre_s: number;
   record_post_s: number;
   /** Musik-Trennung insgesamt an/aus; aus loescht die Vorschlagsliste. */

@@ -116,6 +116,9 @@ pub struct EwsHistoryEntry {
     pub is_test: bool,
     /// Geofencing-Urteil des Kerns, siehe [`AlertState::relevant`].
     pub relevant: Option<bool>,
+    /// Mitschnitt des Warndienstes (MP3, crate::traffic), falls aufgezeichnet.
+    #[serde(default)]
+    pub file: Option<String>,
 }
 
 /// Hoechstzahl der Eintraege in `AppState::ews_history`; aelteste fallen raus.
@@ -391,6 +394,7 @@ impl AppState {
                             location_info: a.location_info,
                             is_test: a.is_test,
                             relevant: a.relevant,
+                            file: None,
                         });
                         self.ews_history.truncate(EWS_HISTORY_MAX);
                     }

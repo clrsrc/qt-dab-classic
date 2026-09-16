@@ -397,5 +397,12 @@
   "tii.home_status_set": "Ortsabgleich aktiv: {lat} / {lon} – Notfallwarnungen für andere Gebiete werden nur protokolliert",
   "tii.home_status_unset": "Keine Heimatkoordinaten – jede Notfallwarnung (auch der ASA-Funktionstest alle 5 Minuten) wird angezeigt",
   "ews_history.no_home": "kein Ortsabgleich",
-  "ews_history.no_home_hint": "Keine Heimatkoordinaten in den Einstellungen – alle Alarme gelten als relevant."
+  "ews_history.no_home_hint": "Keine Heimatkoordinaten in den Einstellungen – alle Alarme gelten als relevant.",
+  "traffic.record": "mitschneiden",
+  "traffic.record_hint": "Durchsagen und Notfallwarnungen im Hintergrund als MP3 aufzeichnen (Unterordner „durchsagen“ des Aufnahmeordners), unabhängig vom gehörten Programm.",
+  "traffic.recording": "AUFNAHME",
+  "traffic.play": "abspielen",
+  "ews_history.play": "abspielen",
+  "playback.title": "Wiedergabe",
+  "playback.close": "Wiedergabe schließen"
 }
