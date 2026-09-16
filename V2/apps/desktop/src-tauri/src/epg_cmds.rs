@@ -3,7 +3,7 @@
 //! Ereignisse `epg_updated{eid,sid,day}`, `logo_updated{eid,sid}` und
 //! `current_media{logo_data_url, now_next}` ueber die Effekte der App-Schicht.
 
-use crate::Shared;
+use crate::{lock_app, Shared};
 use dab_app::{App, LogoSize, NowNext, Programme};
 use serde::Serialize;
 use std::sync::MutexGuard;
@@ -11,8 +11,9 @@ use tauri::State;
 
 type R<T> = Result<T, String>;
 
+/// Gemeinsamer App-Lock (vergifteter Mutex wird geloggt und weiterbenutzt, Befund 9).
 fn app(s: &Shared) -> R<MutexGuard<'_, App>> {
-    s.app.lock().map_err(|e| e.to_string())
+    lock_app(s)
 }
 
 #[derive(Serialize, Clone, Debug)]

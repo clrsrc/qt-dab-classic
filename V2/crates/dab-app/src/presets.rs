@@ -55,12 +55,9 @@ impl Presets {
         }
     }
 
+    /// Atomar (tmp + rename, siehe `paths::write_atomic`).
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let s = serde_json::to_string_pretty(self).expect("serialisierbar");
-        std::fs::write(path, s)
+        crate::paths::write_atomic(path, serde_json::to_string_pretty(self).expect("serialisierbar"))
     }
 
     pub fn get(&self, slot: usize) -> Option<&Preset> {

@@ -30,6 +30,20 @@ pub struct Shared {
     pub core: Mutex<Option<IpcBackend>>,
     pub shutting_down: AtomicBool,
     pub restarts: AtomicU32,
+    /// Generation des laufenden Kerns (Review 16.09.2026, Befund 2): jeder
+    /// `spawn_core` zaehlt hoch, jeder Brueckenthread merkt sich seine
+    /// Generation. Ein Thread, dessen Generation nicht mehr die aktuelle ist
+    /// (bewusster Neustart per `restart_core`, Neustart durch einen anderen
+    /// Thread), raeumt nichts ab und startet nichts neu - sonst nahm der
+    /// alte Thread beim `Exiting` des alten Kerns den GERADE NEU gestarteten
+    /// Kern aus `core` und loeste eine Neustart-Kaskade aus.
+    pub core_gen: AtomicU32,
+    /// Der App-Mutex war vergiftet (Panic unter dem Lock); einmal gemeldet
+    /// (Review 16.09.2026, Befund 9). Der Zustand wird trotzdem
+    /// weiterverwendet (`PoisonError::into_inner`): jede Aktion der
+    /// App-Schicht arbeitet abgeschlossen auf `App`, ein halb ausgefuehrter
+    /// Schritt ist verkraftbar - ein stillstehender Brueckenthread nicht.
+    pub poisoned: AtomicBool,
 }
 
 /// Kern-Ereignisse 1:1 (Delta-Events fuer den Spiegel im Frontend).
@@ -41,8 +55,33 @@ const MAX_RESTARTS: u32 = 5;
 
 type R<T> = Result<T, String>;
 
-fn lock_app(s: &Shared) -> R<std::sync::MutexGuard<'_, App>> {
-    s.app.lock().map_err(|e| e.to_string())
+/// App-Lock; ein vergifteter Mutex (Panic unter dem Lock) wird einmal als
+/// Fehler geloggt und danach weiterbenutzt statt jede Aktion mit "poisoned"
+/// abzuweisen (Befund 9). Die Meldung an die UI schickt der Brueckenthread
+/// (`spawn_core`), der als einziger einen `AppHandle` zur Hand hat.
+pub(crate) fn lock_app(s: &Shared) -> R<std::sync::MutexGuard<'_, App>> {
+    match s.app.lock() {
+        Ok(g) => Ok(g),
+        Err(poison) => {
+            if !s.poisoned.swap(true, Ordering::SeqCst) {
+                log::error!("App-Zustand: Mutex vergiftet (Panic unter dem Lock); Zustand wird weiterbenutzt, Neustart der App empfohlen");
+            }
+            Ok(poison.into_inner())
+        }
+    }
+}
+
+/// Einmalige Fehlermeldung an die UI, sobald `lock_app` einen vergifteten
+/// Mutex gesehen hat (Befund 9).
+fn report_poison_once(handle: &AppHandle, shared: &Shared, reported: &mut bool) {
+    if *reported || !shared.poisoned.load(Ordering::SeqCst) {
+        return;
+    }
+    *reported = true;
+    let _ = handle.emit(
+        APP_EVENT,
+        AppEvent::Notice { level: NoticeLevel::Error, text: "internal error: app state may be inconsistent, please restart".into() },
+    );
 }
 
 /// Ablaufspur (Umgebungsvariable DABCLASSIC_TRACE=1): jedes Kommando an den Kern,
@@ -144,14 +183,30 @@ fn core_alive(shared: State<'_, Shared>) -> bool {
     shared.core.lock().map(|g| g.as_ref().map(|c| c.is_alive()).unwrap_or(false)).unwrap_or(false)
 }
 
+/// Bewusster Neustart des Kerns (Frontend-Knopf). Zuerst die Generation
+/// hochzaehlen: der alte Brueckenthread erkennt daran, dass sein `Exiting`
+/// kein Absturz ist, und laesst den neuen Kern in Ruhe (Befund 2). Das
+/// `Exiting` fuer App-Zustand und Frontend wird hier genau einmal
+/// nachgestellt, weil der alte Thread es nicht mehr verarbeitet.
 #[tauri::command]
 fn restart_core(handle: AppHandle, shared: State<'_, Shared>) -> R<()> {
     shared.restarts.store(0, Ordering::SeqCst);
+    shared.core_gen.fetch_add(1, Ordering::SeqCst);
     if let Ok(mut g) = shared.core.lock() {
         if let Some(mut c) = g.take() {
             c.shutdown();
         }
     }
+    let exiting = Event::Exiting { reason: "restart".into() };
+    let fx = {
+        let mut a = lock_app(&shared)?;
+        let mut fx = a.handle_event(&exiting, Instant::now());
+        fx.commands.clear();
+        fx
+    };
+    let _ = handle.emit(CORE_EVENT, &exiting);
+    timer_cmds::on_core_event(&handle, &shared, &exiting);
+    run_effects(&handle, &shared, fx);
     spawn_core(&handle, "manual").map_err(|e| e.to_string())
 }
 
@@ -269,6 +324,8 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
     let backend = IpcBackend::spawn(IpcConfig::new(&exe))?;
     let rx = backend.events();
     let shared = handle.state::<Shared>();
+    // Neue Generation: der Kern in `core` gehoert ab jetzt diesem Thread.
+    let my_gen = shared.core_gen.fetch_add(1, Ordering::SeqCst) + 1;
     *shared.core.lock().map_err(|e| anyhow::anyhow!("{e}"))? = Some(backend);
 
     let app = handle.clone();
@@ -278,14 +335,23 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
         let min_gap = Duration::from_millis(50);
         let mut last: HashMap<&'static str, Instant> = HashMap::new();
         let mut exit_reason = String::from("stdout geschlossen");
+        let mut poison_reported = false;
+        let is_current = || shared.core_gen.load(Ordering::SeqCst) == my_gen;
         loop {
             match rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(ev) => {
+                    if !is_current() {
+                        // Abgeloest (restart_core): Ereignisse des alten Kerns -
+                        // insbesondere sein `Exiting` - nicht mehr in den
+                        // Zustand des neuen Kerns mischen (Befund 2).
+                        log::info!("Kern-Bruecke Generation {my_gen} abgeloest, endet");
+                        return;
+                    }
                     let now = Instant::now();
                     if !ev.is_latest_wins() {
                         trace_json("<-", &ev);
                     }
-                    let mut fx = match shared.app.lock() {
+                    let mut fx = match lock_app(&shared) {
                         Ok(mut a) => {
                             let mut fx = a.handle_event(&ev, now);
                             if matches!(ev, Event::Ready { .. }) {
@@ -293,8 +359,12 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
                             }
                             fx
                         }
-                        Err(_) => Effects::default(),
+                        Err(e) => {
+                            log::error!("App-Zustand nicht erreichbar: {e}");
+                            Effects::default()
+                        }
                     };
+                    report_poison_once(&app, &shared, &mut poison_reported);
                     let forward = if ev.is_latest_wins() {
                         let key = latest_key(&ev);
                         let now = Instant::now();
@@ -321,13 +391,20 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
                     run_effects(&app, &shared, fx);
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-                    let fx = shared.app.lock().map(|mut a| a.tick(Instant::now())).unwrap_or_default();
+                    if !is_current() {
+                        log::info!("Kern-Bruecke Generation {my_gen} abgeloest, endet");
+                        return;
+                    }
+                    let fx = lock_app(&shared).map(|mut a| a.tick(Instant::now())).unwrap_or_default();
+                    report_poison_once(&app, &shared, &mut poison_reported);
                     run_effects(&app, &shared, fx);
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
             }
         }
-        if shared.shutting_down.load(Ordering::SeqCst) {
+        if shared.shutting_down.load(Ordering::SeqCst) || !is_current() {
+            // App-Ende oder bewusster Neustart (restart_core hat die
+            // Generation schon hochgezaehlt): nichts abraeumen, nichts neu starten.
             return;
         }
         // Unerwartetes Ende: Neustart mit Meldung (begrenzt).
@@ -338,10 +415,14 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
         }
         log::warn!("Kern beendet ({exit_reason}), Neustart {attempt}/{MAX_RESTARTS}");
         std::thread::sleep(Duration::from_secs(1));
+        if shared.shutting_down.load(Ordering::SeqCst) || !is_current() {
+            // Waehrend der Wartezeit hat jemand anderes (restart_core) uebernommen.
+            return;
+        }
         if let Ok(mut g) = shared.core.lock() {
             g.take();
         }
-        if let Ok(mut a) = shared.app.lock() {
+        if let Ok(mut a) = lock_app(&shared) {
             a.state.core_restarts = attempt;
         }
         match spawn_core(&app, &exit_reason) {
@@ -362,7 +443,7 @@ fn capture_window_size(window: &tauri::Window, shared: &Shared) {
     if size.width == 0 || size.height == 0 {
         return; // minimiert o.ae. liefert 0x0, nicht als Groesse uebernehmen
     }
-    if let Ok(mut a) = shared.app.lock() {
+    if let Ok(mut a) = lock_app(shared) {
         a.settings.window_width = Some(size.width);
         a.settings.window_height = Some(size.height);
     }
@@ -370,7 +451,7 @@ fn capture_window_size(window: &tauri::Window, shared: &Shared) {
 
 fn stop_all(shared: &Shared) {
     shared.shutting_down.store(true, Ordering::SeqCst);
-    if let Ok(mut a) = shared.app.lock() {
+    if let Ok(mut a) = lock_app(shared) {
         if let Err(e) = a.save_all() {
             log::warn!("Speichern beim Beenden: {e}");
         }
@@ -401,6 +482,8 @@ pub fn run() {
             core: Mutex::new(None),
             shutting_down: AtomicBool::new(false),
             restarts: AtomicU32::new(0),
+            core_gen: AtomicU32::new(0),
+            poisoned: AtomicBool::new(false),
         })
         .setup(|app| {
             let handle = app.handle().clone();
@@ -408,7 +491,7 @@ pub fn run() {
             // Zuletzt gespeicherte Fenstergroesse wiederherstellen (Bugfixes.txt #4);
             // ohne gespeicherten Wert bleibt es bei der Groesse aus tauri.conf.json.
             if let Some(window) = handle.get_webview_window("main") {
-                let saved = handle.state::<Shared>().app.lock().ok().and_then(|a| match (a.settings.window_width, a.settings.window_height) {
+                let saved = lock_app(&handle.state::<Shared>()).ok().and_then(|a| match (a.settings.window_width, a.settings.window_height) {
                     (Some(w), Some(h)) => Some((w, h)),
                     _ => None,
                 });

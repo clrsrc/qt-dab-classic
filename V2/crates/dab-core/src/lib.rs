@@ -225,11 +225,23 @@ impl CoreBackend for IpcBackend {
         }
     }
 
+    /// Geordnet herunterfahren (Review 16.09.2026, Befund 3): `shutdown` an
+    /// den Kern, eigenen Kommandosender aufgeben (damit die Schreibschleife
+    /// bei leerem Kanal endet und stdin schliesst - der Kern beendet sich
+    /// bei EOF), hoechstens 3 s auf das Prozessende warten, sonst `kill`.
+    /// Die Threads werden erst DANACH eingesammelt: haengt der Schreibthread
+    /// in `write_command` (Kern liest stdin nicht), loest erst der Kill das
+    /// Rohr und damit den Thread; ein `join()` davor blockierte die App beim
+    /// Beenden und liess den Kern liegen.
     fn shutdown(&mut self) {
-        let _ = self.cmd_tx.try_send(Command::Shutdown);
-        if let Some(w) = self.writer.take() {
-            let _ = w.join();
-        }
+        // Blockierend mit kurzer Frist statt `try_send`: bei vollem Kanal ging
+        // das Shutdown-Kommando sonst verloren.
+        let _ = self.cmd_tx.send_timeout(Command::Shutdown, std::time::Duration::from_millis(500));
+        // Eigenen Sender durch einen toten ersetzen: ohne lebenden Sender
+        // liefert `cmd_rx.recv()` Err und die Schreibschleife endet auch dann,
+        // wenn das Shutdown-Kommando nicht mehr in den Kanal passte.
+        let (dead_tx, _dead_rx) = bounded::<Command>(1);
+        drop(std::mem::replace(&mut self.cmd_tx, dead_tx));
         // Dem Kern kurz Zeit geben, sich selbst zu beenden.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
         loop {
@@ -238,6 +250,7 @@ impl CoreBackend for IpcBackend {
                     break;
                 }
                 if std::time::Instant::now() > deadline {
+                    log::warn!("Kern beendet sich nicht, wird abgebrochen");
                     let _ = c.kill();
                     let _ = c.wait();
                     break;
@@ -246,6 +259,10 @@ impl CoreBackend for IpcBackend {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         self.alive.store(false, Ordering::SeqCst);
+        // Prozess ist weg: Rohre sind geschlossen, beide Threads laufen aus.
+        if let Some(w) = self.writer.take() {
+            let _ = w.join();
+        }
         if let Some(r) = self.reader.take() {
             let _ = r.join();
         }

@@ -25,6 +25,10 @@ pub struct Settings {
     pub timeshift_capacity_s: u32,
     pub ews_enabled: bool,
     pub ews_autoswitch: bool,
+    /// Verkehrsfunk "TA" (crate::traffic): bei einer Durchsage fuer den
+    /// laufenden Dienst auf den Durchsage-Dienst umschalten, danach zurueck.
+    /// Standard aus - die Liste im Panel "Verkehr" fuellt sich unabhaengig davon.
+    pub traffic_autoswitch: bool,
     pub record_pre_s: u32,
     pub record_post_s: u32,
     /// Musik-Trennung (Titelerkennung aus DL+/DLS, Schnitt aus dem Timeshift-Ring)
@@ -80,11 +84,13 @@ pub struct Panels {
     pub music: bool,
     /// EWF-Historie (Bugfixes.txt #10), erreichbar ueber den Button "EWF".
     pub ews_history: bool,
+    /// Panel "Verkehr" (crate::traffic), Button "TA" neben EPG.
+    pub traffic: bool,
 }
 
 impl Default for Panels {
     fn default() -> Self {
-        Self { presets: true, services: true, stations: true, settings: false, scan: false, epg: false, timer: false, debug: false, music: false, ews_history: false }
+        Self { presets: true, services: true, stations: true, settings: false, scan: false, epg: false, timer: false, debug: false, music: false, ews_history: false, traffic: false }
     }
 }
 
@@ -103,6 +109,7 @@ impl Default for Settings {
             timeshift_capacity_s: 60 * 60,
             ews_enabled: true,
             ews_autoswitch: true,
+            traffic_autoswitch: false,
             record_pre_s: 2 * 60,
             record_post_s: 5 * 60,
             music_enabled: false,
@@ -141,11 +148,11 @@ impl Settings {
         }
     }
 
+    /// Atomar (tmp + rename, siehe `paths::write_atomic`): settings.json wird
+    /// bei jedem Kanalwechsel geschrieben, ein Absturz mittendrin darf sie
+    /// nicht halb hinterlassen.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        std::fs::write(path, serde_json::to_string_pretty(self).expect("serialisierbar"))
+        crate::paths::write_atomic(path, serde_json::to_string_pretty(self).expect("serialisierbar"))
     }
 
     pub fn gain_for(&self, device: &str, channel: &str) -> Option<Gain> {

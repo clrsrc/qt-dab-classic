@@ -14,6 +14,17 @@ use std::time::{Duration, Instant};
 
 /// Wartezeit auf `service_added(sid)` nach einem Kanalwechsel (Analyse 5.1).
 pub const PRESET_TIMEOUT: Duration = Duration::from_secs(8);
+/// Wartezeit auf `service_started` nach `select_service`: solange zeigt
+/// `state.current` den neuen Dienst optimistisch an; danach wird die Anzeige
+/// zurueckgesetzt (Review 16.09.2026, Befund 4). Der Kern meldet einen
+/// gescheiterten Dienststart nur als Log-Warnung, nicht als eigenes
+/// Ereignis; siehe `select_failed_by_log`.
+pub const SELECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Lebensdauer eines Eintrags in `expected_stops`: der Kern stoppt den
+/// verdraengten Dienst synchron, sein `service_stopped` kommt innerhalb von
+/// Millisekunden. Ein Eintrag, der so lange ueberlebt, gehoert zu einem
+/// Dienst, den der Kern nie gestoppt hat (Dienststart fehlgeschlagen).
+pub const EXPECTED_STOP_TTL: Duration = Duration::from_secs(10);
 /// Ohne gespeicherten Wert: Startwerte fuer HackRF (Befund M1: 11D braucht VGA 40).
 pub const DEFAULT_HACKRF_GAIN: Gain = Gain { lna: 40, vga: 40, amp: false };
 
@@ -53,6 +64,9 @@ pub enum AppEvent {
     /// EWF-Historie geaendert (ein Alarm endete, Bugfixes.txt #10); komplette
     /// Liste, neueste zuerst, wie `AppState::ews_history`.
     EwsHistory { history: Vec<crate::state::EwsHistoryEntry> },
+    /// Verkehrs-/Sonderdurchsagen (crate::traffic): laufende, Historie,
+    /// Unterstuetzung des laufenden Dienstes - wie `AppState::traffic_*`.
+    Traffic { active: Option<crate::traffic::TrafficEntry>, history: Vec<crate::traffic::TrafficEntry>, supported: bool },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,6 +161,8 @@ pub struct App {
     pub stations_ctl: crate::stations::StationsCtl,
     /// Titelerkennung der Musik-Trennung (crate::music, Entscheidungen 6, 7).
     pub music: crate::music::MusicDetector,
+    /// Verkehrsfunk-Durchsagen (crate::traffic).
+    pub traffic: crate::traffic::TrafficCtl,
     pending: Option<Pending>,
     /// SIds, deren `service_stopped` wir noch erwarten, weil wir sie selbst
     /// durch eine neuere Auswahl ersetzt haben (Fund 15.09.2026: bei
@@ -156,7 +172,43 @@ pub struct App {
     /// er zwischendurch erneut angewaehlt wurde); ohne diese Liste wuerde er
     /// dann faelschlich als "kein Dienst" geloescht, obwohl Audio laeuft.
     /// Siehe `select_service` (Eintragen) und `handle_event` (Abgleich).
-    expected_stops: std::collections::VecDeque<u32>,
+    /// Jeder Eintrag traegt seinen Zeitpunkt und verfaellt nach
+    /// [`EXPECTED_STOP_TTL`]; Kanalwechsel, Geraet zu und Kern-Ende leeren
+    /// die Liste (Review 16.09.2026, Befund 4).
+    expected_stops: std::collections::VecDeque<(u32, Instant)>,
+    /// Laufende optimistische Anzeige nach `select_service` (Befund 4):
+    /// bis `service_started` kommt oder [`SELECT_TIMEOUT`] ablaeuft.
+    optimistic: Option<Optimistic>,
+}
+
+/// `state.current` wurde in `select_service` vorab auf den neuen Dienst
+/// gesetzt; `prev` ist die Anzeige davor (fuer den Fall, dass der Kern den
+/// alten Dienst gar nicht gestoppt hat, z. B. "Dienst nicht in der FIC").
+#[derive(Clone, Debug)]
+struct Optimistic {
+    sid: u32,
+    scids: u8,
+    prev: Option<crate::state::CurrentService>,
+    deadline: Instant,
+}
+
+/// Log-Warnungen des Kerns (core.cpp `selectService`), die einen
+/// gescheiterten Dienststart anzeigen. Es gibt dafuer kein eigenes Ereignis;
+/// der Text ist der schnellste Weg, [`SELECT_TIMEOUT`] die Absicherung, falls
+/// sich der Wortlaut aendert. `Some(true)`: der alte Dienst spielt weiter
+/// (Abbruch VOR `stopOneLocked`); `Some(false)`: der alte Dienst ist bereits
+/// gestoppt, der neue kommt nicht.
+fn select_failed_by_log(text: &str) -> Option<bool> {
+    if text.starts_with("Dienst nicht in der FIC") || text.starts_with("Dienstwechsel blockiert") {
+        Some(true)
+    } else if text.starts_with("Audiodienst noch nicht vollstaendig")
+        || text.starts_with("MP2-Dienst")
+        || text.starts_with("select_service ohne geoeffnete Quelle")
+    {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 impl App {
@@ -185,18 +237,14 @@ impl App {
             tii: Default::default(),
             stations_ctl: Default::default(),
             music: Default::default(),
+            traffic: Default::default(),
             pending: None,
             expected_stops: Default::default(),
+            optimistic: None,
         };
         app.stations_load();
         app.timeshift_init();
         app
-    }
-
-    /// Laufenden Preset-Aufruf verwerfen (Timer-Scheduler uebernimmt die Dienstwahl).
-    pub(crate) fn pending_clear(&mut self) {
-        self.pending = None;
-        self.state.pending = None;
     }
 
     // -----------------------------------------------------------------------
@@ -305,7 +353,7 @@ impl App {
         // veralteter Stop die Anzeige eines laengst wieder aktiven Dienstes
         // ("kein Dienst", obwohl Audio laeuft - Live-Test Stefan 15.09.2026).
         if let Event::ServiceStopped { slot: ServiceSlot::Primary, sid } = ev {
-            if let Some(pos) = self.expected_stops.iter().position(|s| s == sid) {
+            if let Some(pos) = self.expected_stops.iter().position(|(s, _)| s == sid) {
                 self.expected_stops.remove(pos);
                 return Effects::default();
             }
@@ -367,16 +415,30 @@ impl App {
                 }
             }
             Event::ServiceStarted { slot: ServiceSlot::Primary, .. } => {
+                // Der Kern hat den Dienst wirklich gestartet: die optimistische
+                // Anzeige ist bestaetigt (bzw. durch die echte ersetzt).
+                self.optimistic = None;
                 self.remember_last();
+            }
+            Event::Log { level: dab_api::LogLevel::Warn | dab_api::LogLevel::Error, text } => {
+                if self.optimistic.is_some() {
+                    if let Some(old_still_plays) = select_failed_by_log(text) {
+                        self.optimistic_resolve(old_still_plays, text);
+                    }
+                }
             }
             Event::DeviceError { message } => {
                 self.pending = None;
                 self.state.pending = None;
                 fx = fx.ev(AppEvent::Notice { level: NoticeLevel::Error, text: message.clone() });
             }
-            Event::Exiting { .. } => {
+            Event::Exiting { .. } | Event::DeviceClosed => {
                 self.pending = None;
                 self.state.pending = None;
+                // Kein Dienst laeuft mehr: keine ausstehenden Stops, keine
+                // optimistische Anzeige (Befund 4).
+                self.expected_stops.clear();
+                self.optimistic = None;
             }
             _ => {}
         }
@@ -386,6 +448,7 @@ impl App {
         fx.append(self.stations_on_event(ev, now));
         fx.append(self.timeshift_on_event(ev));
         fx.append(self.music_on_event(ev, crate::state::unix_now()));
+        fx.append(self.traffic_on_event(ev, crate::state::unix_now()));
         fx.append(self.tick(now));
         fx
     }
@@ -398,6 +461,19 @@ impl App {
                 fx = self.pending_failed(p);
             }
         }
+        // Optimistische Anzeige ohne `service_started` (Befund 4): kam das
+        // `service_stopped` des alten Dienstes nie an, hat der Kern ihn auch
+        // nie gestoppt - dann spielt er weiter und die Anzeige geht zurueck.
+        if let Some(o) = self.optimistic.clone() {
+            if now >= o.deadline {
+                let old_still_plays = o.prev.as_ref().map(|p| self.expected_stops.iter().any(|(s, _)| *s == p.sid)).unwrap_or(false);
+                self.optimistic_resolve(old_still_plays, "kein service_started innerhalb der Wartezeit");
+            }
+        }
+        // Verfallene Vormerkungen (der Kern stoppt synchron; was so lange
+        // ueberlebt, kommt nie mehr) - sonst verschluckt ein haengender
+        // Eintrag spaeter genau ein echtes `service_stopped` desselben SId.
+        self.expected_stops.retain(|(_, t)| now.saturating_duration_since(*t) < EXPECTED_STOP_TTL);
         fx.append(self.media_tick(now));
         fx.append(self.timer_tick_all(crate::state::unix_now()));
         fx.append(self.debug_tick(now));
@@ -506,6 +582,8 @@ impl App {
     pub fn open_device(&mut self, source: SourceKind) -> Effects {
         self.pending = None;
         self.state.pending = None;
+        self.expected_stops.clear();
+        self.optimistic = None;
         self.state.clear_reception();
         self.state.note_source(&source);
         match &source {
@@ -535,6 +613,9 @@ impl App {
         }
         if self.state.channel.as_deref() != Some(channel.as_str()) || !self.state.is_file_source() {
             self.state.clear_reception();
+            // Alle Dienste des alten Kanals enden; nichts mehr vorzumerken (Befund 4).
+            self.expected_stops.clear();
+            self.optimistic = None;
         }
         self.state.channel = Some(channel.clone());
         self.settings.last_channel = Some(channel.clone());
@@ -564,23 +645,68 @@ impl App {
         }
         self.pending = None;
         self.state.pending = None;
+        let cmd = Command::SelectService { sid, scids, slot: ServiceSlot::Primary };
+        let prev = self.state.current.clone();
+        if prev.as_ref().map(|c| c.sid == sid && c.scids == scids).unwrap_or(false) {
+            // Derselbe Dienst (SId UND Komponente, wie core.cpp selectService
+            // prueft): der Kern tut nichts und meldet nichts - die Anzeige
+            // bleibt, wie sie ist (kein optimistischer Neuanfang, der nach
+            // SELECT_TIMEOUT den laufenden Dienst loeschen wuerde).
+            return Ok(Effects::default().cmd(cmd));
+        }
         // Der bisherige Dienst wird im Kern verdraengt (core.cpp selectService
-        // stoppt ihn synchron vor dem Start des neuen) - dessen spaeter
+        // stoppt ihn synchron vor dem Start des neuen; auch beim Wechsel auf
+        // eine andere Komponente desselben Dienstes) - dessen spaeter
         // eintreffendes `service_stopped` darf `state.current` nicht mehr
         // loeschen, siehe `expected_stops` und `handle_event`.
-        if let Some(old) = self.state.current.as_ref() {
-            if old.sid != sid {
-                self.expected_stops.push_back(old.sid);
-            }
+        let now = Instant::now();
+        if let Some(old) = prev.as_ref() {
+            self.expected_stops.push_back((old.sid, now));
         }
         // Kopfzeile sofort auf den neuen Dienst umstellen: `service_started`
         // kommt aus dem Kern bewusst erst mit dem ersten dekodierten
         // Audioblock (V2/docs/protocol.md), ohne Fallback bei verlorenem
         // erstem Block. Bis dahin sonst "kein Dienst" (Bugfixes.txt #5/#7);
         // der codec wird nachgetragen, sobald das Event eintrifft (state.rs
-        // Event::ServiceStarted), Name/SId stehen aber sofort.
+        // Event::ServiceStarted), Name/SId stehen aber sofort. Bleibt es aus,
+        // raeumt `tick` (SELECT_TIMEOUT) bzw. die Log-Warnung des Kerns auf.
         self.state.current = Some(crate::state::CurrentService { sid, scids, codec: None, stereo: false });
-        Ok(Effects::default().cmd(Command::SelectService { sid, scids, slot: ServiceSlot::Primary }))
+        self.optimistic = Some(Optimistic { sid, scids, prev, deadline: now + SELECT_TIMEOUT });
+        Ok(Effects::default().cmd(cmd))
+    }
+
+    /// Optimistische Anzeige aufloesen, wenn der Kern den Dienst nicht
+    /// gestartet hat (Befund 4). `old_still_plays`: der alte Dienst wurde nie
+    /// gestoppt -> Anzeige zurueck auf ihn (nur, wenn er selbst bestaetigt
+    /// lief, sonst "kein Dienst"); andernfalls "kein Dienst".
+    fn optimistic_resolve(&mut self, old_still_plays: bool, why: &str) {
+        let Some(o) = self.optimistic.take() else { return };
+        let still_optimistic = self
+            .state
+            .current
+            .as_ref()
+            .map(|c| c.sid == o.sid && c.scids == o.scids && c.codec.is_none())
+            .unwrap_or(false);
+        if !still_optimistic {
+            return;
+        }
+        // Die Vormerkung des alten Dienstes ist erledigt - entweder kam sein
+        // Stop laengst, oder er kommt nie (der Kern hat ihn nicht gestoppt).
+        if let Some(prev) = o.prev.as_ref() {
+            if let Some(pos) = self.expected_stops.iter().rposition(|(s, _)| *s == prev.sid) {
+                self.expected_stops.remove(pos);
+            }
+        }
+        match o.prev {
+            Some(prev) if old_still_plays && prev.codec.is_some() => {
+                log::info!("Dienst {:04X}/{} nicht gestartet ({why}); Anzeige zurueck auf {:04X}", o.sid, o.scids, prev.sid);
+                self.state.current = Some(prev);
+            }
+            _ => {
+                log::info!("Dienst {:04X}/{} nicht gestartet ({why}); Anzeige geleert", o.sid, o.scids);
+                self.state.clear_service();
+            }
+        }
     }
 
     /// Naechster/vorheriger hoerbarer Dienst der Liste (mit Umbruch).
@@ -623,6 +749,8 @@ impl App {
         }
         self.pending = None;
         self.state.pending = None;
+        self.expected_stops.clear();
+        self.optimistic = None;
         self.state.scan.results.clear();
         self.state.scan.active = true;
         self.state.scan.index = 0;
@@ -899,6 +1027,124 @@ mod tests {
         // Empfang verloren) muss weiterhin ganz normal loeschen.
         a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD220 }, now);
         assert!(a.state.current.is_none(), "ein echtes service_stopped des aktiven Dienstes muss weiterhin loeschen");
+    }
+
+    /// Review 16.09.2026, Befund 4: Vormerkungen in `expected_stops` verfielen
+    /// nie. Nach einem Kanalwechsel darf ein alter Eintrag kein echtes
+    /// `service_stopped` desselben SId mehr verschlucken.
+    #[test]
+    fn expected_stops_are_cleared_on_channel_change_and_expire() {
+        let now = Instant::now();
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf"), (0xD220, "Dlf Kultur")], now);
+        started(&mut a, 0xD210, now);
+        a.select_service(0xD220, 0).unwrap(); // D210 vorgemerkt
+        assert_eq!(a.expected_stops.len(), 1);
+        a.set_channel("11D");
+        assert!(a.expected_stops.is_empty(), "Kanalwechsel leert die Vormerkungen");
+        assert!(a.optimistic.is_none());
+        // Zurueck auf 5C, D210 laeuft wieder; sein echtes Stop muss loeschen.
+        a.set_channel("5C");
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf")], now);
+        started(&mut a, 0xD210, now);
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD210 }, now);
+        assert!(a.state.current.is_none(), "echtes service_stopped wurde von einer alten Vormerkung verschluckt");
+
+        // Verfall: ein Eintrag, dessen Stop nie kommt, ueberlebt EXPECTED_STOP_TTL nicht.
+        started(&mut a, 0xD210, now);
+        a.select_service(0xD220, 0).unwrap();
+        a.optimistic = None; // nur den Verfall pruefen, nicht die Rueckstellung
+        a.tick(now + EXPECTED_STOP_TTL + Duration::from_secs(1));
+        assert!(a.expected_stops.is_empty(), "Vormerkung ist nicht verfallen");
+        // DeviceClosed / Exiting leeren ebenfalls.
+        a.select_service(0xD210, 0).unwrap();
+        a.handle_event(&Event::DeviceClosed, now);
+        assert!(a.expected_stops.is_empty() && a.optimistic.is_none());
+    }
+
+    /// Befund 4: startet der Kern den neuen Dienst nicht (kein
+    /// `service_started`), darf `state.current` ihn nicht dauerhaft anzeigen.
+    /// Kam kein `service_stopped` des alten Dienstes, hat der Kern ihn auch
+    /// nie gestoppt ("Dienst nicht in der FIC" bricht VOR dem Stop ab) - dann
+    /// zeigt die Anzeige wieder den weiterlaufenden alten Dienst.
+    #[test]
+    fn optimistic_current_falls_back_when_service_started_never_comes() {
+        let now = Instant::now();
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf"), (0xD220, "Dlf Kultur")], now);
+        started(&mut a, 0xD210, now);
+        a.select_service(0xD220, 0).unwrap();
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD220));
+        // Vor Ablauf: nichts passiert.
+        a.tick(now + Duration::from_secs(4));
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD220));
+        // Ablauf ohne service_stopped(D210): alter Dienst spielt weiter.
+        a.tick(now + SELECT_TIMEOUT + Duration::from_secs(1));
+        assert_eq!(a.state.current.as_ref().map(|c| (c.sid, c.codec.is_some())), Some((0xD210, true)), "Anzeige muss auf den weiterlaufenden Dienst zurueck");
+        assert!(a.expected_stops.is_empty(), "die Vormerkung fuer D210 ist damit erledigt");
+        assert!(a.optimistic.is_none());
+        // Ein spaeteres echtes Stop von D210 loescht normal.
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD210 }, now);
+        assert!(a.state.current.is_none());
+
+        // Variante: der alte Dienst WURDE gestoppt (Stop kam), der neue kommt
+        // nie ("noch nicht vollstaendig in der FIC") -> "kein Dienst".
+        started(&mut a, 0xD210, now);
+        a.select_service(0xD220, 0).unwrap();
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD210 }, now);
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD220), "vorgemerktes Stop laesst die Anzeige stehen");
+        a.tick(now + SELECT_TIMEOUT + Duration::from_secs(1));
+        assert!(a.state.current.is_none(), "ohne service_started und mit gestopptem altem Dienst: kein Dienst");
+
+        // Variante: service_started kommt rechtzeitig -> keine Rueckstellung.
+        a.select_service(0xD220, 0).unwrap();
+        started(&mut a, 0xD220, now);
+        a.tick(now + SELECT_TIMEOUT + Duration::from_secs(5));
+        assert_eq!(a.state.current.as_ref().map(|c| (c.sid, c.codec.is_some())), Some((0xD220, true)));
+    }
+
+    /// Befund 4: die Log-Warnung des Kerns ist der schnellere Weg als der
+    /// Timeout - und die Wiederanwahl desselben Dienstes (SId + Komponente)
+    /// startet keine optimistische Anzeige, weil der Kern dann nichts tut.
+    #[test]
+    fn core_log_warning_resolves_optimistic_current_and_same_service_is_a_noop() {
+        let now = Instant::now();
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf"), (0xD220, "Dlf Kultur")], now);
+        started(&mut a, 0xD210, now);
+        a.select_service(0xD220, 0).unwrap();
+        a.handle_event(&Event::Log { level: dab_api::LogLevel::Warn, text: "Dienst nicht in der FIC: SId 53792".into() }, now);
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD210), "alter Dienst spielt weiter");
+        assert!(a.expected_stops.is_empty());
+
+        a.select_service(0xD220, 0).unwrap();
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD210 }, now);
+        a.handle_event(&Event::Log { level: dab_api::LogLevel::Warn, text: "Audiodienst noch nicht vollstaendig in der FIC".into() }, now);
+        assert!(a.state.current.is_none(), "alter Dienst gestoppt, neuer kommt nicht");
+
+        // Unverwandte Warnungen aendern nichts.
+        a.select_service(0xD220, 0).unwrap();
+        a.handle_event(&Event::Log { level: dab_api::LogLevel::Warn, text: "irgendwas anderes".into() }, now);
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xD220));
+
+        // Gleicher Dienst noch einmal: Anzeige (inkl. codec) bleibt, kein Timeout.
+        started(&mut a, 0xD220, now);
+        let fx = a.select_service(0xD220, 0).unwrap();
+        assert_eq!(fx.commands.len(), 1);
+        assert!(a.optimistic.is_none());
+        assert!(a.expected_stops.is_empty());
+        a.tick(now + SELECT_TIMEOUT + Duration::from_secs(1));
+        assert_eq!(a.state.current.as_ref().map(|c| (c.sid, c.codec.is_some())), Some((0xD220, true)));
+
+        // Andere Komponente desselben Dienstes: der Kern stoppt die alte,
+        // ihr service_stopped(sid) darf die neue Anzeige nicht loeschen.
+        a.select_service(0xD220, 1).unwrap();
+        assert_eq!(a.expected_stops.len(), 1);
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xD220 }, now);
+        assert_eq!(a.state.current.as_ref().map(|c| (c.sid, c.scids)), Some((0xD220, 1)));
     }
 
     #[test]

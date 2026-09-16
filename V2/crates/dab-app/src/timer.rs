@@ -15,7 +15,7 @@
 use crate::app::{App, AppError, AppEvent, Effects, NoticeLevel};
 use crate::DataDirs;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
-use dab_api::{Command, Event, ServiceSlot};
+use dab_api::{Event, ServiceSlot};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -275,11 +275,9 @@ impl Timers {
         Ok(out)
     }
 
+    /// Atomar (tmp + rename, siehe `paths::write_atomic`).
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        std::fs::write(path, serde_json::to_string_pretty(self).expect("serialisierbar"))
+        crate::paths::write_atomic(path, serde_json::to_string_pretty(self).expect("serialisierbar"))
     }
 
     fn sort(&mut self) {
@@ -751,6 +749,25 @@ impl App {
         };
         let Some(svc) = svc else { return Effects::default() };
         let already = self.state.current.as_ref().map(|c| c.sid == svc.sid && c.scids == svc.scids).unwrap_or(false);
+        // Umschalten ueber `select_service` wie jeder andere Weg auch (Review
+        // 16.09.2026, Befund 6): mit `expected_stops`-Vormerkung, optimistischer
+        // Anzeige und der Sperrpruefung ZUM ZEITPUNKT des `service_added` -
+        // hat der Nutzer seit `run_start` (Kanalwechsel) eine Aufnahme
+        // gestartet, scheitert der Timer sofort und ehrlich statt erst nach
+        // FIRE_TIMEOUT_S, weil der Kern das Kommando still abgelehnt hat.
+        // `select_service` verwirft auch einen laufenden Preset-Aufruf
+        // (frueher `pending_clear()`).
+        let select = if already { Ok(Effects::default()) } else { self.select_service(svc.sid, svc.scids) };
+        let mut fx = match select {
+            Ok(fx) => fx,
+            Err(e) => {
+                let mut fx = self.run_failed(&run);
+                let label = self.sched.timers.get(run.id).map(|t| t.label().to_string()).unwrap_or_default();
+                fx.events.push(AppEvent::Notice { level: NoticeLevel::Warn, text: format!("timer {label}: {e}") });
+                fx.append(self.timers_changed());
+                return fx;
+            }
+        };
         if let Some(r) = self.sched.run.as_mut() {
             r.sid = svc.sid;
             r.scids = svc.scids;
@@ -766,11 +783,8 @@ impl App {
             }
         }
         if already {
-            return self.run_service_ready();
+            fx.append(self.run_service_ready());
         }
-        let mut fx = Effects::default();
-        self.pending_clear();
-        fx.commands.push(Command::SelectService { sid: svc.sid, scids: svc.scids, slot: ServiceSlot::Primary });
         fx
     }
 
@@ -859,7 +873,7 @@ mod tests {
     use super::*;
     use crate::recording::RecordingInfo;
     use crate::{Presets, Settings};
-    use dab_api::{Codec, RecFormat, ServiceInfo};
+    use dab_api::{Codec, Command, RecFormat, ServiceInfo};
     use std::time::Instant;
 
     fn tmp(name: &str) -> PathBuf {
@@ -1152,6 +1166,52 @@ mod tests {
         a.timer_delete(id).unwrap();
         assert!(a.sched.timers.get(id).is_none());
         assert_eq!(a.timer_delete(id).unwrap_err().to_string(), "timer not found");
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
+    }
+
+    /// Review 16.09.2026, Befund 6: der Scheduler schaltet ueber
+    /// `select_service` um. Startet zwischen `run_start` (Kanalwechsel) und
+    /// `service_added` eine Aufnahme, greift dieselbe Sperre wie ueberall:
+    /// kein Kommando, Timer sofort "Failed" statt erst nach FIRE_TIMEOUT_S.
+    #[test]
+    fn timer_select_goes_through_select_service_and_respects_the_recording_lock() {
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf")]);
+        started(&mut a, 0xD210);
+        let (out, _) = a.timer_add(timer(TimerKind::ManualSwitch, "11D", 0xE1C0, "WDR 5", T0, 0), false, T0 - 100).unwrap();
+        let id = out.id.unwrap();
+        let fx = a.scheduler_tick(T0);
+        assert_eq!(fx.commands, vec![Command::SetChannel { channel: "11D".into() }]);
+        assert!(a.sched.is_running());
+        // Aufnahme beginnt waehrend des Kanalwechsels (z. B. Taste R).
+        a.state.recording = true;
+        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into() }, Instant::now());
+        let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C0, "WDR 5") }, Instant::now());
+        assert!(fx.commands.is_empty(), "waehrend einer Aufnahme darf der Timer nicht umschalten: {:?}", fx.commands);
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::TimerStatus { status: TimerFireStatus::Failed, .. })), "{:?}", fx.events);
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::Notice { level: NoticeLevel::Warn, .. })));
+        assert!(!a.sched.is_running());
+        let t = a.sched.timers.get(id).unwrap();
+        assert!(t.fired && !t.active);
+
+        // Ohne Sperre: Umschaltung mit optimistischer Anzeige und Vormerkung wie beim Klick.
+        a.state.recording = false;
+        let (out, _) = a.timer_add(timer(TimerKind::ManualSwitch, "11D", 0xE1C1, "1LIVE", T0 + 10, 0), false, T0).unwrap();
+        let id2 = out.id.unwrap();
+        started(&mut a, 0xE1C0);
+        let fx = a.scheduler_tick(T0 + 10);
+        // Gleicher Kanal, Dienst noch nicht in der Liste: warten.
+        assert!(fx.commands.is_empty());
+        let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C1, "1LIVE") }, Instant::now());
+        assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xE1C1, scids: 0, slot: ServiceSlot::Primary }]);
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xE1C1), "optimistische Anzeige wie bei select_service");
+        // Das verspaetete service_stopped des verdraengten Dienstes loescht die Anzeige nicht.
+        a.handle_event(&Event::ServiceStopped { slot: ServiceSlot::Primary, sid: 0xE1C0 }, Instant::now());
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xE1C1));
+        let fx = started(&mut a, 0xE1C1);
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::TimerStatus { status: TimerFireStatus::Switched, .. })));
+        assert!(!a.sched.timers.get(id2).unwrap().active);
         let _ = std::fs::remove_dir_all(&a.dirs.root);
     }
 

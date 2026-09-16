@@ -95,6 +95,36 @@ impl DataDirs {
     }
 }
 
+/// Datei atomar ersetzen (Review 16.09.2026, Befund 5): erst `<name>.tmp`
+/// schreiben und auf den Datentraeger bringen, dann per `rename` ueber die
+/// alte Datei schieben. Ein Absturz oder Stromausfall mittendrin laesst so
+/// entweder die alte oder die neue Datei vollstaendig zurueck - nie eine
+/// leere/halbe `settings.json`, `presets.json`, `timers.json` oder
+/// `stations.json`, die `load()` still durch den Standard ersetzen und der
+/// naechste Speichervorgang endgueltig ueberschreiben wuerde.
+pub fn write_atomic(path: &Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir)?;
+        }
+    }
+    let mut tmp_name = path.file_name().map(|n| n.to_os_string()).unwrap_or_else(|| "file".into());
+    tmp_name.push(".tmp");
+    let tmp = path.with_file_name(tmp_name);
+    let result = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes.as_ref())?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,6 +138,20 @@ mod tests {
         let d = DataDirs::detect_in(&tmp).unwrap();
         assert!(d.portable);
         assert_eq!(d.root, tmp.join("data"));
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn write_atomic_replaces_and_leaves_no_tmp() {
+        let tmp = std::env::temp_dir().join(format!("dabclassic-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let path = tmp.join("sub").join("settings.json");
+        write_atomic(&path, b"{\"a\":1}").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":1}");
+        write_atomic(&path, b"{\"a\":2}").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":2}", "bestehende Datei wird ersetzt");
+        let leftovers: Vec<_> = std::fs::read_dir(path.parent().unwrap()).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(leftovers, vec![std::ffi::OsString::from("settings.json")], "keine .tmp-Datei bleibt liegen");
         std::fs::remove_dir_all(&tmp).unwrap();
     }
 }

@@ -204,7 +204,7 @@ impl LogoCache {
     /// Verfuegbare Groessen je Dienst, aufsteigend nach Flaeche.
     pub fn sizes(&self, eid: u16, sid: u32) -> Vec<(u32, u32)> {
         let mut v: Vec<(u32, u32)> = self.entries(eid, sid).iter().map(|e| (e.width, e.height)).collect();
-        v.sort_by_key(|(w, h)| (w * h, *w));
+        v.sort_by_key(|(w, h)| (area(*w, *h), *w));
         v.dedup();
         v
     }
@@ -232,8 +232,8 @@ impl LogoCache {
         }
         // Unbekannte Abmessungen: naechstliegende Flaeche zur ersten Praeferenz.
         let (pw, ph) = size.preference()[0];
-        let want = (pw * ph) as i64;
-        list.iter().min_by_key(|e| ((e.width * e.height) as i64 - want).abs())
+        let want = area(pw, ph);
+        list.iter().min_by_key(|e| area(e.width, e.height).abs_diff(want))
     }
 
     pub fn logo_path(&self, eid: u16, sid: u32, size: LogoSize) -> Option<PathBuf> {
@@ -334,22 +334,38 @@ pub fn sid_from_name(name: &str) -> Option<u32> {
     u32::from_str_radix(head, 16).ok()
 }
 
-/// `..._320x240.png` -> (320, 240).
+/// Obergrenze fuer Logo-Abmessungen aus Fremddaten (MOT-Dateiname, PNG-IHDR).
+/// Sender-Logos sind hoechstens 320x240 (v1 `list.xml`); alles darueber ist
+/// Unsinn oder Angriff und zaehlt als "Abmessung unbekannt" (0x0).
+pub const DIM_MAX: u32 = 16_384;
+
+/// Flaeche ohne u32-Ueberlauf (Review 16.09.2026, Befund 8: `w * h` mit
+/// Werten aus dem Sender-Datenstrom panicte im Debug-Build).
+fn area(w: u32, h: u32) -> u64 {
+    u64::from(w) * u64::from(h)
+}
+
+fn dims_ok(w: u32, h: u32) -> bool {
+    w <= DIM_MAX && h <= DIM_MAX
+}
+
+/// `..._320x240.png` -> (320, 240); ueber [`DIM_MAX`] -> None.
 pub fn dims_from_name(name: &str) -> Option<(u32, u32)> {
     let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(name);
     let last = stem.rsplit('_').next()?;
     let (w, h) = last.split_once('x')?;
-    Some((w.parse().ok()?, h.parse().ok()?))
+    let (w, h): (u32, u32) = (w.parse().ok()?, h.parse().ok()?);
+    dims_ok(w, h).then_some((w, h))
 }
 
-/// Breite/Hoehe aus dem PNG-IHDR.
+/// Breite/Hoehe aus dem PNG-IHDR; ueber [`DIM_MAX`] -> None.
 pub fn png_dims(bytes: &[u8]) -> Option<(u32, u32)> {
     if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" || &bytes[12..16] != b"IHDR" {
         return None;
     }
     let w = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
     let h = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
-    Some((w, h))
+    dims_ok(w, h).then_some((w, h))
 }
 
 /// Groessenuebersicht fuer Debug/Tests.
@@ -479,6 +495,24 @@ mod tests {
         again.load();
         assert_eq!(again.sizes(0x10BC, 0xD230), vec![(32, 32), (128, 128)]);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review 16.09.2026, Befund 8: Abmessungen aus dem Sender-Datenstrom
+    /// durften `w * h` (u32) ueberlaufen -> Panic im Brueckenthread.
+    #[test]
+    fn oversized_dims_neither_panic_nor_win() {
+        assert_eq!(dims_from_name("d210_Dlf_70000x70000.png"), None, "ueber DIM_MAX zaehlt als unbekannt");
+        assert_eq!(dims_from_name("d210_Dlf_320x240.png"), Some((320, 240)));
+        let mut ihdr = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        ihdr.extend_from_slice(&u32::MAX.to_be_bytes());
+        ihdr.extend_from_slice(&u32::MAX.to_be_bytes());
+        assert_eq!(png_dims(&ihdr), None);
+        // Auch direkt eingetragene Riesenwerte duerfen sizes()/pick() nicht umwerfen.
+        let mut c = LogoCache::default();
+        c.insert(1, 0xD210, LogoEntry { name: "big.png".into(), width: u32::MAX, height: u32::MAX, mime: "image/png".into() });
+        c.insert(1, 0xD210, LogoEntry { name: "small.png".into(), width: 64, height: 64, mime: "image/png".into() });
+        assert_eq!(c.sizes(1, 0xD210), vec![(64, 64), (u32::MAX, u32::MAX)]);
+        assert_eq!(c.pick(1, 0xD210, LogoSize::Small).unwrap().name, "small.png", "naechstliegende Flaeche, kein Wrap");
     }
 
     #[test]

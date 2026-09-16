@@ -4,7 +4,7 @@
 //! offenem Panel) ueber die Effekte der App-Schicht. Spektrum/IQ laufen
 //! als Kern-Ereignisse `spectrum`/`iq_samples` direkt ueber `dab://event`.
 
-use crate::{act, Shared};
+use crate::{act, lock_app, Shared};
 use dab_app::{App, DebugState, TiiSeen};
 use std::path::PathBuf;
 use std::sync::MutexGuard;
@@ -12,8 +12,9 @@ use tauri::{AppHandle, Manager, State};
 
 type R<T> = Result<T, String>;
 
+/// Gemeinsamer App-Lock (vergifteter Mutex wird geloggt und weiterbenutzt, Befund 9).
 fn app(s: &Shared) -> R<MutexGuard<'_, App>> {
-    s.app.lock().map_err(|e| e.to_string())
+    lock_app(s)
 }
 
 /// Ressource `resources/tii/txdata.tii` (Tauri legt sie neben die EXE bzw. in
@@ -28,7 +29,7 @@ pub fn resource_tii_path(app: &AppHandle) -> Option<PathBuf> {
 /// Beim Start: Datenbank laden (`data/txdata.tii` hat Vorrang).
 pub fn load_database(handle: &AppHandle, shared: &Shared) {
     let res = resource_tii_path(handle);
-    if let Ok(mut a) = shared.app.lock() {
+    if let Ok(mut a) = lock_app(shared) {
         a.tii_load(res.as_deref());
     }
 }

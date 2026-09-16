@@ -194,6 +194,12 @@ pub struct AppState {
     /// Abgeschlossene Alarme dieser Sitzung, neueste zuerst (Bugfixes.txt #10,
     /// [`EWS_HISTORY_MAX`] Eintraege); nicht persistiert.
     pub ews_history: Vec<EwsHistoryEntry>,
+    /// Verkehrs-/Sonderdurchsagen (crate::traffic): laufende Durchsage,
+    /// beendete dieser Sitzung (neueste zuerst), ob der laufende Dienst zu
+    /// einem Durchsage-Cluster gehoert.
+    pub traffic_active: Option<crate::traffic::TrafficEntry>,
+    pub traffic_history: Vec<crate::traffic::TrafficEntry>,
+    pub traffic_supported: bool,
 }
 
 pub fn unix_now() -> i64 {
@@ -410,7 +416,11 @@ impl AppState {
                 }
             }
             Event::EwsSwitched { from_sid, .. } => self.ews_switched_from = *from_sid,
-            Event::RecordingState { slot: ServiceSlot::Primary, active, .. } => self.recording = *active,
+            // `recording_state`: NICHT hier blind uebernehmen - der Kern meldet
+            // darunter auch Export-Enden und das Ende einer verdraengten
+            // Kettenaufnahme. `App::recording_on_event` (recording.rs) ordnet
+            // das Ereignis ueber den Dateipfad zu und setzt `recording` selbst
+            // (Review 16.09.2026, Befund 1).
             Event::ScanProgress { channel, index, total } => {
                 if !self.scan.active {
                     self.scan.results.clear();

@@ -590,6 +590,7 @@ fn print_event(t: Duration, ev: &Event) {
         Event::EwsAlive { sub_ch: None } => println!("{ts}  EWS  heartbeat"),
         Event::EwsPresent => println!("{ts}  EWS  vorhanden"),
         Event::EwfAlarm { active, sub_ch } => println!("{ts}  EWF  alarm={active} subCh={sub_ch}"),
+        Event::Announcement { kind, sub_ch, active, sid, cluster } => println!("{ts}  DURCHSAGE SId {sid:04X} Cluster {cluster} ASw 0x{kind:04X} subCh={sub_ch} aktiv={active}"),
         Event::EwsSwitched { to_sid, from_sid } => println!("{ts}  EWS  umgeschaltet {from_sid:?} -> {to_sid:04X}"),
         Event::ClockTime { unix_utc, lto_minutes } => println!("{ts}  ZEIT utc={unix_utc} lto={lto_minutes}"),
         Event::Log { level, text } => println!("{ts}  LOG  {level:?}: {text}"),

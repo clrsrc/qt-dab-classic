@@ -292,7 +292,18 @@ pub enum Event {
     /// Service-Information (Logo-Zuordnung, v1 `list.xml`): `sid` = 0,
     /// `date_yyyymmdd` = 0, Wurzel `<serviceInformation>`.
     EpgObject { eid: u16, sid: u32, date_yyyymmdd: u32, name: String, xml: String },
-    Announcement { kind: u16, sub_ch: u8, active: bool },
+    /// Ankuendigung (FIG 0/18/0/19). `sid`/`cluster` ergaenzt der Kern seit
+    /// 2026-09-16 (Dienst, fuer den die Ankuendigung gilt, und Cluster-Id
+    /// der FIG 0/19); aeltere Kerne liefern sie nicht -> Standard 0.
+    Announcement {
+        kind: u16,
+        sub_ch: u8,
+        active: bool,
+        #[serde(default)]
+        sid: u32,
+        #[serde(default)]
+        cluster: u8,
+    },
 
     // Audio
     AudioFormat { rate: u32, channels: u8 },

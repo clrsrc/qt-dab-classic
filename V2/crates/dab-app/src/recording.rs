@@ -43,6 +43,19 @@ pub struct RecordingInfo {
 #[derive(Debug, Default)]
 pub struct Recording {
     pub info: RecordingInfo,
+    /// Eigenes `stop_recording` ist unterwegs, das bestaetigende
+    /// `recording_state(active=false)` des Kerns steht noch aus. Bis dahin
+    /// gilt ein bereits abgeschicktes 1-Hz `active=true` derselben Datei als
+    /// veraltet und darf die Sperre nicht wieder setzen (Review 16.09.2026,
+    /// Befund 7).
+    pub(crate) stop_pending: bool,
+}
+
+/// Gehoert ein `recording_state`-Pfad des Kerns zu unserer Datei? Der Kern
+/// gibt den Pfad zurueck, den wir ihm geschickt haben; der Vergleich ueber
+/// `Path` ist unempfindlich gegen `/` vs. `\`.
+fn same_file(a: &Path, b: &str) -> bool {
+    a == Path::new(b)
 }
 
 /// v1: alles ausser `[a-zA-Z0-9_-]` wird `_`.
@@ -109,6 +122,10 @@ impl App {
             return Err(AppError::Other(format!("{}: {e}", dir.display())));
         }
         let path = dir.join(file_name(&Local::now(), &name, &title));
+        // Neue Datei, neuer Zustand: ein noch ausstehendes Stop-Echo der
+        // vorigen Datei wird ueber den Pfad-Abgleich in
+        // `recording_on_event` aussortiert, nicht ueber dieses Flag.
+        self.rec.stop_pending = false;
         self.rec.info = RecordingInfo {
             active: true,
             path: Some(path.display().to_string()),
@@ -142,6 +159,9 @@ impl App {
         self.rec.info.active = false;
         self.rec.info.timer_id = None;
         self.rec.info.stop_at = None;
+        // Bis der Kern das Ende bestaetigt, darf ein noch unterwegs
+        // befindliches 1-Hz `active=true` die Sperre nicht wieder setzen.
+        self.rec.stop_pending = true;
         fx.commands.push(Command::StopRecording { slot: ServiceSlot::Primary, sid: None });
         fx.events.push(AppEvent::RecordingChanged { recording: self.rec.info.clone() });
         Ok(fx)
@@ -157,10 +177,43 @@ impl App {
     }
 
     /// `recording_state` des Kerns (1 Hz) in den Zustand uebernehmen.
+    ///
+    /// Der Kern meldet unter demselben Ereignistyp auch das Ende eines
+    /// Timeshift-/Musik-Exports (core.cpp `startExportThread(...,
+    /// reportRecordingState=true)`: `active=false` mit dem EXPORT-Pfad) und
+    /// bei einer Kettenaufnahme das synchrone Ende der VORIGEN Datei. Beides
+    /// darf die laufende Aufnahme nicht beenden (Review 16.09.2026, Befund 1);
+    /// deshalb wird jedes Ereignis zuerst ueber den Pfad der eigenen Datei
+    /// zugeordnet. `state.recording` (Umschaltsperre) wird nur hier gesetzt,
+    /// nicht mehr blind in `AppState::apply`.
     pub fn recording_on_event(&mut self, ev: &Event) -> Effects {
         let mut fx = Effects::default();
         match ev {
             Event::RecordingState { slot: ServiceSlot::Primary, sid, active, path, bytes, seconds } => {
+                // Pfad passt zur eigenen Datei?
+                let matches_mine = matches!((path.as_deref(), self.rec.info.path.as_deref()), (Some(p), Some(m)) if same_file(p, m));
+                // Ohne Pfad nicht zuzuordnen: gilt als eigene Aufnahme (der
+                // Kern liefert `null` nur ohne offene Datei). Fremder Pfad:
+                // Export-Ende oder Ende einer verdraengten Kettenaufnahme ->
+                // nicht unsere Sache. Einzig eine LAUFENDE Aufnahme, von der
+                // wir nichts wissen, wird uebernommen.
+                let foreign_running = *active && !self.rec.info.active && !self.state.recording && !self.rec.stop_pending;
+                let ours = matches_mine || path.is_none() || foreign_running;
+                if !ours {
+                    log::debug!("recording_state ({}) fuer fremde Datei {:?} ignoriert", if *active { "an" } else { "aus" }, path);
+                    return fx;
+                }
+                if self.rec.stop_pending {
+                    if *active {
+                        // Veraltetes 1-Hz-Ereignis nach eigenem Stop (Befund 7).
+                        return fx;
+                    }
+                    self.rec.stop_pending = false;
+                }
+                if foreign_running && path.is_some() && !matches_mine {
+                    // Unbekannte laufende Aufnahme: alte Anzeige verwerfen.
+                    self.rec.info = RecordingInfo::default();
+                }
                 let info = &mut self.rec.info;
                 let was = info.active;
                 info.active = *active;
@@ -178,10 +231,12 @@ impl App {
                 } else if !was && info.started_at == 0 {
                     info.started_at = crate::state::unix_now();
                 }
+                self.state.recording = *active;
                 fx.events.push(AppEvent::RecordingChanged { recording: info.clone() });
             }
             Event::Exiting { .. } | Event::DeviceClosed => {
-                if self.rec.info.active {
+                self.rec.stop_pending = false;
+                if self.rec.info.active || self.state.recording {
                     self.rec.info.active = false;
                     self.rec.info.timer_id = None;
                     self.rec.info.stop_at = None;
@@ -243,5 +298,140 @@ mod tests {
     fn clean_component_rules() {
         assert_eq!(clean_component("a b/c:d.e"), "a_b_c_d_e");
         assert_eq!(clean_component("ok_-09"), "ok_-09");
+    }
+
+    // -----------------------------------------------------------------------
+    // Zuordnung von `recording_state` (Review 16.09.2026, Befunde 1 und 7)
+    // -----------------------------------------------------------------------
+
+    use crate::{DataDirs, Presets, Settings};
+    use dab_api::{Codec, ServiceInfo};
+    use std::time::Instant;
+
+    fn app() -> App {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("dabclassic-rec-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut a = App::with(DataDirs::with_root(&dir, true), Settings::default(), Presets::default());
+        a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
+        a.state.channel = Some("5C".into());
+        let now = Instant::now();
+        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "Ens".into(), channel: "5C".into() }, now);
+        a.handle_event(
+            &Event::ServiceAdded { service: ServiceInfo { sid: 0xD210, scids: 0, name: "Dlf".into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0 } },
+            now,
+        );
+        a.handle_event(
+            &Event::ServiceStarted { slot: ServiceSlot::Primary, sid: 0xD210, scids: 0, codec: Codec::HeAac { sbr: true, ps: false, sample_rate: 48000 }, stereo: true },
+            now,
+        );
+        a
+    }
+
+    fn rec_state(active: bool, path: Option<&str>) -> Event {
+        Event::RecordingState { slot: ServiceSlot::Primary, sid: 0xD210, active, path: path.map(PathBuf::from), bytes: 100, seconds: 1.0 }
+    }
+
+    fn started_path(fx: &Effects) -> String {
+        fx.commands
+            .iter()
+            .find_map(|c| match c {
+                Command::StartRecording { path, .. } => Some(path.display().to_string()),
+                _ => None,
+            })
+            .expect("start_recording")
+    }
+
+    /// Befund 1a: Kettenaufnahme. Das synchrone `active=false` der ALTEN Datei
+    /// (Antwort des Kerns auf das `stop_recording` der Kette) trifft ein,
+    /// nachdem `rec.info` schon die neue Aufnahme beschreibt - es darf die
+    /// neue `timer_id` nicht loeschen, sonst findet der Scheduler das Ende
+    /// des Folge-Timers nie und die Aufnahme laeuft endlos.
+    #[test]
+    fn chained_recording_keeps_the_new_timer_id_when_the_old_stop_echo_arrives() {
+        let mut a = app();
+        let now = Instant::now();
+        let fx = a.recording_start(Some("Erste"), Some((1, Some(1_800_000_000)))).unwrap();
+        let first = started_path(&fx);
+        a.handle_event(&rec_state(true, Some(&first)), now);
+        assert_eq!(a.rec.info.timer_id, Some(1));
+
+        // Folge-Timer 2 desselben Dienstes: stop + start hintereinander.
+        let fx = a.recording_start(Some("Zweite"), Some((2, Some(1_800_003_600)))).unwrap();
+        assert!(matches!(fx.commands[0], Command::StopRecording { .. }));
+        let second = started_path(&fx);
+        assert_ne!(first, second);
+        assert_eq!(a.rec.info.timer_id, Some(2));
+
+        // Echo des Kerns fuer die alte Datei: active=false mit ALTEM Pfad.
+        let fx = a.handle_event(&rec_state(false, Some(&first)), now);
+        assert_eq!(a.rec.info.timer_id, Some(2), "Stop-Echo der alten Datei hat die neue timer_id geloescht");
+        assert!(a.rec.info.active, "neue Aufnahme gilt weiter als aktiv");
+        assert!(a.state.recording, "Umschaltsperre bleibt");
+        assert!(!fx.events.iter().any(|e| matches!(e, AppEvent::RecordingChanged { .. })), "fremdes Ereignis erzeugt keine Meldung");
+
+        // Bestaetigung der neuen Datei: alles bleibt konsistent.
+        a.handle_event(&rec_state(true, Some(&second)), now);
+        assert_eq!(a.rec.info.timer_id, Some(2));
+        assert_eq!(a.rec.info.path.as_deref(), Some(second.as_str()));
+
+        // Echtes Ende der neuen Datei beendet die Aufnahme.
+        a.handle_event(&rec_state(false, Some(&second)), now);
+        assert!(!a.rec.info.active && !a.state.recording);
+        assert_eq!(a.rec.info.timer_id, None);
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
+    }
+
+    /// Befund 1b: Timeshift-/Musik-Export waehrend einer Aufnahme. Der Kern
+    /// meldet das Export-Ende als `recording_state(active=false, <Exportpfad>)`;
+    /// die laufende Aufnahme darf davon nichts merken (Sperre, timer_id).
+    #[test]
+    fn export_finished_event_does_not_end_the_running_recording() {
+        let mut a = app();
+        let now = Instant::now();
+        let fx = a.recording_start(None, Some((7, None))).unwrap();
+        let mine = started_path(&fx);
+        a.handle_event(&rec_state(true, Some(&mine)), now);
+
+        let export = a.dirs.music_dir().join("20260916_120000_Dlf_Titel.mp3");
+        let fx = a.handle_event(&rec_state(false, Some(&export.display().to_string())), now);
+        assert!(a.state.recording, "Export-Ende hat die Umschaltsperre aufgehoben");
+        assert!(a.rec.info.active);
+        assert_eq!(a.rec.info.timer_id, Some(7));
+        assert_eq!(a.rec.info.path.as_deref(), Some(mine.as_str()), "Exportpfad darf die Aufnahme nicht ueberschreiben");
+        assert!(fx.events.is_empty(), "kein RecordingChanged fuer den Export: {:?}", fx.events);
+        // Ein Export-Ende OHNE laufende Aufnahme ist ebenso keine Aufnahmemeldung.
+        a.handle_event(&rec_state(false, Some(&mine)), now);
+        assert!(!a.state.recording);
+        let fx = a.handle_event(&rec_state(false, Some(&export.display().to_string())), now);
+        assert!(fx.events.is_empty());
+        assert_eq!(a.rec.info.path.as_deref(), Some(mine.as_str()));
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
+    }
+
+    /// Befund 7: nach eigenem `recording_stop` darf ein noch unterwegs
+    /// befindliches 1-Hz `active=true` die Sperre nicht wieder setzen; erst
+    /// das `active=false` des Kerns schliesst den Vorgang ab.
+    #[test]
+    fn stale_active_after_own_stop_does_not_relock() {
+        let mut a = app();
+        let now = Instant::now();
+        let fx = a.recording_start(None, None).unwrap();
+        let mine = started_path(&fx);
+        a.handle_event(&rec_state(true, Some(&mine)), now);
+        a.recording_stop().unwrap();
+        assert!(!a.state.recording);
+        let fx = a.handle_event(&rec_state(true, Some(&mine)), now);
+        assert!(!a.state.recording, "veraltetes active=true hat die Sperre wieder gesetzt");
+        assert!(!a.rec.info.active);
+        assert!(fx.events.is_empty());
+        a.handle_event(&rec_state(false, Some(&mine)), now);
+        assert!(!a.state.recording && !a.rec.info.active);
+        // Danach ist der Weg fuer eine neue Aufnahme frei, ihr active=true zaehlt wieder.
+        let fx = a.recording_start(None, None).unwrap();
+        let next = started_path(&fx);
+        a.handle_event(&rec_state(true, Some(&next)), now);
+        assert!(a.state.recording && a.rec.info.active);
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
     }
 }
