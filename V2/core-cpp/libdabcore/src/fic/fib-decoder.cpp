@@ -819,6 +819,7 @@ fibConfig::AppType element;
 	bitOffset		+= 8;
 	element. SId		= SId;
 	element. SCIds		= SCIds;
+	element. Apptype	= 0;		// definiert, auch wenn NoApplications == 0
 	for (int i = 0; i < NoApplications; i ++) {
 	   appType		= getBits (d, bitOffset, 11);
 	   int16_t length	= getBits_5 (d, bitOffset + 11);
@@ -833,8 +834,10 @@ fibConfig::AppType element;
 	// abseits von SPI/EPG (7) einmalig loggen, um zu sehen, ob der Multiplex
 	// ueberhaupt einen TPEG (4)/TMC (6) o.ae. Dienst anbietet. "warn" statt
 	// "info", weil nur warn/error bis in die Statuszeile durchgereicht
-	// werden (state.svelte.ts) - keine echte Fehlermeldung.
-	if (element. Apptype != 7)
+	// werden (state.svelte.ts) - keine echte Fehlermeldung. MOT-SlideShow
+	// (2) ist bei jedem Audiodienst dabei und wird nicht gemeldet, sonst
+	// ueberschwemmt die Diagnose bei jedem Kanalwechsel die Statuszeile.
+	if (NoApplications > 0 && element. Apptype != 7 && element. Apptype != 2)
 	   logf ("warn", "FIG0/13: SId %x App-Type %d (%s)", SId,
 	                    element. Apptype, getUserApplicationType (element. Apptype));
 	return bitOffset / 8;

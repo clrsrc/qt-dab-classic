@@ -411,7 +411,9 @@ mod tests {
     fn app() -> App {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let tmp = std::env::temp_dir().join(format!("dabclassic-music-{}-{nanos}", std::process::id()));
-        let mut a = App::with(DataDirs::with_root(&tmp, true), Settings::default(), Presets::default());
+        let mut settings = Settings::default();
+        settings.music_enabled = true; // Tests pruefen die Trennung selbst, Standard ist seit 16.09.2026 aus
+        let mut a = App::with(DataDirs::with_root(&tmp, true), settings, Presets::default());
         a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
         a.state.channel = Some("5C".into());
         a.state.ensemble = Some(crate::state::EnsembleState { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() });

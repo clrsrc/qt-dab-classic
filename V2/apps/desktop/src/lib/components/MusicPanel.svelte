@@ -24,7 +24,7 @@
   import { notify, patchSettings, s, ui } from "$lib/state.svelte";
 
   let busy = $state(false);
-  const enabled = $derived(ui.settings?.music_enabled ?? true);
+  const enabled = $derived(ui.settings?.music_enabled ?? false);
   const autoSave = $derived(ui.settings?.music_auto_save ?? false);
   const frame = $derived(s.timeshift.frame_index);
   const open = $derived(s.music_candidates.filter((c) => !c.taken).length);

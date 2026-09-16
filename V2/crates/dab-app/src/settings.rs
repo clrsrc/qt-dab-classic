@@ -105,7 +105,7 @@ impl Default for Settings {
             ews_autoswitch: true,
             record_pre_s: 2 * 60,
             record_post_s: 5 * 60,
-            music_enabled: true,
+            music_enabled: false,
             music_auto_save: false,
             music_keep_aac: false,
             music_mp3_kbps: 256,
@@ -171,7 +171,7 @@ mod tests {
         assert!(s.agc);
         assert_eq!(s.record_pre_s, 120);
         assert_eq!(s.record_post_s, 300);
-        assert!(s.music_enabled);
+        assert!(!s.music_enabled);
         assert!(!s.music_auto_save);
     }
 
