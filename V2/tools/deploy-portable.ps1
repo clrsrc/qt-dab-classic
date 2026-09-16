@@ -58,6 +58,19 @@ if (-not $WebView2Runtime) {
 }
 
 Write-Host "== Packen nach $Dist"
+# Nutzdaten (settings.json, presets.json, Aufnahmen ...) eines frueheren
+# Portable-Ordners ueberleben den Neuaufbau: vorher beiseitelegen, nach dem
+# Packen (und nach dem ZIP, das leer bleiben soll) zurueckholen.
+$dataKeep = $null
+if (Test-Path "$Dist\data") {
+    $hasUserData = Get-ChildItem "$Dist\data" -Recurse -File | Where-Object { $_.Name -ne 'README.txt' } | Select-Object -First 1
+    if ($hasUserData) {
+        $dataKeep = Join-Path $distParent '_data-keep'
+        if (Test-Path $dataKeep) { Remove-Item -Recurse -Force $dataKeep }
+        Move-Item "$Dist\data" $dataKeep
+        Write-Host "== Nutzdaten beiseitegelegt: $dataKeep"
+    }
+}
 if (Test-Path $Dist) { Remove-Item -Recurse -Force $Dist }
 New-Item -ItemType Directory -Force $Dist, "$Dist\core", "$Dist\tii", "$Dist\data" | Out-Null
 
@@ -111,4 +124,10 @@ if ($Zip) {
     Write-Host "== ZIP: $zipPath"
     Compress-Archive -Path $Dist -DestinationPath $zipPath -CompressionLevel Optimal
     Write-Host ("ZIP: {0} ({1:N0} MB)" -f $zipPath, ((Get-Item $zipPath).Length / 1MB))
+}
+
+if ($dataKeep) {
+    Remove-Item -Recurse -Force "$Dist\data"
+    Move-Item $dataKeep "$Dist\data"
+    Write-Host "== Nutzdaten zurueckgeholt nach $Dist\data"
 }
