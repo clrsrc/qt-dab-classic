@@ -6,7 +6,7 @@
 // Browser kann spaeter dieselbe Schnittstelle bedienen.
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { EpgAppEvent, NowNext } from "./epg";
 import type { AddOutcome, EpgTimerRequest, RecordingInfo, SleepAction, SleepState, Timer, TimerAppEvent, Timers } from "./timers";
@@ -116,6 +116,29 @@ export interface AppState {
   music_candidates: TrackCandidate[];
   /** Abgeschlossene Alarme dieser Sitzung, neueste zuerst (Bugfixes.txt #10). */
   ews_history: EwsHistoryEntry[];
+  /** Verkehrs-/Sonderdurchsagen (dab_app::traffic): laufende, Historie, Unterstuetzung des aktuellen Dienstes. */
+  traffic_active: TrafficEntry | null;
+  traffic_history: TrafficEntry[];
+  traffic_supported: boolean;
+}
+
+/** Eine Durchsage (dab_app::traffic::TrafficEntry, FIG 0/18 + 0/19). */
+export interface TrafficEntry {
+  id: number;
+  started_at: number;
+  ended_at: number | null;
+  channel: string;
+  ensemble: string;
+  /** ASw-Flags (EN 300 401 8.1.6.2): Bit 1 = Verkehr, Bit 2 = Nahverkehr, ... */
+  flags: number;
+  cluster: number;
+  /** Subkanal, auf dem die Durchsage laeuft, und der Dienst dazu (falls bekannt). */
+  sub_ch: number;
+  announcing_service: string | null;
+  /** Dienste, fuer die die Durchsage gilt (Cluster-Mitglieder). */
+  services: string[];
+  /** Die App hat waehrend der Durchsage auf den Durchsage-Dienst umgeschaltet. */
+  switched: boolean;
 }
 
 /** Abgeschlossener Alarm (dab_app::state::EwsHistoryEntry). */
@@ -200,6 +223,8 @@ export interface Panels {
   music: boolean;
   /** EWF-Historie (Bugfixes.txt #10), Button "EWF" in Transport.svelte. */
   ews_history: boolean;
+  /** Panel "Verkehr" (Durchsagen), Button "TA" in Transport.svelte. */
+  traffic: boolean;
 }
 
 export interface Settings {
@@ -215,6 +240,8 @@ export interface Settings {
   timeshift_capacity_s: number;
   ews_enabled: boolean;
   ews_autoswitch: boolean;
+  /** Bei Verkehrsdurchsagen (FIG 0/19) auf den Durchsage-Dienst umschalten, danach zurueck. */
+  traffic_autoswitch: boolean;
   record_pre_s: number;
   record_post_s: number;
   /** Musik-Trennung insgesamt an/aus; aus loescht die Vorschlagsliste. */
@@ -267,6 +294,7 @@ export type AppEvent =
   | { type: "notice"; level: "info" | "warn" | "error"; text: string }
   | { type: "ews_locations"; iid: number; sub_ch: number; location_info: EwsLocationInfo[] }
   | { type: "ews_history"; history: EwsHistoryEntry[] }
+  | { type: "traffic"; active: TrafficEntry | null; history: TrafficEntry[]; supported: boolean }
   | EpgAppEvent
   | TimerAppEvent
   | DebugAppEvent
@@ -278,11 +306,23 @@ export type AppEvent =
 // Schnittstelle
 // ---------------------------------------------------------------------------
 
+/** Quittierung eines Alarms, zwischen Haupt- und Alarmfenster ausgetauscht
+ * (Review 2026-09-16 Befund 2): die Rust-Seite merkt sich `dismissed` nur
+ * still, darum sagen sich die beiden Fenster selbst Bescheid. */
+export interface AlarmDismissed {
+  iid: number;
+  sub_ch: number;
+}
+const ALARM_DISMISSED_EVENT = "dab://alarm-dismissed";
+
 export interface Transport {
   /// Rohes Kern-Kommando (laeuft ueber die App-Schicht, die Kanal/Geraet mitfuehrt).
   send(cmd: Command): Promise<void>;
   onEvent(handler: (ev: CoreEvent) => void): Promise<() => void>;
   onAppEvent(handler: (ev: AppEvent) => void): Promise<() => void>;
+  /// Quittierung an alle Fenster melden bzw. empfangen (Frontend-zu-Frontend).
+  alarmDismissed(ev: AlarmDismissed): Promise<void>;
+  onAlarmDismissed(handler: (ev: AlarmDismissed) => void): Promise<() => void>;
   alive(): Promise<boolean>;
   getState(): Promise<AppState>;
 
@@ -357,6 +397,12 @@ class TauriTransport implements Transport {
   }
   async onAppEvent(handler: (ev: AppEvent) => void) {
     return listen<AppEvent>("dab://app", (e) => handler(e.payload));
+  }
+  alarmDismissed(ev: AlarmDismissed) {
+    return emit(ALARM_DISMISSED_EVENT, ev);
+  }
+  async onAlarmDismissed(handler: (ev: AlarmDismissed) => void) {
+    return listen<AlarmDismissed>(ALARM_DISMISSED_EVENT, (e) => handler(e.payload));
   }
   alive() {
     return invoke<boolean>("core_alive");

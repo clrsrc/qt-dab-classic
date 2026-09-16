@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { api } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
-  import { alertActive, notify, s } from "$lib/state.svelte";
+  import { alertActive, dismissAlert, notify, s } from "$lib/state.svelte";
   import { compass, fmtDistance } from "$lib/tii";
 
   const visible = $derived(alertActive() && !s.alert?.dismissed);
@@ -25,9 +24,9 @@
   });
   // Warnton kommt aus dem Alarmfenster (AlarmWindow.svelte, Entscheidung 10),
   // damit er nicht doppelt spielt und in den Einstellungen abschaltbar ist.
+  // Quittierung erreicht auch das Alarmfenster (Befund 2, state.dismissAlert).
   function dismiss() {
-    api.ewsDismiss().catch((e) => notify("warn", tError(e)));
-    if (s.alert) s.alert.dismissed = true;
+    dismissAlert().catch((e) => notify("warn", tError(e)));
   }
 </script>
 

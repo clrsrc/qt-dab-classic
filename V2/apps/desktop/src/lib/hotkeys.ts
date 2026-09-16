@@ -4,9 +4,9 @@
 // Esc = live.
 
 import { api } from "./core";
-import { dialogs } from "./dialogs.svelte";
+import { dialogOpen, dialogs } from "./dialogs.svelte";
 import { toggleRecording } from "./recording";
-import { s, togglePanel } from "./state.svelte";
+import { s, setVolume, toggleMute, togglePanel } from "./state.svelte";
 import { SKIP_STEP_S, timeshiftApi } from "./timeshift";
 
 export interface HotkeyActions {
@@ -24,6 +24,11 @@ function inEditable(target: EventTarget | null): boolean {
 
 export function makeKeyHandler(actions: HotkeyActions) {
   return (ev: KeyboardEvent) => {
+    // Offene Dialoge/Menues haben Vorrang (lib/dialogs.svelte.ts, Befund 4):
+    // Dialogs.svelte bedient Escape/Enter selbst; Ziffern, R, M, Leertaste
+    // usw. duerfen dann nichts ausloesen. Beide Handler haengen am selben
+    // window, stopPropagation dort reicht darum nicht.
+    if (dialogOpen()) return;
     if (inEditable(ev.target) && !(ev.ctrlKey && /^[0-9]$/.test(ev.key))) return;
     if (ev.altKey || ev.metaKey) return;
     const k = ev.key;
@@ -53,14 +58,15 @@ export function makeKeyHandler(actions: HotkeyActions) {
           ev.preventDefault();
           void togglePanel("music");
         } else {
-          run(api.setMute(!s.muted));
+          // Spiegel wird in state.svelte.ts nachgefuehrt (Befund 1).
+          run(toggleMute());
         }
         break;
       case "+":
-        run(api.setVolume(Math.min(100, s.volume + 5)));
+        run(setVolume(s.volume + 5));
         break;
       case "-":
-        run(api.setVolume(Math.max(0, s.volume - 5)));
+        run(setVolume(s.volume - 5));
         break;
       case "e":
       case "E":
@@ -99,8 +105,9 @@ export function makeKeyHandler(actions: HotkeyActions) {
         run(timeshiftApi.skip(SKIP_STEP_S));
         break;
       case "Escape":
-        // Offene Dialoge/Menues haben Vorrang (lib/dialogs.svelte.ts).
-        if (dialogs.confirm || dialogs.menu) return;
+        // Eine offene Vergroesserung (Logo/SlideShow) schliesst sich selbst
+        // per Escape; Timeshift darf dabei nicht auf live springen (Befund 5).
+        if (dialogs.zoom > 0) return;
         ev.preventDefault();
         run(timeshiftApi.live());
         break;

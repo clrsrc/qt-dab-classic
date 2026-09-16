@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { channelMhz } from "$lib/core";
-  import { t } from "$lib/i18n.svelte";
-  import { currentService, dlPlusTitle, s, slideUrl, ui } from "$lib/state.svelte";
+  import { dialogs } from "$lib/dialogs.svelte";
+  import { t, tError } from "$lib/i18n.svelte";
+  import { currentService, dlPlusTitle, notify, s, slideUrl, ui } from "$lib/state.svelte";
   import { fmtClock, remainingMin } from "$lib/epg";
   import { fmtOffset } from "$lib/timeshift";
   import { linkify } from "$lib/linkify";
@@ -20,7 +22,8 @@
   const artistSegments = $derived(linkify(dlp?.artist ?? ""));
   const openLink = (e: MouseEvent, url: string) => {
     e.preventDefault();
-    void openUrl(url);
+    // Opener-Plugin kann ablehnen (Scope, fehlender Browser): melden statt stumm (Befund 12).
+    openUrl(url).catch((x) => notify("warn", tError(x)));
   };
   const slide = $derived(slideUrl());
   // Bugfixes.txt #12 galt nur dem Logo (Logo.svelte); das meist groessere und
@@ -30,6 +33,15 @@
   function onSlideKey(e: KeyboardEvent) {
     if (slideZoomed && e.key === "Escape") slideZoomed = false;
   }
+  // Offene Vergroesserung anmelden, damit Escape nicht zusaetzlich Timeshift
+  // auf live springen laesst (lib/hotkeys.ts, Befund 5).
+  $effect(() => {
+    if (!slideZoomed) return;
+    untrack(() => dialogs.zoom++);
+    return () => {
+      dialogs.zoom--;
+    };
+  });
   const headline = $derived.by(() => {
     if (s.pending) return s.pending.name ? t("display.searching_service", { name: s.pending.name, channel: s.pending.channel }) : t("display.searching", { channel: s.pending.channel });
     if (svc) return svc.name.trim();

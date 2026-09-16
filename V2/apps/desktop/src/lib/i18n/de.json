@@ -10,7 +10,6 @@
   "ewf": "EWF",
   "window.minimize": "Minimieren",
   "window.close": "Schließen",
-
   "display.no_ensemble": "kein Ensemble",
   "display.no_service": "kein Dienst",
   "display.no_device": "kein Gerät geöffnet",
@@ -20,7 +19,6 @@
   "display.searching": "suche {channel}…",
   "display.searching_service": "suche {name} auf {channel}…",
   "display.file_ended": "Datei zu Ende",
-
   "transport.prev": "Vorheriger Dienst (↑)",
   "transport.next": "Nächster Dienst (↓)",
   "transport.stop": "Dienst stoppen",
@@ -31,7 +29,6 @@
   "transport.epg": "EPG-Panel (E)",
   "transport.timer": "Timer-Panel (T)",
   "transport.ewf": "EWF-Historie (grün: EWF-Dienst im Ensemble)",
-
   "panel.presets": "Speicher",
   "panel.services": "Ensemble",
   "panel.stations": "Senderliste",
@@ -42,8 +39,8 @@
   "panel.debug": "Debug",
   "panel.music": "Musik",
   "panel.ews_history": "EWF-Historie",
+  "panel.traffic": "Verkehr",
   "panel.placeholder": "Kommt in M3.",
-
   "preset.empty": "–",
   "preset.tooltip": "Speicher {n}: {name} ({channel}) – Klick = aufrufen, Rechtsklick/Langdruck = belegen",
   "preset.tooltip_empty": "Speicher {n} leer – Rechtsklick/Langdruck = mit aktuellem Sender belegen",
@@ -60,17 +57,14 @@
   "preset.stored": "Speicher {n} belegt mit {name}",
   "preset.cleared": "Speicher {n} gelöscht",
   "preset.no_service": "Kein Dienst gewählt",
-
   "error.recording active": "Umschalten während der Aufnahme gesperrt",
   "error.scan active": "Während des Scans nicht möglich",
   "error.preset empty": "Speicher leer",
   "error.no service selected": "Kein Dienst gewählt",
   "error.core not running": "Kern läuft nicht",
-
   "services.empty": "keine Dienste",
   "services.count": "{n} Dienste",
   "services.data": "Daten",
-
   "stations.empty": "Noch keine Senderliste. Ein Scan über alle Kanäle füllt sie; Ensembles, die Sie hören, kommen automatisch dazu.",
   "stations.scan": "Scan starten",
   "stations.scan_open": "Zum Scan (Gerät öffnen)",
@@ -93,7 +87,6 @@
   "stations.selected": "Senderliste: {name}",
   "stations.not_found": "Senderliste: {name} auf {channel} nicht gefunden",
   "error.station not found": "Sender nicht in der Senderliste",
-
   "channel.label": "Kanal",
   "channel.scan": "Scan",
   "channel.scan_stop": "Stopp",
@@ -104,7 +97,6 @@
   "channel.scan_snr": "SNR",
   "channel.scan_services": "{n} Dienste",
   "channel.no_signal": "kein Signal",
-
   "device.label": "Gerät",
   "device.hackrf": "HackRF One",
   "device.rtlsdr": "RTL-SDR",
@@ -115,12 +107,13 @@
   "device.loop": "Schleife",
   "device.path": "Pfad zur .uff/.iq-Datei",
   "device.rtlsdr_index": "Index",
-
   "settings.language": "Sprache",
   "settings.language_system": "System",
   "settings.agc": "AGC (SNR-Nachführung)",
   "settings.gain": "Gain manuell",
   "settings.gain_apply": "Setzen",
+  "settings.gain_reset": "verwerfen",
+  "settings.gain_reset_hint": "Eingabe verwerfen und den aktuellen Gain des Kerns anzeigen",
   "settings.lna": "LNA",
   "settings.vga": "VGA",
   "settings.amp": "AMP",
@@ -161,20 +154,16 @@
   "settings.pre_post": "Vor-/Nachlauf Aufnahme-Timer",
   "settings.pick_dir": "Ordner…",
   "settings.dir_clear": "Standard",
-
   "alarm.title": "NOTFALLWARNUNG",
   "alarm.test": "TEST",
   "alarm.pre": "Vorwarnung",
   "alarm.dismiss": "Verstanden",
   "alarm.switched_from": "Umgeschaltet vom vorherigen Dienst, Rückkehr nach Alarmende.",
   "alarm.stage": "Stufe {stage}",
-
   "modal.ok": "OK",
   "modal.cancel": "Abbrechen",
   "modal.yes": "Ja",
-
   "status.recording": "AUFNAHME",
-
   "timer.new": "Neu",
   "timer.count": "{n} Timer",
   "timer.empty": "Keine Timer – „Neu“ oder aus dem EPG anlegen.",
@@ -224,7 +213,6 @@
   "timer.fired.blocked": "Timer „{name}“ wartet – Aufnahme läuft",
   "timer.fired.missed": "Timer „{name}“ verpasst",
   "timer.fired.failed": "Timer „{name}“ fehlgeschlagen (Sender/Gerät nicht gefunden)",
-
   "rec.start": "Aufnahme starten (R)",
   "rec.stop": "Aufnahme beenden (R)",
   "rec.tip_active": "Aufnahme läuft (R = beenden): {path}",
@@ -237,7 +225,6 @@
   "rec.dir_default": "Ordner (leer = data/recordings)",
   "rec.pre": "Vorlauf min",
   "rec.post": "Nachlauf min",
-
   "sleep.label": "Sleep-Timer",
   "sleep.minutes": "min",
   "sleep.mute": "stumm",
@@ -247,7 +234,6 @@
   "sleep.remaining": "SLEEP {time}",
   "sleep.set": "Sleep-Timer: {n} min, dann {action}",
   "sleep.elapsed_mute": "Sleep-Timer abgelaufen: stumm geschaltet",
-
   "alarm.window_title": "NOTFALLWARNUNG",
   "alarm.phase": "Phase",
   "alarm.phase.pre_trigger": "Vorwarnung",
@@ -264,7 +250,6 @@
   "alarm.hint": "Bitte offizielle Durchsagen beachten.",
   "alarm.switched_from_name": "Umgeschaltet von {name} – Rückkehr nach Alarmende.",
   "alarm.none": "Kein Alarm aktiv.",
-
   "settings.group_timeshift": "Timeshift",
   "ts.pause": "Pause (Leertaste)",
   "ts.play": "Weiter ab Lesezeiger (Leertaste)",
@@ -283,13 +268,11 @@
   "ts.capacity_hint": "1 bis 240 min im Arbeitsspeicher (ca. {mb} MB); Änderung leert den Puffer",
   "ts.notice.ews_dropped": "Alarm: Zeitversatz verworfen – Warndienst läuft live.",
   "ts.notice.service_changed": "Senderwechsel: Zeitversatz verworfen, Puffer beginnt neu.",
-
   "error.timeshift unavailable": "Timeshift gibt es nur bei Live-Empfang",
   "error.range invalid": "Ungültiger Bereich für das Sichern",
   "error.offset_s invalid": "Ungültige Position im Puffer",
   "error.timer not found": "Timer nicht gefunden",
   "error.minutes out of range": "Minuten: 1 bis 1440",
-
   "epg.today": "Heute",
   "epg.tomorrow": "Morgen",
   "epg.service": "Dienst",
@@ -312,7 +295,6 @@
   "epg.legacy_hint": "Zeiten aus altem Cache (UTC + 2 min), unverändert angezeigt",
   "logo.none": "kein Logo",
   "logo.alt": "Logo",
-
   "debug.spectrum": "Spektrum",
   "debug.iq": "Konstellation",
   "debug.snr": "SNR-Verlauf (120 s)",
@@ -336,7 +318,6 @@
   "debug.manual": "manuell",
   "debug.scope_rate": "Debug-Scopes",
   "debug.scope_rate_hint": "Rate von Spektrum/Konstellation bei offenem Debug-Panel (D)",
-
   "tii.title": "TII-Sender",
   "tii.empty": "Keine TII-Kennungen erkannt (Auswertung im Nullsymbol, ca. 15 s nach Sync).",
   "tii.disabled": "TII-Auswertung ausgeschaltet (Einstellungen).",
@@ -352,6 +333,8 @@
   "tii.home_code": "Standort-Code",
   "tii.home_code_apply": "übernehmen",
   "tii.home_code_hint": "aus www.asa.radio, ersetzt Breite/Länge oben",
+  "tii.home_lat_invalid": "Breite muss eine Zahl zwischen -90 und 90 sein – nicht gespeichert",
+  "tii.home_lon_invalid": "Länge muss eine Zahl zwischen -180 und 180 sein – nicht gespeichert",
   "tii.enabled": "TII auswerten",
   "tii.threshold": "Schwelle",
   "tii.dx_mode": "DX-Modus (tii-files.csv)",
@@ -369,6 +352,7 @@
   "music.empty": "Noch keine Titel erkannt – DL+ oder DLS des laufenden Dienstes abwarten.",
   "music.empty_auto": "Automatisches Speichern ist an: erkannte Titel gehen direkt in den Aufnahmeordner.",
   "music.unknown": "(ohne Titel)",
+  "music.gone": "Vorschlag ist nicht mehr in der Liste",
   "music.ago": "vor {time}",
   "music.from_dls": "aus DLS geraten (Dienst ohne DL+)",
   "music.taken": "übernommen",
@@ -384,5 +368,34 @@
   "ews_history.test": "TEST",
   "ews_history.outside": "AUSSERHALB",
   "ews_history.outside_hint": "Außerhalb des eigenen Empfangsgebiets – kein Alarmfenster, kein Warnton (Heimatkoordinaten in den Einstellungen).",
-  "error.slot out of range": "Eintrag nicht gefunden"
+  "error.slot out of range": "Eintrag nicht gefunden",
+  "transport.traffic": "Verkehrsdurchsagen (TA) – Panel Verkehr",
+  "traffic.empty": "Noch keine Durchsage in dieser Sitzung – der Kern meldet Verkehrs- und Sonderdurchsagen (FIG 0/19) des abgestimmten Ensembles.",
+  "traffic.running": "LÄUFT",
+  "traffic.switched": "UMGESCHALTET",
+  "traffic.switched_hint": "Während der Durchsage wurde auf den Durchsage-Dienst umgeschaltet und danach zurück.",
+  "traffic.autoswitch": "umschalten",
+  "traffic.autoswitch_hint": "Bei einer Verkehrsdurchsage für den laufenden Dienst auf den Durchsage-Dienst umschalten und am Ende zurück (nicht während Aufnahme oder Notfallwarnung).",
+  "traffic.supported": "Dienst unterstützt Durchsagen",
+  "traffic.unsupported": "Dienst ohne Durchsagen",
+  "traffic.support_hint": "Ob der laufende Dienst per FIG 0/18 Durchsagen (Verkehr u. a.) angemeldet hat.",
+  "traffic.cluster": "Cluster {cluster}",
+  "traffic.for": "für",
+  "traffic.tpeg_hint": "Nur Audio-Durchsagen. Der TPEG-Datendienst (z. B. „ARD TPEG“) wird nicht dekodiert.",
+  "traffic.kind.alarm": "Alarm",
+  "traffic.kind.road": "Verkehr",
+  "traffic.kind.transport": "Nahverkehr",
+  "traffic.kind.warning": "Warnung",
+  "traffic.kind.news": "Nachrichten",
+  "traffic.kind.weather": "Wetter",
+  "traffic.kind.event": "Veranstaltung",
+  "traffic.kind.special": "Sonderereignis",
+  "traffic.kind.programme": "Programmhinweis",
+  "traffic.kind.sport": "Sport",
+  "traffic.kind.financial": "Wirtschaft",
+  "traffic.kind.unknown": "Durchsage",
+  "tii.home_status_set": "Ortsabgleich aktiv: {lat} / {lon} – Notfallwarnungen für andere Gebiete werden nur protokolliert",
+  "tii.home_status_unset": "Keine Heimatkoordinaten – jede Notfallwarnung (auch der ASA-Funktionstest alle 5 Minuten) wird angezeigt",
+  "ews_history.no_home": "kein Ortsabgleich",
+  "ews_history.no_home_hint": "Keine Heimatkoordinaten in den Einstellungen – alle Alarme gelten als relevant."
 }

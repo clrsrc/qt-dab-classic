@@ -7,7 +7,7 @@
   import { startBeep, stopBeep } from "$lib/alarm";
   import { api, type EwsLocationInfo } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
-  import { dispose, init, notify, s, ui } from "$lib/state.svelte";
+  import { dismissAlert, dispose, init, notify, s, ui } from "$lib/state.svelte";
   import { compass, fmtDistance } from "$lib/tii";
 
   onMount(() => {
@@ -57,19 +57,21 @@
     if (beepOn) startBeep();
     else stopBeep();
   });
-  // Alarmende (oder Quittierung aus dem Hauptfenster): Fenster zu.
+  // Alarmende oder Quittierung aus dem Hauptfenster: Fenster zu. Die
+  // Quittierung kommt als Frontend-Ereignis (api.onAlarmDismissed, in
+  // state.init abonniert) und setzt hier `dismissed` (Befund 2).
   $effect(() => {
-    if (ui.ready && (!alert || alert.phase === "end" || alert.dismissed)) void api.alarmClose();
+    if (ui.ready && (!alert || alert.phase === "end" || alert.dismissed)) api.alarmClose().catch(() => {});
   });
 
   async function acknowledge() {
     stopBeep();
     try {
-      await api.ewsDismiss();
+      await dismissAlert();
     } catch (e) {
       notify("warn", tError(e));
     }
-    await api.alarmClose();
+    await api.alarmClose().catch((e) => notify("warn", tError(e)));
   }
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape" || e.key === "Enter") void acknowledge();
@@ -95,7 +97,8 @@
       {#if alert.locations.length}
         <div class="locs">
           <div class="k">{t("alarm.locations")}</div>
-          {#each alert.location_info.length ? alert.location_info : alert.locations.map((code) => ({ code, lat: null, lon: null, radius_km: null, distance_km: null, azimuth_deg: null }) as EwsLocationInfo) as loc (loc.code)}
+          <!-- Schluessel mit Index: derselbe Ortscode darf doppelt vorkommen (Befund 13). -->
+          {#each alert.location_info.length ? alert.location_info : alert.locations.map((code) => ({ code, lat: null, lon: null, radius_km: null, distance_km: null, azimuth_deg: null }) as EwsLocationInfo) as loc, i (`${loc.code}#${i}`)}
             <div class="loc">{locationLabel(loc)}</div>
           {/each}
         </div>

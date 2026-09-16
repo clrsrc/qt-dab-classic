@@ -3,6 +3,7 @@
   // Gruppen. Jede Aenderung laeuft ueber patchSettings -> update_settings; die
   // Rust-Seite schickt die Kern-Kommandos (set_agc, set_ppm, set_audio_device,
   // set_volume, set_ews, set_epg, set_tii, set_scopes) selbst nach.
+  import { untrack } from "svelte";
   import { api, type Gain } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, patchSettings, s, ui } from "$lib/state.svelte";
@@ -16,12 +17,24 @@
   const num = (e: Event) => Number((e.target as HTMLInputElement).value);
 
   // TII / Debug-Panel (lib/debug.ts): Heimatkoordinaten, Detektor, DX, Scope-Rate
-  const numOrNull = (e: Event) => {
-    const v = (e.target as HTMLInputElement).value.trim().replace(",", ".");
-    return v === "" || isNaN(Number(v)) ? null : Number(v);
-  };
+  // Befund 9: `min`/`max` am number-Input halten getippte Werte nicht auf, und
+  // Rust (tii.rs) speichert ungeprueft. Leeres Feld = Koordinate loeschen;
+  // alles andere muss eine Zahl im gueltigen Bereich sein, sonst Meldung und
+  // nichts speichern (Feld auf den gespeicherten Wert zurueck).
+  const HOME_RANGE = { lat: 90, lon: 180 } as const;
   const setHome = (e: Event, which: "lat" | "lon") => {
-    const v = numOrNull(e);
+    const el = e.target as HTMLInputElement;
+    const raw = el.value.trim().replace(",", ".");
+    const prev = (which === "lat" ? ui.settings?.home_lat : ui.settings?.home_lon) ?? null;
+    let v: number | null = null;
+    if (raw !== "") {
+      v = Number(raw);
+      if (!isFinite(v) || Math.abs(v) > HOME_RANGE[which]) {
+        notify("warn", t(which === "lat" ? "tii.home_lat_invalid" : "tii.home_lon_invalid"));
+        el.value = prev === null ? "" : String(prev);
+        return;
+      }
+    }
     const lat = which === "lat" ? v : (ui.settings?.home_lat ?? null);
     const lon = which === "lon" ? v : (ui.settings?.home_lon ?? null);
     run(debugApi.homeSet(lat, lon));
@@ -63,15 +76,30 @@
   let vga = $state(40);
   let amp = $state(false);
   let tunerDb = $state(30);
+  // Befund 10: solange der Nutzer die Felder bearbeitet (und noch nicht
+  // "Setzen" gedrueckt hat), darf ein gain_changed des Kerns (z. B. der
+  // Gain-Speicher beim Kanalwechsel) die Eingabe nicht ueberschreiben.
+  let gainDirty = $state(false);
   $effect(() => {
+    const g = s.gain;
+    if (untrack(() => gainDirty)) return;
+    lna = g.lna;
+    vga = g.vga;
+    amp = g.amp;
+    tunerDb = Math.round(g.lna) / 10;
+  });
+  function applyGain() {
+    const g: Gain = isRtl ? { lna: Math.round(tunerDb * 10), vga: 0, amp: false } : { lna, vga, amp };
+    gainDirty = false;
+    run(api.setGain(g));
+  }
+  /** Eingabe verwerfen und wieder den Kern-Stand zeigen. */
+  function resetGain() {
+    gainDirty = false;
     lna = s.gain.lna;
     vga = s.gain.vga;
     amp = s.gain.amp;
     tunerDb = Math.round(s.gain.lna) / 10;
-  });
-  function applyGain() {
-    const g: Gain = isRtl ? { lna: Math.round(tunerDb * 10), vga: 0, amp: false } : { lna, vga, amp };
-    run(api.setGain(g));
   }
   function clearMemory() {
     const st = ui.settings;
@@ -86,7 +114,7 @@
     if (p) void patchSettings({ recording_dir: p });
   }
 
-  const panelNames = ["presets", "services", "stations", "scan", "settings", "epg", "timer", "music", "debug"] as const;
+  const panelNames = ["presets", "services", "stations", "scan", "settings", "epg", "traffic", "timer", "music", "debug"] as const;
 </script>
 
 {#if ui.settings}
@@ -127,13 +155,14 @@
         <span class="row">
           {#if isRtl}
             <span class="k">{t("settings.tuner_gain")}</span>
-            <input type="number" class="ppm" bind:value={tunerDb} min="0" max="50" step="0.1" disabled={gainLocked} />
+            <input type="number" class="ppm" bind:value={tunerDb} min="0" max="50" step="0.1" disabled={gainLocked} oninput={() => (gainDirty = true)} />
           {:else}
-            <span class="k">{t("settings.lna")}</span><input type="number" class="short" bind:value={lna} min="0" max="40" step="8" disabled={gainLocked} />
-            <span class="k">{t("settings.vga")}</span><input type="number" class="short" bind:value={vga} min="0" max="62" step="2" disabled={gainLocked} />
-            <label class="inl"><input type="checkbox" bind:checked={amp} disabled={gainLocked} />{t("settings.amp")}</label>
+            <span class="k">{t("settings.lna")}</span><input type="number" class="short" bind:value={lna} min="0" max="40" step="8" disabled={gainLocked} oninput={() => (gainDirty = true)} />
+            <span class="k">{t("settings.vga")}</span><input type="number" class="short" bind:value={vga} min="0" max="62" step="2" disabled={gainLocked} oninput={() => (gainDirty = true)} />
+            <label class="inl"><input type="checkbox" bind:checked={amp} disabled={gainLocked} oninput={() => (gainDirty = true)} />{t("settings.amp")}</label>
           {/if}
           <button class="btn" onclick={applyGain} disabled={gainLocked}>{t("settings.gain_apply")}</button>
+          {#if gainDirty}<button class="btn mini" onclick={resetGain} title={t("settings.gain_reset_hint")}>{t("settings.gain_reset")}</button>{/if}
           <span class="k">{t("settings.gain_current", { lna: s.gain.lna, vga: s.gain.vga, amp: s.gain.amp ? "A" : "-" })}{s.agc ? " AGC" : ""}</span>
         </span>
 
@@ -268,6 +297,16 @@
           <span class="k">{t("tii.home_lon")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-180" max="180" value={st.home_lon ?? ""} placeholder="6.7617" onchange={(e) => setHome(e, "lon")} />
           <span class="k">{t("tii.home_hint")}</span>
         </span>
+        <span class="lbl"></span>
+        <span class="row">
+          <!-- Sichtbarer Zustand des Ortsabgleichs: ohne beide Koordinaten
+               gilt jeder EWF-Alarm als relevant (Kern: relevant = null). -->
+          {#if st.home_lat != null && st.home_lon != null}
+            <span class="k homeok">{t("tii.home_status_set", { lat: st.home_lat.toFixed(4), lon: st.home_lon.toFixed(4) })}</span>
+          {:else}
+            <span class="k homewarn">{t("tii.home_status_unset")}</span>
+          {/if}
+        </span>
 
         <span class="lbl">{t("tii.home_code")}</span>
         <span class="row">
@@ -314,6 +353,8 @@
   .ppm { width: 60px; }
   .dir { flex: 1 1 160px; min-width: 120px; }
   .k { color: var(--text-dim); font-size: 9px; }
+  .k.homeok { color: var(--green); }
+  .k.homewarn { color: var(--amber); }
   .inl { display: inline-flex; align-items: center; margin-left: 6px; }
   .mono { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mini { font-size: 9px; min-height: 14px; padding: 0 5px; }

@@ -5,11 +5,17 @@
 
   function onKey(e: KeyboardEvent) {
     if (dialogs.confirm) {
-      if (e.key === "Escape") closeConfirm(false);
-      if (e.key === "Enter") closeConfirm(true);
-      e.stopPropagation();
+      if (e.key === "Escape" || e.key === "Enter") {
+        closeConfirm(e.key === "Enter");
+        e.preventDefault();
+      }
+      // Weitere window-Listener (Hotkeys, Zoom-Overlays) nicht mehr bedienen;
+      // stopPropagation wirkt nicht auf Listener am selben Ziel (Befund 4).
+      // Der Hotkey-Handler prueft zusaetzlich selbst `dialogOpen()`.
+      e.stopImmediatePropagation();
     } else if (dialogs.menu && e.key === "Escape") {
       closeMenu();
+      e.stopImmediatePropagation();
     }
   }
 </script>

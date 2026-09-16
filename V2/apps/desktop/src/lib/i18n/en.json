@@ -10,7 +10,6 @@
   "ewf": "EWF",
   "window.minimize": "Minimize",
   "window.close": "Close",
-
   "display.no_ensemble": "no ensemble",
   "display.no_service": "no service",
   "display.no_device": "no device open",
@@ -20,7 +19,6 @@
   "display.searching": "searching {channel}…",
   "display.searching_service": "searching {name} on {channel}…",
   "display.file_ended": "end of file",
-
   "transport.prev": "Previous service (↑)",
   "transport.next": "Next service (↓)",
   "transport.stop": "Stop service",
@@ -31,7 +29,6 @@
   "transport.epg": "EPG panel (E)",
   "transport.timer": "Timer panel (T)",
   "transport.ewf": "EWF history (green: EWF service in ensemble)",
-
   "panel.presets": "Presets",
   "panel.services": "Ensemble",
   "panel.stations": "Stations",
@@ -42,8 +39,8 @@
   "panel.debug": "Debug",
   "panel.music": "Music",
   "panel.ews_history": "EWF history",
+  "panel.traffic": "Traffic",
   "panel.placeholder": "Coming in M3.",
-
   "preset.empty": "–",
   "preset.tooltip": "Preset {n}: {name} ({channel}) – click = recall, right-click/long press = store",
   "preset.tooltip_empty": "Preset {n} empty – right-click/long press = store current service",
@@ -60,17 +57,14 @@
   "preset.stored": "Preset {n} set to {name}",
   "preset.cleared": "Preset {n} cleared",
   "preset.no_service": "No service selected",
-
   "error.recording active": "Switching is locked while recording",
   "error.scan active": "Not possible during a scan",
   "error.preset empty": "Preset is empty",
   "error.no service selected": "No service selected",
   "error.core not running": "Core is not running",
-
   "services.empty": "no services",
   "services.count": "{n} services",
   "services.data": "data",
-
   "stations.empty": "No station list yet. A scan over all channels fills it; ensembles you listen to are added automatically.",
   "stations.scan": "Start scan",
   "stations.scan_open": "Go to scan (open a device)",
@@ -93,7 +87,6 @@
   "stations.selected": "Stations: {name}",
   "stations.not_found": "Stations: {name} not found on {channel}",
   "error.station not found": "Station is not in the station list",
-
   "channel.label": "Channel",
   "channel.scan": "Scan",
   "channel.scan_stop": "Stop",
@@ -104,7 +97,6 @@
   "channel.scan_snr": "SNR",
   "channel.scan_services": "{n} services",
   "channel.no_signal": "no signal",
-
   "device.label": "Device",
   "device.hackrf": "HackRF One",
   "device.rtlsdr": "RTL-SDR",
@@ -115,12 +107,13 @@
   "device.loop": "Loop",
   "device.path": "Path to .uff/.iq file",
   "device.rtlsdr_index": "Index",
-
   "settings.language": "Language",
   "settings.language_system": "System",
   "settings.agc": "AGC (SNR tracking)",
   "settings.gain": "Manual gain",
   "settings.gain_apply": "Apply",
+  "settings.gain_reset": "discard",
+  "settings.gain_reset_hint": "discard the input and show the core's current gain",
   "settings.lna": "LNA",
   "settings.vga": "VGA",
   "settings.amp": "AMP",
@@ -161,20 +154,16 @@
   "settings.pre_post": "Pre-/post-roll for recording timers",
   "settings.pick_dir": "Folder…",
   "settings.dir_clear": "Default",
-
   "alarm.title": "EMERGENCY WARNING",
   "alarm.test": "TEST",
   "alarm.pre": "Pre-warning",
   "alarm.dismiss": "Acknowledge",
   "alarm.switched_from": "Switched from the previous service, returning after the alarm ends.",
   "alarm.stage": "Stage {stage}",
-
   "modal.ok": "OK",
   "modal.cancel": "Cancel",
   "modal.yes": "Yes",
-
   "status.recording": "RECORDING",
-
   "timer.new": "New",
   "timer.count": "{n} timers",
   "timer.empty": "No timers – use “New” or the EPG.",
@@ -224,7 +213,6 @@
   "timer.fired.blocked": "Timer “{name}” is waiting – recording in progress",
   "timer.fired.missed": "Timer “{name}” missed",
   "timer.fired.failed": "Timer “{name}” failed (service/device not found)",
-
   "rec.start": "Start recording (R)",
   "rec.stop": "Stop recording (R)",
   "rec.tip_active": "Recording (R = stop): {path}",
@@ -237,7 +225,6 @@
   "rec.dir_default": "Folder (empty = data/recordings)",
   "rec.pre": "Pre-roll min",
   "rec.post": "Post-roll min",
-
   "sleep.label": "Sleep timer",
   "sleep.minutes": "min",
   "sleep.mute": "mute",
@@ -247,7 +234,6 @@
   "sleep.remaining": "SLEEP {time}",
   "sleep.set": "Sleep timer: {n} min, then {action}",
   "sleep.elapsed_mute": "Sleep timer elapsed: muted",
-
   "alarm.window_title": "EMERGENCY WARNING",
   "alarm.phase": "Phase",
   "alarm.phase.pre_trigger": "pre-warning",
@@ -264,7 +250,6 @@
   "alarm.hint": "Please follow official announcements.",
   "alarm.switched_from_name": "Switched from {name} – returning after the alarm ends.",
   "alarm.none": "No alarm active.",
-
   "settings.group_timeshift": "Time shift",
   "ts.pause": "Pause (space)",
   "ts.play": "Resume from marker (space)",
@@ -283,13 +268,11 @@
   "ts.capacity_hint": "1 to 240 min in RAM (approx. {mb} MB); changing it clears the buffer",
   "ts.notice.ews_dropped": "Alert: time shift dropped – the warning service plays live.",
   "ts.notice.service_changed": "Station changed: time shift dropped, buffer restarts.",
-
   "error.timeshift unavailable": "Time shift needs live reception",
   "error.range invalid": "Invalid range for saving",
   "error.offset_s invalid": "Invalid position in the buffer",
   "error.timer not found": "Timer not found",
   "error.minutes out of range": "Minutes: 1 to 1440",
-
   "epg.today": "Today",
   "epg.tomorrow": "Tomorrow",
   "epg.service": "Service",
@@ -312,7 +295,6 @@
   "epg.legacy_hint": "Times from the old cache (UTC + 2 min), shown unchanged",
   "logo.none": "no logo",
   "logo.alt": "Logo",
-
   "debug.spectrum": "Spectrum",
   "debug.iq": "Constellation",
   "debug.snr": "SNR history (120 s)",
@@ -336,7 +318,6 @@
   "debug.manual": "manual",
   "debug.scope_rate": "Debug scopes",
   "debug.scope_rate_hint": "Spectrum/constellation rate while the debug panel (D) is open",
-
   "tii.title": "TII transmitters",
   "tii.empty": "No TII identifiers detected yet (null-symbol analysis, about 15 s after sync).",
   "tii.disabled": "TII analysis is switched off (settings).",
@@ -352,6 +333,8 @@
   "tii.home_code": "Location code",
   "tii.home_code_apply": "apply",
   "tii.home_code_hint": "from www.asa.radio, replaces latitude/longitude above",
+  "tii.home_lat_invalid": "latitude must be a number between -90 and 90 – not saved",
+  "tii.home_lon_invalid": "longitude must be a number between -180 and 180 – not saved",
   "tii.enabled": "Evaluate TII",
   "tii.threshold": "Threshold",
   "tii.dx_mode": "DX mode (tii-files.csv)",
@@ -369,6 +352,7 @@
   "music.empty": "No tracks detected yet – waiting for DL+ or DLS of the current service.",
   "music.empty_auto": "Automatic saving is on: detected tracks go straight to the recording folder.",
   "music.unknown": "(no title)",
+  "music.gone": "suggestion is no longer in the list",
   "music.ago": "{time} ago",
   "music.from_dls": "guessed from DLS (service without DL+)",
   "music.taken": "kept",
@@ -384,5 +368,34 @@
   "ews_history.test": "TEST",
   "ews_history.outside": "OUTSIDE",
   "ews_history.outside_hint": "Outside your own area – no alarm window, no warning tone (home coordinates in the settings).",
-  "error.slot out of range": "Entry not found"
+  "error.slot out of range": "Entry not found",
+  "transport.traffic": "Traffic announcements (TA) – traffic panel",
+  "traffic.empty": "No announcement in this session yet – the core reports traffic and other announcements (FIG 0/19) of the tuned ensemble.",
+  "traffic.running": "LIVE",
+  "traffic.switched": "SWITCHED",
+  "traffic.switched_hint": "Switched to the announcing service for the announcement and back afterwards.",
+  "traffic.autoswitch": "switch",
+  "traffic.autoswitch_hint": "On a traffic announcement for the current service, switch to the announcing service and back at the end (not while recording or during an emergency alert).",
+  "traffic.supported": "service supports announcements",
+  "traffic.unsupported": "service without announcements",
+  "traffic.support_hint": "Whether the current service has registered announcements (traffic etc.) via FIG 0/18.",
+  "traffic.cluster": "cluster {cluster}",
+  "traffic.for": "for",
+  "traffic.tpeg_hint": "Audio announcements only. The TPEG data service (e.g. \"ARD TPEG\") is not decoded.",
+  "traffic.kind.alarm": "Alarm",
+  "traffic.kind.road": "Traffic",
+  "traffic.kind.transport": "Transport",
+  "traffic.kind.warning": "Warning",
+  "traffic.kind.news": "News",
+  "traffic.kind.weather": "Weather",
+  "traffic.kind.event": "Event",
+  "traffic.kind.special": "Special event",
+  "traffic.kind.programme": "Programme info",
+  "traffic.kind.sport": "Sport",
+  "traffic.kind.financial": "Financial",
+  "traffic.kind.unknown": "Announcement",
+  "tii.home_status_set": "Geofencing active: {lat} / {lon} – emergency alerts for other areas are only logged",
+  "tii.home_status_unset": "No home coordinates – every emergency alert (including the ASA functional test every 5 minutes) is shown",
+  "ews_history.no_home": "no geofencing",
+  "ews_history.no_home_hint": "No home coordinates in the settings – all alerts count as relevant."
 }

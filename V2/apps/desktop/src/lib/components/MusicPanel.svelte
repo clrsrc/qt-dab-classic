@@ -35,11 +35,28 @@
     return path.split(/[\\/]/).pop() ?? path;
   }
 
-  async function take(index: number) {
+  // Befund 6: Die Kommandos music_export/adjust/preview nehmen einen
+  // Listenindex, die Liste rutscht aber, sobald der Kern bei > MUSIC_MAX den
+  // aeltesten Eintrag vorne entfernt. Darum wird ein Kandidat hier ueber
+  // seinen `start_frame` (Schreibzeiger beim Titelbeginn, je Ring eindeutig)
+  // angesprochen und der Index erst unmittelbar vor dem Aufruf aufgeloest.
+  // Ideal waere eine feste Kennung aus Rust (siehe Bericht).
+  function indexOf(startFrame: number): number {
+    return s.music_candidates.findIndex((c) => c.start_frame === startFrame);
+  }
+  function resolve(startFrame: number): number | null {
+    const i = indexOf(startFrame);
+    if (i < 0) notify("warn", t("music.gone"));
+    return i < 0 ? null : i;
+  }
+
+  async function take(startFrame: number) {
     if (busy) return;
     busy = true;
     try {
-      const path = await musicApi.exportCandidate(index);
+      const i = resolve(startFrame);
+      if (i === null) return;
+      const path = await musicApi.exportCandidate(i);
       notify("info", t("music.exported", { file: fileOf(path) }));
     } catch (e) {
       notify("warn", tError(e));
@@ -53,8 +70,10 @@
     if (busy) return;
     busy = true;
     try {
-      for (let i = 0; i < s.music_candidates.length; i++) {
-        if (s.music_candidates[i]?.taken) continue;
+      const keys = s.music_candidates.filter((c) => !c.taken).map((c) => c.start_frame);
+      for (const key of keys) {
+        const i = indexOf(key);
+        if (i < 0 || s.music_candidates[i]?.taken) continue; // inzwischen rausgerutscht oder uebernommen
         try {
           await musicApi.exportCandidate(i);
         } catch (e) {
@@ -82,21 +101,25 @@
   }
 
   /** +/- Sekunden-Stepper fuer Vor-/Nachlauf (verschiebbare Schnittmarken, Plan M4b Abschnitt 5). */
-  async function adjust(index: number, c: TrackCandidate, dPre: number, dPost: number) {
+  async function adjust(c: TrackCandidate, dPre: number, dPost: number) {
     if (busy) return;
     const preRollS = Math.min(MAX_ROLL_S, Math.max(MIN_ROLL_S, effectivePreRoll(c) + dPre));
     const postRollS = Math.min(MAX_ROLL_S, Math.max(MIN_ROLL_S, effectivePostRoll(c) + dPost));
+    const i = resolve(c.start_frame);
+    if (i === null) return;
     try {
-      await musicApi.adjust(index, preRollS, postRollS);
+      await musicApi.adjust(i, preRollS, postRollS);
     } catch (e) {
       notify("warn", tError(e));
     }
   }
 
   /** "Vorhoeren": an den Schnittanfang springen, um die Marken genau einzustellen. */
-  async function preview(index: number) {
+  async function preview(startFrame: number) {
+    const i = resolve(startFrame);
+    if (i === null) return;
     try {
-      await musicApi.preview(index);
+      await musicApi.preview(i);
     } catch (e) {
       notify("warn", tError(e));
     }
@@ -138,22 +161,22 @@
         <span class="len">{fmtLen(dur)}</span>
         <span class="ago">{t("music.ago", { time: fmtLen(ageS(c, frame)) })}</span>
         {#if !c.taken}
-          <button class="btn mini step" disabled={busy} title={t("music.preview_hint")} onclick={() => preview(i)}>{t("music.preview")}</button>
+          <button class="btn mini step" disabled={busy} title={t("music.preview_hint")} onclick={() => preview(c.start_frame)}>{t("music.preview")}</button>
           <span class="roll" title={t("music.pre_roll_hint")}>
-            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, -ROLL_STEP_S, 0)}>−</button>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(c, -ROLL_STEP_S, 0)}>−</button>
             <span class="roll-val">{t("music.pre_roll", { value: effectivePreRoll(c) })}</span>
-            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, ROLL_STEP_S, 0)}>+</button>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(c, ROLL_STEP_S, 0)}>+</button>
           </span>
           <span class="roll" title={t("music.post_roll_hint")}>
-            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, 0, -ROLL_STEP_S)}>−</button>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(c, 0, -ROLL_STEP_S)}>−</button>
             <span class="roll-val">{t("music.post_roll", { value: effectivePostRoll(c) })}</span>
-            <button class="btn mini step" disabled={busy} onclick={() => adjust(i, c, 0, ROLL_STEP_S)}>+</button>
+            <button class="btn mini step" disabled={busy} onclick={() => adjust(c, 0, ROLL_STEP_S)}>+</button>
           </span>
         {/if}
         {#if c.taken}
           <span class="done" title={t("music.taken")}>✓</span>
         {:else}
-          <button class="btn mini" disabled={busy} onclick={() => take(i)}>{t("music.take")}</button>
+          <button class="btn mini" disabled={busy} onclick={() => take(c.start_frame)}>{t("music.take")}</button>
         {/if}
       </div>
     {/each}

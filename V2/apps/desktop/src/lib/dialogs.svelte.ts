@@ -10,7 +10,14 @@ export interface MenuItem {
 export const dialogs = $state({
   confirm: null as null | { title: string; text: string; ok: string; cancel: string; resolve: (v: boolean) => void },
   menu: null as null | { x: number; y: number; items: MenuItem[] },
+  /** Offene Vergroesserungen (Logo/SlideShow); Escape gehoert dann ihnen, nicht Timeshift (Befund 5). */
+  zoom: 0,
 });
+
+/** Ob gerade ein Dialog/Menue offen ist, dem die Tastatur gehoert (Befund 4). */
+export function dialogOpen(): boolean {
+  return !!dialogs.confirm || !!dialogs.menu;
+}
 
 export function confirm(title: string, text: string, ok: string, cancel: string): Promise<boolean> {
   return new Promise((resolve) => {

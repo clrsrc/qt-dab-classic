@@ -12,6 +12,7 @@
   import Display from "$lib/components/Display.svelte";
   import EpgPanel from "$lib/components/EpgPanel.svelte";
   import EwsHistoryPanel from "$lib/components/EwsHistoryPanel.svelte";
+import TrafficPanel from "$lib/components/TrafficPanel.svelte";
   import PresetBar from "$lib/components/PresetBar.svelte";
   import TimerPanel from "$lib/components/TimerPanel.svelte";
   import MusicPanel from "$lib/components/MusicPanel.svelte";
@@ -68,6 +69,7 @@
     {#if panels?.settings}<SettingsPanel />{/if}
     {#if panels?.epg}<EpgPanel />{/if}
     {#if panels?.ews_history}<EwsHistoryPanel />{/if}
+    {#if panels?.traffic}<TrafficPanel />{/if}
     {#if panels?.timer}<TimerPanel />{/if}
     {#if panels?.music}<MusicPanel />{/if}
     {#if panels?.debug}<DebugPanel />{/if}

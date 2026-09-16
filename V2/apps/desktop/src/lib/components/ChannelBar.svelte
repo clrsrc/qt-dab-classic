@@ -34,14 +34,25 @@
     } else {
       source = { kind: "hack_rf", serial: null };
     }
-    await run(api.openDevice(source));
-    await refreshState();
+    // Befund 11: schlaegt das Oeffnen fehl, nicht weitermachen - sonst folgt
+    // eine zweite Meldung ("core not running"/Geraet zu) vom set_channel.
+    try {
+      await api.openDevice(source);
+    } catch (e) {
+      notify("warn", tError(e));
+      return;
+    }
+    await refreshState().catch((e) => notify("warn", tError(e)));
     if (device !== "file" && s.channel) await run(api.setChannel(s.channel));
     else if (device !== "file" && ui.settings?.last_channel) await run(api.setChannel(ui.settings.last_channel));
   }
   async function pick() {
-    const p = await api.pickFile();
-    if (p) filePath = p;
+    try {
+      const p = await api.pickFile();
+      if (p) filePath = p;
+    } catch (e) {
+      notify("warn", tError(e));
+    }
   }
   function scan() {
     if (s.scan.active) run(api.stopScan());

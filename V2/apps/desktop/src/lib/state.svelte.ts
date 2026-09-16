@@ -6,7 +6,7 @@
 import { api, type AppEvent, type AppState, type CoreEvent, type Presets, type ServiceInfo, type Settings } from "./core";
 import { applyDebugAppEvent, emptyDebugState, feedScopeEvent } from "./debug";
 import { emitEpgEvent } from "./epg";
-import { setLang, t } from "./i18n.svelte";
+import { setLang, t, tError } from "./i18n.svelte";
 import { applyRecordingState, applyTimerAppEvent, initTimers } from "./timers.svelte";
 import { emptyTimeshift } from "./timeshift";
 
@@ -52,6 +52,9 @@ export function emptyState(): AppState {
     timeshift: emptyTimeshift(),
     music_candidates: [],
     ews_history: [],
+    traffic_active: null,
+    traffic_history: [],
+    traffic_supported: false,
   };
 }
 
@@ -184,13 +187,18 @@ export function applyCoreEvent(ev: CoreEvent) {
       s.device = { kind: s.device?.kind ?? "hackrf", name: e.name, serial: e.serial };
       s.device_error = null;
       break;
+    // Befund 3 (Review 2026-09-16): die Rust-Seite loescht ihr `pending` bei
+    // device_closed/device_error/exiting still (app.rs), ohne preset_status -
+    // hier nachziehen, sonst blinkt "Suche ..." fuer immer.
     case "device_closed":
       s.device = null;
       s.file = null;
+      s.pending = null;
       clearReception();
       break;
     case "device_error":
       s.device_error = e.message;
+      s.pending = null;
       break;
     case "gain_changed":
       s.gain = { lna: e.lna, vga: e.vga, amp: e.amp };
@@ -257,7 +265,11 @@ export function applyCoreEvent(ev: CoreEvent) {
     case "service_stopped":
       if (e.slot === "primary") {
         resetTimeshift();
-        if (s.current?.sid === e.sid) clearService();
+        // Befund 8: liefert der Kern (kuenftig) `scids`, gilt der Stop nur fuer
+        // genau diese Komponente - ein verspaeteter Stop von scids=0 darf die
+        // schon laufende scids=1 desselben Dienstes nicht loeschen.
+        const sameComponent = typeof e.scids !== "number" || s.current?.scids === e.scids;
+        if (s.current?.sid === e.sid && sameComponent) clearService();
       }
       break;
     case "dls":
@@ -350,6 +362,7 @@ export function applyCoreEvent(ev: CoreEvent) {
       s.core_alive = false;
       s.device = null;
       s.scan.active = false;
+      s.pending = null;
       clearReception();
       break;
   }
@@ -419,6 +432,12 @@ export function applyAppEvent(ev: AppEvent) {
     case "ews_history":
       s.ews_history = ev.history;
       break;
+    // Verkehrs-/Sonderdurchsagen (dab_app::traffic): laufende, Historie, Unterstuetzung.
+    case "traffic":
+      s.traffic_active = ev.active;
+      s.traffic_history = ev.history;
+      s.traffic_supported = ev.supported;
+      break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:
       applyTimerAppEvent(ev);
@@ -436,6 +455,7 @@ let ticker: ReturnType<typeof setInterval> | undefined;
 export async function init() {
   unsubs.push(await api.onEvent(applyCoreEvent));
   unsubs.push(await api.onAppEvent(applyAppEvent));
+  unsubs.push(await api.onAlarmDismissed(applyAlarmDismissed));
   const [snap, settings, presets, [dir, portable]] = await Promise.all([
     api.getState(),
     api.getSettings(),
@@ -464,21 +484,89 @@ export async function refreshState() {
   Object.assign(s, await api.getState());
 }
 
-/** Einstellungen aendern (Teilobjekt) und an die Rust-Seite geben. */
-export async function patchSettings(patch: Partial<Settings>) {
-  if (!ui.settings) return;
+// ---------------------------------------------------------------------------
+// Aktionen mit lokalem Spiegel
+// ---------------------------------------------------------------------------
+
+/** Stummschaltung setzen; der Kern meldet kein Ereignis zurueck (Befund 1),
+ * darum wird der Spiegel nach erfolgreichem Kommando selbst nachgefuehrt. */
+export async function setMute(muted: boolean) {
+  await api.setMute(muted);
+  s.muted = muted;
+}
+
+export function toggleMute() {
+  return setMute(!s.muted);
+}
+
+/** Lautstaerke 0..100 setzen, Spiegel nach Erfolg nachfuehren (Befund 1). */
+export async function setVolume(percent: number) {
+  const v = Math.round(Math.min(100, Math.max(0, percent)));
+  await api.setVolume(v);
+  s.volume = v;
+}
+
+/** Alarm quittieren (Banner im Hauptfenster oder Alarmfenster, Befund 2):
+ * lokal sofort als quittiert markieren, dem Kern melden und die anderen
+ * Fenster per Frontend-Ereignis nachziehen - die Rust-Seite merkt sich
+ * `dismissed` nur still, ohne Ereignis. */
+export async function dismissAlert() {
+  const a = s.alert;
+  if (!a) return;
+  a.dismissed = true;
+  const key = { iid: a.iid, sub_ch: a.sub_ch };
+  try {
+    await api.ewsDismiss();
+  } finally {
+    await api.alarmDismissed(key).catch(() => {});
+  }
+}
+
+function applyAlarmDismissed(ev: { iid: number; sub_ch: number }) {
+  if (s.alert && s.alert.iid === ev.iid && s.alert.sub_ch === ev.sub_ch) s.alert.dismissed = true;
+}
+
+/** Einstellungen aendern (Teilobjekt) und an die Rust-Seite geben.
+ *
+ * Befund 7: Patches laufen nacheinander (Promise-Kette), damit der zweite
+ * nicht auf einer veralteten Rust-Fassung aufsetzt und den ersten
+ * ueberschreibt. Fehler landen in `notify`, die Rueckgabe lehnt nie ab;
+ * danach wird der Spiegel aus der Rust-Fassung wiederhergestellt. */
+let settingsQueue: Promise<void> = Promise.resolve();
+const settingsPending: Partial<Settings>[] = [];
+
+export function patchSettings(patch: Partial<Settings>): Promise<void> {
+  if (!ui.settings) return Promise.resolve();
   // Sofort im Spiegel (Sprache/Panels reagieren ohne Wartezeit), dann auf der
   // frischen Rust-Fassung aufsetzen: die pflegt z. B. gain_by_channel und
   // last_channel selbst, das darf ein Patch nicht ueberschreiben.
   ui.settings = { ...ui.settings, ...patch };
   if (patch.language !== undefined) setLang(patch.language);
-  const base = await api.getSettings().catch(() => ui.settings as Settings);
-  const next = { ...base, ...patch };
-  ui.settings = next;
-  await api.updateSettings(next);
+  settingsPending.push(patch);
+  const job = settingsQueue.then(async () => {
+    const base = await api.getSettings().catch(() => ui.settings as Settings);
+    const next = { ...base, ...patch };
+    // Noch wartende Patches bleiben optimistisch sichtbar.
+    ui.settings = Object.assign({}, next, ...settingsPending.slice(settingsPending.indexOf(patch) + 1));
+    await api.updateSettings(next);
+  });
+  settingsQueue = job.catch(() => {});
+  return job
+    .catch(async (e) => {
+      notify("warn", tError(e));
+      const truth = await api.getSettings().catch(() => null);
+      if (truth) {
+        ui.settings = truth;
+        setLang(truth.language);
+      }
+    })
+    .finally(() => {
+      const i = settingsPending.indexOf(patch);
+      if (i >= 0) settingsPending.splice(i, 1);
+    });
 }
 
-export async function togglePanel(name: keyof Settings["panels"]) {
-  if (!ui.settings) return;
-  await patchSettings({ panels: { ...ui.settings.panels, [name]: !ui.settings.panels[name] } });
+export function togglePanel(name: keyof Settings["panels"]): Promise<void> {
+  if (!ui.settings) return Promise.resolve();
+  return patchSettings({ panels: { ...ui.settings.panels, [name]: !ui.settings.panels[name] } });
 }

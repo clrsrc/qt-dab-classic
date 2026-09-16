@@ -2,7 +2,8 @@
   // Senderlogo als data:-URL aus dem Rust-Cache; Platzhalter mit Kuerzel,
   // wenn (noch) keins vorhanden ist. `src` uebersteuert den Abruf (Display:
   // Logo aus dem AppState; Slots: im Preset gespeichertes Logo).
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { dialogs } from "$lib/dialogs.svelte";
   import { t } from "$lib/i18n.svelte";
   import { getLogo, initials, onLogoUpdated, type LogoSize } from "$lib/logos";
 
@@ -58,6 +59,15 @@
   function onKey(e: KeyboardEvent) {
     if (zoomed && e.key === "Escape") zoomed = false;
   }
+  // Offene Vergroesserung anmelden: Escape gehoert dann ihr, nicht dem
+  // Timeshift-Kuerzel (lib/hotkeys.ts, Befund 5).
+  $effect(() => {
+    if (!zoomed) return;
+    untrack(() => dialogs.zoom++);
+    return () => {
+      dialogs.zoom--;
+    };
+  });
 
   function openZoom() {
     if (!zoomable || !url) return;

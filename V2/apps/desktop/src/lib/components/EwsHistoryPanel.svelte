@@ -6,7 +6,7 @@
   // Button "EWF" in Transport.svelte.
   import type { EwsHistoryEntry, EwsLocationInfo } from "$lib/core";
   import { t } from "$lib/i18n.svelte";
-  import { s } from "$lib/state.svelte";
+  import { s, ui } from "$lib/state.svelte";
   import { compass, fmtDistance } from "$lib/tii";
 
   function fmtWhen(unix: number): string {
@@ -41,6 +41,10 @@
 <section class="panel ews-history">
   <div class="panel-head">
     <span>{t("panel.ews_history")}</span>
+    <span class="grow"></span>
+    {#if ui.settings && (ui.settings.home_lat == null || ui.settings.home_lon == null)}
+      <span class="nohome" title={t("ews_history.no_home_hint")}>{t("ews_history.no_home")}</span>
+    {/if}
   </div>
   <div class="list">
     {#if !s.ews_history.length}
@@ -60,7 +64,8 @@
         </div>
         {#if locations(e).length}
           <div class="locs">
-            {#each locations(e) as loc (loc.code)}<span class="loc">{locationLabel(loc)}</span>{/each}
+            <!-- Schluessel mit Index: derselbe Ortscode darf doppelt vorkommen (Befund 13). -->
+            {#each locations(e) as loc, i (`${loc.code}#${i}`)}<span class="loc">{locationLabel(loc)}</span>{/each}
           </div>
         {/if}
       </div>
@@ -70,6 +75,9 @@
 
 <style>
   .ews-history { display: flex; flex-direction: column; flex: 1 1 120px; min-height: 80px; }
+  .panel-head { display: flex; align-items: center; gap: 8px; }
+  .grow { flex: 1; }
+  .nohome { font-size: 9px; color: var(--amber); }
   .list { flex: 1; margin: 3px 4px; overflow: auto; }
   .entry { padding: 3px 4px; font-size: 10px; border-bottom: 1px solid #14261a; }
   .entry:last-child { border-bottom: none; }
