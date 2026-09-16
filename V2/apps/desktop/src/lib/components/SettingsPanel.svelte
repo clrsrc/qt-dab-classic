@@ -293,8 +293,8 @@
       <div class="grid">
         <span class="lbl">{t("tii.home")}</span>
         <span class="row">
-          <span class="k">{t("tii.home_lat")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-90" max="90" value={st.home_lat ?? ""} placeholder="51.2180" onchange={(e) => setHome(e, "lat")} />
-          <span class="k">{t("tii.home_lon")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-180" max="180" value={st.home_lon ?? ""} placeholder="6.7617" onchange={(e) => setHome(e, "lon")} />
+          <span class="k">{t("tii.home_lat")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-90" max="90" value={st.home_lat ?? ""} placeholder="z. B. 51.2180" onchange={(e) => setHome(e, "lat")} />
+          <span class="k">{t("tii.home_lon")}</span><input type="number" class="ppm" style="width:78px" step="0.0001" min="-180" max="180" value={st.home_lon ?? ""} placeholder="z. B. 6.7617" onchange={(e) => setHome(e, "lon")} />
           <span class="k">{t("tii.home_hint")}</span>
         </span>
         <span class="lbl"></span>

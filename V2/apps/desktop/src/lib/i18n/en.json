@@ -329,7 +329,7 @@
   "tii.home": "Home coordinates",
   "tii.home_lat": "Latitude",
   "tii.home_lon": "Longitude",
-  "tii.home_hint": "decimal degrees, for distance/azimuth of TII transmitters and for geofencing emergency alerts",
+  "tii.home_hint": "type decimal degrees and confirm with Enter/Tab – grey numbers are examples only, nothing is stored until \"geofencing active\" appears below. Used for TII distance/azimuth and for geofencing emergency alerts.",
   "tii.home_code": "Location code",
   "tii.home_code_apply": "apply",
   "tii.home_code_hint": "from www.asa.radio, replaces latitude/longitude above",
