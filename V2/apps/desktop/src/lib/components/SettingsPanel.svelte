@@ -137,6 +137,9 @@
             <input type="number" class="short" min="0" max="9" value={st.rtlsdr_index} onchange={(e) => patchSettings({ rtlsdr_index: Math.max(0, num(e)) })} />
           {/if}
           {#if s.device}<span class="k">({deviceName(s.device.kind)} {s.device.name})</span>{/if}
+          {#if s.device?.clock}
+            <span class="k" class:clkext={s.device.clock === "extern"} title={t("device.clock_hint")}>{s.device.clock === "extern" ? t("device.clock_extern") : t("device.clock_intern")}</span>
+          {/if}
         </span>
 
         <span class="lbl">{t("settings.ppm")}</span>
@@ -353,6 +356,7 @@
   .ppm { width: 60px; }
   .dir { flex: 1 1 160px; min-width: 120px; }
   .k { color: var(--text-dim); font-size: 9px; }
+  .k.clkext { color: var(--green); }
   .k.homeok { color: var(--green); }
   .k.homewarn { color: var(--amber); }
   .inl { display: inline-flex; align-items: center; margin-left: 6px; }

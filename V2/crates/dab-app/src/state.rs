@@ -12,6 +12,9 @@ pub struct DeviceState {
     pub kind: String,
     pub name: String,
     pub serial: String,
+    /// Referenztakt ("extern"/"intern"), sobald der Kern ihn gemeldet hat.
+    #[serde(default)]
+    pub clock: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -302,8 +305,13 @@ impl AppState {
             }
             Event::DeviceOpened { name, serial, .. } => {
                 let kind = self.device_kind().unwrap_or("hackrf").to_string();
-                self.device = Some(DeviceState { kind, name: name.clone(), serial: serial.clone() });
+                self.device = Some(DeviceState { kind, name: name.clone(), serial: serial.clone(), clock: None });
                 self.device_error = None;
+            }
+            Event::ClockSource { source } => {
+                if let Some(d) = self.device.as_mut() {
+                    d.clock = Some(source.clone());
+                }
             }
             Event::DeviceClosed => {
                 self.device = None;

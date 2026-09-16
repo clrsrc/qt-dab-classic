@@ -186,8 +186,12 @@ export function applyCoreEvent(ev: CoreEvent) {
       s.core_version = String(e.core_version);
       break;
     case "device_opened":
-      s.device = { kind: s.device?.kind ?? "hackrf", name: e.name, serial: e.serial };
+      s.device = { kind: s.device?.kind ?? "hackrf", name: e.name, serial: e.serial, clock: null };
       s.device_error = null;
+      break;
+    // Referenztakt (HackRF CLKIN/GPSDO), kommt nach jedem Kanalstart.
+    case "clock_source":
+      if (s.device) s.device = { ...s.device, clock: String(e.source) };
       break;
     // Befund 3 (Review 2026-09-16): die Rust-Seite loescht ihr `pending` bei
     // device_closed/device_error/exiting still (app.rs), ohne preset_status -

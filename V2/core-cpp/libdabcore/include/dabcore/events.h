@@ -45,6 +45,8 @@ json ready(const std::string& coreVersion, uint32_t protocolVersion, const std::
 json deviceOpened(const std::string& name, const std::string& serial, uint8_t bitDepth);
 json deviceClosed();
 json deviceError(const std::string& message);
+/// Referenztakt des Geraets nach dem Start ("extern"/"intern"), additiv.
+json clockSource(const std::string& source);
 // Gain-Satz nach set_gain, AGC-Nachfuehrung, AMP-Retry im Scan oder beim
 // Oeffnen eines Geraets (Entscheidung 26: die App speichert ihn je Kanal).
 json gainChanged(int lna, int vga, bool amp, bool agc);

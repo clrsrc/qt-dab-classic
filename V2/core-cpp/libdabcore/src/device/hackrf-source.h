@@ -74,6 +74,7 @@ typedef int (*pfn_hackrf_si5351c_read)(hackrf_device*, const uint16_t, uint16_t*
 typedef int (*pfn_hackrf_si5351c_write)(hackrf_device*, const uint16_t, const uint16_t);
 typedef int (*pfn_hackrf_board_rev_read)(hackrf_device* device, uint8_t* value);
 typedef int (*pfn_hackrf_board_partid_serialno_read)(hackrf_device* device, read_partid_serialno_t* out);
+typedef int (*pfn_hackrf_get_clkin_status)(hackrf_device* device, uint8_t* status);
 
 class HackRfSource : public ISampleSource {
 public:
@@ -94,6 +95,7 @@ public:
     int16_t bitDepth() const override { return 8; }
     std::string name() const override { return "hackrf"; }
     std::string serial() const override { return serialNumber_; }
+    std::string clockSource() const override { return clockSource_; }
 
     DeviceGain setGain(const DeviceGain& g) override;
     bool hasAmp() const override { return true; }
@@ -168,6 +170,8 @@ private:
     pfn_hackrf_si5351c_write hackrf_si5351c_write = nullptr;
     pfn_hackrf_board_rev_read hackrf_board_rev_read = nullptr;
     pfn_hackrf_board_partid_serialno_read hackrf_board_partid_serialno_read = nullptr;
+    pfn_hackrf_get_clkin_status hackrf_get_clkin_status = nullptr;   // optional (libhackrf >= 2021.03)
+    std::string clockSource_;
     pfn_hackrf_library_version hackrf_library_version = nullptr;
     pfn_hackrf_library_release hackrf_library_release = nullptr;
 };

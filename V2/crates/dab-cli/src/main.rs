@@ -520,6 +520,7 @@ fn event_name(ev: &Event) -> &'static str {
     match ev {
         Event::Ready { .. } => "ready",
         Event::DeviceOpened { .. } => "device_opened",
+        Event::ClockSource { .. } => "clock_source",
         Event::DeviceClosed => "device_closed",
         Event::DeviceError { .. } => "device_error",
         Event::GainChanged { .. } => "gain_changed",
@@ -595,6 +596,7 @@ fn print_event(t: Duration, ev: &Event) {
         Event::ClockTime { unix_utc, lto_minutes } => println!("{ts}  ZEIT utc={unix_utc} lto={lto_minutes}"),
         Event::Log { level, text } => println!("{ts}  LOG  {level:?}: {text}"),
         Event::DeviceOpened { name, serial, bit_depth } => println!("{ts}  GERAET {name} {serial} {bit_depth} Bit"),
+        Event::ClockSource { source } => println!("{ts}  TAKT  {source}"),
         Event::DeviceError { message } => println!("{ts}  FEHLER {message}"),
         Event::GainChanged { lna, vga, amp, agc } => println!("{ts}  GAIN  LNA {lna} VGA {vga} AMP {} AGC {}", *amp as u8, *agc as u8),
         Event::NoSignal { channel } => println!("{ts}  KEIN SIGNAL auf {channel}"),

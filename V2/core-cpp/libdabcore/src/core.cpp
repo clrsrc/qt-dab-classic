@@ -1693,6 +1693,19 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
     sink_(events::log("info", "Kanal " + channel + " (" + std::to_string(freq / 1000) + " kHz)" +
                               (scan ? ", Scan" : "") + ", Umschaltung " + std::to_string(ms) + " ms"));
+    // Referenztakt (HackRF CLKIN/GPSDO): nach jedem Start melden, wenn
+    // bekannt; Log nur bei Aenderung, damit der Scan nicht 38-mal loggt.
+    {
+        const std::string clk = source_->clockSource();
+        if (!clk.empty()) {
+            sink_(events::clockSource(clk));
+            if (clk != lastClockSource_) {
+                lastClockSource_ = clk;
+                sink_(events::log("info", clk == "extern" ? "Referenztakt: extern (CLKIN 10 MHz, z. B. GPSDO)"
+                                                          : "Referenztakt: intern (TCXO)"));
+            }
+        }
+    }
     if (trace) std::fprintf(stderr, "tuneChannel %s: %lld ms\n", channel.c_str(), static_cast<long long>(ms));
     return true;
 }

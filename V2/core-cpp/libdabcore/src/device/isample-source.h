@@ -36,6 +36,10 @@ public:
     virtual int16_t bitDepth() const { return 10; }
     virtual std::string name() const = 0;
     virtual std::string serial() const { return std::string(); }
+    /// Referenztakt des Geraets nach dem Start: "extern" (z. B. GPSDO am
+    /// CLKIN des HackRF), "intern" (TCXO) oder leer, wenn das Geraet das
+    /// nicht meldet. Wird nach jedem restart() neu bestimmt.
+    virtual std::string clockSource() const { return std::string(); }
     virtual bool isFileInput() const { return false; }
     virtual int32_t vfoFrequency() const { return lastFrequency_; }
 

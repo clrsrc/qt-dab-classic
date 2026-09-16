@@ -35,6 +35,7 @@ json deviceOpened(const std::string& n, const std::string& s, uint8_t b) {
     auto j = ev("device_opened"); j["name"] = n; j["serial"] = s; j["bit_depth"] = b; return j;
 }
 json deviceClosed() { return ev("device_closed"); }
+json clockSource(const std::string& s) { auto j = ev("clock_source"); j["source"] = s; return j; }
 json deviceError(const std::string& m) { auto j = ev("device_error"); j["message"] = m; return j; }
 json gainChanged(int lna, int vga, bool amp, bool agc) {
     auto j = ev("gain_changed"); j["lna"] = lna; j["vga"] = vga; j["amp"] = amp; j["agc"] = agc; return j;

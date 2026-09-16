@@ -404,5 +404,8 @@
   "traffic.play": "play",
   "ews_history.play": "play",
   "playback.title": "Playback",
-  "playback.close": "Close playback"
+  "playback.close": "Close playback",
+  "device.clock_extern": "reference: external (CLKIN 10 MHz)",
+  "device.clock_intern": "reference: internal (TCXO)",
+  "device.clock_hint": "HackRF clock source: with a 10 MHz clock at CLKIN (e.g. GPSDO) the firmware switches to it on start. Keep ppm at 0 then."
 }

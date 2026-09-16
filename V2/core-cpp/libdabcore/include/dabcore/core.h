@@ -283,6 +283,7 @@ private:
     // ofdm_->start(), das per resetChannel alle Backends loescht) darf kein
     // Dienst angelegt werden - sonst zeigt RunningService::backend ins Leere.
     bool retuning_ = false;
+    std::string lastClockSource_;   // zuletzt gemeldeter Referenztakt (Log nur bei Aenderung)
     std::vector<std::unique_ptr<RunningService>> services_;
 
     // --- Aktionsthread (Review K1) ---

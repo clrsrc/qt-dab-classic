@@ -73,7 +73,7 @@ export interface AppState {
   core_alive: boolean;
   core_version: string;
   core_restarts: number;
-  device: { kind: string; name: string; serial: string } | null;
+  device: { kind: string; name: string; serial: string; clock?: string | null } | null;
   device_error: string | null;
   channel: string | null;
   synced: boolean;

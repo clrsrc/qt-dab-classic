@@ -404,5 +404,8 @@
   "traffic.play": "abspielen",
   "ews_history.play": "abspielen",
   "playback.title": "Wiedergabe",
-  "playback.close": "Wiedergabe schließen"
+  "playback.close": "Wiedergabe schließen",
+  "device.clock_extern": "Referenz: extern (CLKIN 10 MHz)",
+  "device.clock_intern": "Referenz: intern (TCXO)",
+  "device.clock_hint": "Taktquelle des HackRF: liegt am CLKIN ein 10-MHz-Takt (z. B. GPSDO) an, schaltet die Firmware beim Start selbst darauf um. ppm dann auf 0 lassen."
 }

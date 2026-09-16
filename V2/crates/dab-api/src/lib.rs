@@ -248,6 +248,9 @@ pub enum Event {
     DeviceOpened { name: String, serial: String, bit_depth: u8 },
     DeviceClosed,
     DeviceError { message: String },
+    /// Referenztakt des Geraets nach dem Start: "extern" (HackRF CLKIN, z. B.
+    /// GPSDO) oder "intern" (TCXO); additiv, aeltere Kerne senden es nicht.
+    ClockSource { source: String },
     /// Aktueller Gain-Satz und AGC-Zustand: nach `SetGain`/`SetAgc`, beim
     /// Oeffnen eines Geraets, bei jeder AGC-Nachfuehrung (VGA +-2 bzw.
     /// Tuner-Gain-Stufe) und beim AMP-Retry im Scan. Die App speichert ihn

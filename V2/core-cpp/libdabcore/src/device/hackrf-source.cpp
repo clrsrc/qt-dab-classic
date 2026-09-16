@@ -266,6 +266,14 @@ bool HackRfSource::restart(int32_t freq, int32_t skipped) {
     rc = hackrf_start_rx(theDevice_, callback, this);
     if (rc != HACKRF_SUCCESS) { reportError("hackrf_start_rx: " + errName(rc)); return false; }
     running_.store(hackrf_is_streaming(theDevice_) != 0);
+    // Referenztakt: die Firmware schaltet beim Start des Streams selbst auf
+    // CLKIN (10 MHz, z. B. GPSDO) um, wenn dort ein Takt anliegt; der Kern
+    // zeigt nur an, was sie gewaehlt hat (Stefan 16.09.2026, GPSDO-Frage).
+    clockSource_.clear();
+    if (hackrf_get_clkin_status) {
+        uint8_t st = 0;
+        if (hackrf_get_clkin_status(theDevice_, &st) == HACKRF_SUCCESS) clockSource_ = st ? "extern" : "intern";
+    }
     return running_.load();
 }
 
@@ -361,6 +369,7 @@ bool HackRfSource::loadHackrfFunctions() {
     hackrf_library_release = (pfn_hackrf_library_release)load("hackrf_library_release");
     hackrf_board_rev_read = (pfn_hackrf_board_rev_read)load("hackrf_board_rev_read");
     hackrf_board_partid_serialno_read = (pfn_hackrf_board_partid_serialno_read)load("hackrf_board_partid_serialno_read", false);
+    hackrf_get_clkin_status = (pfn_hackrf_get_clkin_status)load("hackrf_get_clkin_status", false);
 
     return hackrf_init && hackrf_open && hackrf_close && hackrf_exit && hackrf_start_rx &&
            hackrf_stop_rx && hackrf_device_list && hackrf_baseband_filter && hackrf_set_lna_gain &&
