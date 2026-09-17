@@ -276,10 +276,14 @@ adiodns\hosts.json).
     (Stau, stockend, Sperrung ...), Ursache mit Unterursache (Unfall,
     Baustelle, Gegenstaende ...), gesperrte Spuren, Laenge, Verzoegerung,
     Zeitraum, Hinweise (Umleitung folgen ...) sowie der Ort. Strassen-
-    namen werden nicht gesendet - der Ort kommt als OpenLR-Koordinaten:
-    angezeigt werden Strassenart (Autobahn, Auf-/Abfahrt ...), Strassen-
-    klasse, Fahrtrichtung und die Koordinaten; ein Klick darauf oeffnet
-    OpenStreetMap im Browser. Mit Heimatkoordinaten (Einstellungen >
+    namen werden nicht gesendet - der Ort kommt als OpenLR-Koordinaten.
+    Liegt er auf einer Autobahn, ordnet das Programm aus einer einge-
+    bauten Tabelle (OpenStreetMap, (c) OpenStreetMap-Mitwirkende, ODbL)
+    Nummer und Anschlussstellen zu: "A 3 - AS Koeln-Muelheim -> Kreuz
+    Koeln-Ost". Sonst stehen Strassenart (Auf-/Abfahrt ...), Strassen-
+    klasse, Fahrtrichtung und die Koordinaten da; ein Klick auf die
+    Koordinaten oeffnet OpenStreetMap im Browser. Das Filterfeld sucht
+    Teilbegriffe, mehrere Woerter muessen alle passen ("a3 sperr"). Mit Heimatkoordinaten (Einstellungen >
     TII/Debug) steht bei jeder Meldung Entfernung und Richtung und die
     Liste ist nach Entfernung sortiert, sonst neueste zuerst. Das Filter-
     feld sucht in allen Texten. Meldungen verschwinden mit ihrer Ablauf-

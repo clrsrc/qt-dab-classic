@@ -83,6 +83,24 @@
     return m >= 1000 ? `${(m / 1000).toFixed(m >= 10000 ? 0 : 1)} km` : `${m} m`;
   }
 
+  /** "A 3 · Koeln-Muelheim → Kreuz Koeln-Ost" aus der OpenStreetMap-Zuordnung. */
+  function junction(n: string): string {
+    return n
+      .split(";")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .map((x) => (/^(kreuz|dreieck|ak |ad |autobahnkreuz|autobahndreieck|rast|parkplatz|tank)/i.test(x) ? x : `AS ${x}`))
+      .join(" / ");
+  }
+  function highwayText(m: TpegEntry): string {
+    const r = m.road;
+    if (!r) return "";
+    let s = r.road.replace(";", " / ");
+    if (r.from && r.to) s += ` · ${junction(r.from)} → ${junction(r.to)}`;
+    else if (r.from) s += ` · ${t("tpeg.near")} ${junction(r.from)}`;
+    return s;
+  }
+
   function roadText(m: TpegEntry): string {
     const parts: string[] = [];
     if (m.fow !== null && m.fow !== undefined && m.fow !== 0) parts.push(tk("tpeg.fow", m.fow));
@@ -137,14 +155,17 @@
     });
   }
 
+  // Filter: mehrere Woerter, jedes muss als Teilbegriff in einem der
+  // angezeigten Texte vorkommen ("sperrung baust" trifft "Sperrung ... Baustelle").
   let filter = $state("");
   const tpegList = $derived.by<TpegEntry[]>(() => {
-    const f = filter.trim().toLowerCase();
+    const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
     const all = s.tpeg.messages;
-    if (!f) return all;
+    if (!words.length) return all;
     return all.filter((m) => {
-      const hay = [tk("tpeg.effect", m.effect), ...m.causes.map(causeText), roadText(m), adviceText(m), coordText(m)].join(" ").toLowerCase();
-      return hay.includes(f);
+      const hw = highwayText(m);
+      const hay = [tk("tpeg.effect", m.effect), ...m.causes.map(causeText), hw, hw.replace(/\s+/g, ""), roadText(m), adviceText(m), timeText(m), coordText(m), `#${m.id}`].join(" ").toLowerCase();
+      return words.every((w) => hay.includes(w));
     });
   });
 </script>
@@ -210,6 +231,7 @@
       <div class="entry" class:severe={m.effect >= 6} class:closed={m.effect === 7} class:expired={m.expiry_unix * 1000 < Date.now()}>
         <div class="head">
           <span class="eff">{tk("tpeg.effect", m.effect, t("tpeg.effect_unknown"))}</span>
+          {#if m.road}<span class="hw" title={t("traffic.tpeg_osm")}>{highwayText(m)}</span>{/if}
           {#each m.causes as c, i (i)}<span class="cause">{causeText(c)}</span>{/each}
           {#if m.length_m}<span class="flag">{fmtLength(m.length_m)}</span>{/if}
           {#if m.delay_min}<span class="flag warn">+{m.delay_min} min</span>{/if}
@@ -232,7 +254,7 @@
       </div>
     {/each}
   </div>
-  <div class="foot dim">{t("traffic.tpeg_hint")}{#if tpegOn && s.tpeg.available && !s.tpeg.home_known} {t("traffic.tpeg_home_hint")}{/if}</div>
+  <div class="foot dim">{t("traffic.tpeg_hint")} {t("traffic.tpeg_osm")}{#if tpegOn && s.tpeg.available && !s.tpeg.home_known} {t("traffic.tpeg_home_hint")}{/if}</div>
 </section>
 
 <style>
@@ -257,6 +279,7 @@
   .when { font-family: var(--mono); color: var(--text-dim); }
   .svc { font-weight: bold; }
   .eff { font-weight: bold; }
+  .hw { font-weight: bold; color: var(--text); }
   .dur, .dist { margin-left: auto; font-family: var(--mono); color: var(--text-dim); white-space: nowrap; }
   .flag { font-size: 8px; font-family: var(--mono); border: 1px solid currentColor; padding: 0 2px; color: var(--amber); }
   .flag.live { color: var(--green); }

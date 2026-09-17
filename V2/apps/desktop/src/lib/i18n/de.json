@@ -394,7 +394,7 @@
   "traffic.support_hint": "Ob der laufende Dienst per FIG 0/18 Durchsagen (Verkehr u. a.) angemeldet hat.",
   "traffic.cluster": "Cluster {cluster}",
   "traffic.for": "für",
-  "traffic.tpeg_hint": "TPEG-TEC der ARD: Straßennamen werden nicht gesendet – gezeigt werden Straßenart, Länge, Richtung und Koordinaten (Klick: Karte im Browser).",
+  "traffic.tpeg_hint": "TPEG-TEC der ARD: Straßennamen werden nicht gesendet – Autobahnen werden aus den Koordinaten zugeordnet, sonst Straßenart, Länge, Richtung, Koordinaten (Klick: Karte im Browser).",
   "traffic.kind.alarm": "Alarm",
   "traffic.kind.road": "Verkehr",
   "traffic.kind.transport": "Nahverkehr",
@@ -805,5 +805,7 @@
   "tpeg.frc.4": "Straße 4. Ordnung (FRC 4)",
   "tpeg.frc.5": "Straße 5. Ordnung (FRC 5)",
   "tpeg.frc.6": "Straße 6. Ordnung (FRC 6)",
-  "tpeg.frc.7": "sonstige Straße (FRC 7)"
+  "tpeg.frc.7": "sonstige Straße (FRC 7)",
+  "tpeg.near": "bei",
+  "traffic.tpeg_osm": "Autobahnnummern und Anschlussstellen: © OpenStreetMap-Mitwirkende (ODbL), eingebaute Tabelle."
 }

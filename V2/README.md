@@ -128,9 +128,12 @@ Background-Slot (`set_tpeg`, `--no-tpeg`); die geprüften MSC-Datengruppen gehen
 SNI, TEC 3.2 (MMC, Ereignis mit Ursache/Unterursache, Spuren, Länge, Verzögerung, Zeiten,
 Hinweise) und die Ortsreferenz (OpenLR-Koordinaten, Straßenklasse/-art, Richtung, Länge;
 TMC-Code zusätzlich). Das Verkehr-Panel (TA) zeigt die Liste, mit Heimatkoordinaten nach
-Entfernung sortiert. Die Binärregeln (ISO 21219-3) wurden am Mitschnitt nachvollzogen und
-gegen die Apache-2.0-Referenz `fenghlkevin/tpeg-item` abgeglichen; TFP (Verkehrsfluss)
-wird nur erkannt.
+Entfernung sortiert. Autobahnnummern und Anschlussstellen kommen aus einer eingebauten
+Tabelle (`crates/dab-app/data/autobahnen.bin`, erzeugt mit `tools/build-autobahnen.py`
+aus OpenStreetMap – © OpenStreetMap-Mitwirkende, ODbL): naechstes Autobahn-Teilstueck zum
+ersten Punkt, Anschlussstellen am Anfang und Ende. Die Binärregeln (ISO 21219-3) wurden am
+Mitschnitt nachvollzogen und gegen die Apache-2.0-Referenz `fenghlkevin/tpeg-item`
+abgeglichen; TFP (Verkehrsfluss) wird nur erkannt.
 
 Ortsabgleich (Geofencing) beim EWS-Alarm: Die Heimatkoordinaten gehen als
 `set_home_location` in den Kern, der die Ortscodes eines Alarms (TS 104 089

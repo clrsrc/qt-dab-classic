@@ -15,12 +15,15 @@
 //! Heimatkoordinaten (`Settings::home_lat/lon`) bekommt jede Meldung
 //! Entfernung und Richtung und die Liste ist nach Entfernung sortiert,
 //! sonst neueste zuerst. Strassennamen gibt es ohne Karte nicht - die App
-//! zeigt Strassenklasse/-art, Koordinaten, Laenge und Richtung.
+//! zeigt Strassenklasse/-art, Koordinaten, Laenge und Richtung; fuer
+//! Autobahnen ordnet `roads` (eingebaute OpenStreetMap-Tabelle) Nummer und
+//! Anschlussstellen zu.
 //!
 //! TFP (Verkehrsfluss, SCID 2) wird erkannt, aber nicht ausgewertet.
 
 pub mod frame;
 pub mod olr;
+pub mod roads;
 pub mod sni;
 pub mod tec;
 pub mod ubcr;
@@ -32,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub use olr::{Location, LocationKind};
+pub use roads::RoadInfo;
 pub use tec::{TecAdvice, TecCause, TecEvent, TecMessage};
 
 /// Nach Ablauf so lange noch anzeigen (Karussell-Luecken ueberbruecken).
@@ -92,6 +96,9 @@ pub struct TpegEntry {
     pub bearing_deg: Option<u16>,
     pub tmc_code: Option<u16>,
     pub location_text: Vec<String>,
+    /// Autobahn und Anschlussstellen aus der eingebauten OpenStreetMap-Tabelle
+    /// (crate::tpeg::roads), falls der Ort auf einer Autobahn liegt.
+    pub road: Option<RoadInfo>,
     /// vom Heimatort aus (nur mit Koordinaten)
     pub distance_km: Option<f64>,
     pub direction_deg: Option<u16>,
@@ -304,6 +311,7 @@ fn entry_of(s: &Stored, home: Option<(f64, f64)>) -> TpegEntry {
         e.bearing_deg = loc.bearing_deg;
         e.tmc_code = loc.tmc_code;
         e.location_text = loc.description.clone();
+        e.road = roads::lookup(&loc.points, loc.fow);
         if e.length_m.is_none() {
             e.length_m = loc.length_m.filter(|&l| l > 0);
         }
@@ -467,6 +475,22 @@ mod tests {
         // Muell: kein Rahmen
         assert!(!ctl.push_group(1, &[1, 2, 3, 4, 5, 6, 7, 8], now));
         assert_eq!(ctl.bad_groups, 1);
+    }
+
+    /// Stichprobe der Strassenzuordnung: `cargo test -p dab-app zeige_strassen -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn zeige_strassen() {
+        let mut ctl = TpegCtl::default();
+        for g in fixture_groups() {
+            ctl.push_group(1, &g, 0x6aaba2b5_i64 - 300);
+        }
+        let st = ctl.status(true, Some((6.96, 50.94)));
+        let with_road = st.messages.iter().filter(|m| m.road.is_some()).count();
+        println!("{} von {} Meldungen mit Autobahn", with_road, st.messages.len());
+        for m in st.messages.iter().take(25) {
+            println!("{:>6.1} km  fow {:?} frc {:?}  {:?}  {:?}", m.distance_km.unwrap_or(-1.0), m.fow, m.frc, m.road.as_ref().map(|r| format!("{} {:?} -> {:?} ({} m)", r.road, r.from, r.to, r.dist_m)), (m.lat, m.lon));
+        }
     }
 
     #[test]

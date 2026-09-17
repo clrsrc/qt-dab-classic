@@ -394,7 +394,7 @@
   "traffic.support_hint": "Whether the current service has registered announcements (traffic etc.) via FIG 0/18.",
   "traffic.cluster": "cluster {cluster}",
   "traffic.for": "for",
-  "traffic.tpeg_hint": "ARD TPEG-TEC: road names are not broadcast – shown are road type, length, direction and coordinates (click: map in browser).",
+  "traffic.tpeg_hint": "ARD TPEG-TEC: road names are not broadcast – motorways are matched from the coordinates, otherwise road type, length, direction and coordinates (click: map in browser).",
   "traffic.kind.alarm": "Alarm",
   "traffic.kind.road": "Traffic",
   "traffic.kind.transport": "Transport",
@@ -805,5 +805,7 @@
   "tpeg.frc.4": "fourth class road (FRC 4)",
   "tpeg.frc.5": "fifth class road (FRC 5)",
   "tpeg.frc.6": "sixth class road (FRC 6)",
-  "tpeg.frc.7": "other class road (FRC 7)"
+  "tpeg.frc.7": "other class road (FRC 7)",
+  "tpeg.near": "near",
+  "traffic.tpeg_osm": "Motorway numbers and junctions: © OpenStreetMap contributors (ODbL), built-in table."
 }

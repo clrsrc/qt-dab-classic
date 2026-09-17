@@ -182,6 +182,14 @@ export interface TecAdvice {
   text: string[];
 }
 
+export interface TpegRoad {
+  /** "A 3" (gemeinsamer Abschnitt "A 3;A 4") */
+  road: string;
+  from: string | null;
+  to: string | null;
+  dist_m: number;
+}
+
 /** Eine TEC-Verkehrsmeldung (dab_app::tpeg::TpegEntry); Codes -> Texte per i18n "tpeg.*". */
 export interface TpegEntry {
   id: number;
@@ -208,6 +216,8 @@ export interface TpegEntry {
   bearing_deg: number | null;
   tmc_code: number | null;
   location_text: string[];
+  /** Autobahn + Anschlussstellen aus der eingebauten OpenStreetMap-Tabelle (dab_app::tpeg::roads). */
+  road: TpegRoad | null;
   distance_km: number | null;
   direction_deg: number | null;
   first_seen: number;
