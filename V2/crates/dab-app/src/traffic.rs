@@ -92,6 +92,14 @@ pub struct TrafficCtl {
     ews_capture: Option<(u16, Capture)>,
 }
 
+impl TrafficCtl {
+    /// Dateien laufender Mitschnitte (bis zum Stop-Echo des Kerns) - die
+    /// darf das Aufraeumen (crate::storage) nicht anfassen.
+    pub(crate) fn capture_paths(&self) -> Vec<PathBuf> {
+        self.capture.iter().map(|c| c.path.clone()).chain(self.ews_capture.iter().map(|(_, c)| c.path.clone())).collect()
+    }
+}
+
 impl App {
     /// Aus [`App::handle_event`]: Durchsagen protokollieren, optional
     /// umschalten, Mitschnitte fuehren; bei Kanalwechsel/Geraeteende die
@@ -312,7 +320,6 @@ impl App {
         if !keep {
             let _ = std::fs::remove_file(path);
         }
-        let shown = path.display().to_string();
         let mut changed = false;
         if self.traffic.capture.as_ref().map(|c| c.path == path).unwrap_or(false) {
             self.traffic.capture = None;
@@ -323,22 +330,46 @@ impl App {
             changed = true;
         }
         if !keep {
-            for e in self.state.traffic_history.iter_mut().chain(self.state.traffic_active.iter_mut()) {
-                if e.file.as_deref() == Some(shown.as_str()) {
-                    e.file = None;
-                    changed = true;
-                }
-            }
-            for e in self.state.ews_history.iter_mut() {
-                if e.file.as_deref() == Some(shown.as_str()) {
-                    e.file = None;
-                    changed = true;
-                }
-            }
+            changed |= self.forget_file_refs(std::slice::from_ref(&path.to_path_buf()));
         }
         if !changed {
             return Effects::default();
         }
+        self.traffic_lists_notify()
+    }
+
+    /// Geloeschte Mitschnitte (zu klein, oder vom Aufraeumen in
+    /// crate::storage entfernt) von den Listeneintraegen loesen, damit kein
+    /// Abspielknopf auf eine fehlende Datei zeigt.
+    pub(crate) fn traffic_forget_files(&mut self, gone: &[PathBuf]) -> Effects {
+        if self.forget_file_refs(gone) {
+            self.traffic_lists_notify()
+        } else {
+            Effects::default()
+        }
+    }
+
+    fn forget_file_refs(&mut self, gone: &[PathBuf]) -> bool {
+        let shown: Vec<String> = gone.iter().map(|p| p.display().to_string()).collect();
+        let hit = |f: &Option<String>| f.as_deref().map(|f| shown.iter().any(|s| s == f)).unwrap_or(false);
+        let mut changed = false;
+        for e in self.state.traffic_history.iter_mut().chain(self.state.traffic_active.iter_mut()) {
+            if hit(&e.file) {
+                e.file = None;
+                changed = true;
+            }
+        }
+        for e in self.state.ews_history.iter_mut() {
+            if hit(&e.file) {
+                e.file = None;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// Beide Listen (Durchsagen und EWF-Historie) an die UI.
+    fn traffic_lists_notify(&self) -> Effects {
         let mut fx = self.traffic_notify();
         fx.events.push(AppEvent::EwsHistory { history: self.state.ews_history.clone() });
         fx

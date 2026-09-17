@@ -225,6 +225,7 @@ INHALT
                     auswerten, automatisch umschalten, Warnton), EPG
                     (Broadcast-EPG, TPEG-Verkehrsmeldungen, Internet-
                     Ergaenzung per RadioDNS - siehe unten), Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
+                    Belegung der Ordner, Obergrenze fuer Durchsage-Mitschnitte,
                     Vor-/Nachlauf, Sleep-Timer), Timeshift (Puffergroesse
                     in Minuten), Allgemein (Sprache, Autostart, Kurzlabel
                     auf den Speichertasten, sichtbare Panels, Datenordner,
@@ -265,7 +266,12 @@ adiodns\hosts.json).
     beendeten dieser Sitzung mit Mitschnitt (MP3 im Unterordner
     "durchsagen" des Aufnahmeordners, Haekchen "mitschneiden") und der
     Autoradio-Funktion "umschalten" (waehrend der Durchsage auf den
-    Durchsage-Dienst und danach zurueck).
+    Durchsage-Dienst und danach zurueck). Der Unterordner waechst nicht
+    unbegrenzt: Einstellungen > Aufnahme "Durchsagen hoechstens N Dateien,
+    M MB" (Standard 50 Dateien / 200 MB, 0 = unbegrenzt) - beim Start, nach
+    jedem Mitschnitt und nach einer Aenderung der Grenzen werden die
+    aeltesten Mitschnitte geloescht; der Tooltip am Haekchen zeigt die
+    aktuelle Belegung.
     Darunter die TPEG-Verkehrsmeldungen (ISO 21219 TEC, ETSI TS 103 551):
     Der Kern startet den TPEG-Datendienst des Ensembles automatisch im
     Hintergrund (Einstellungen > EPG "TPEG-Verkehrsmeldungen dekodieren",
@@ -348,7 +354,13 @@ adiodns\hosts.json).
     z. B. 20260912_121101_Dlf______________Informationen_am_Mittag.wav
   Ablage: data\recordings\ oder der in den Einstellungen gewaehlte
   Aufnahmeordner ("Ordner..." oeffnet den Auswahldialog, "Standard" setzt
-  auf data\recordings zurueck).
+  auf data\recordings zurueck). Darunter steht die Belegung des Ordners
+  (Zahl und Groesse der Dateien, "Ordner oeffnen" zeigt ihn im Explorer);
+  Aufnahmen und Musik-Exporte werden nie automatisch geloescht. Der
+  Unterordner "durchsagen" (Mitschnitte von Verkehrsdurchsagen und
+  Notfallwarnungen, siehe Verkehr-Panel) hat dagegen eine Obergrenze
+  "Durchsagen hoechstens N Dateien, M MB" (Standard 50 / 200, 0 =
+  unbegrenzt); die aeltesten fliegen automatisch raus.
 
   Umschaltsperre: Waehrend einer Aufnahme sind Sender-, Kanal- und
   Speicherwechsel sowie der Scan gesperrt. Ein Versuch oeffnet den Dialog

@@ -215,6 +215,8 @@ pub struct AppState {
     pub radiodns: crate::radiodns::RadioDnsStatus,
     /// TPEG-Verkehrsmeldungen (crate::tpeg): Dienst, Zaehler, Meldungsliste.
     pub tpeg: crate::tpeg::TpegStatus,
+    /// Belegung des Aufnahmeordners und des Durchsagen-Unterordners (crate::storage).
+    pub storage: crate::storage::StorageInfo,
 }
 
 pub fn unix_now() -> i64 {

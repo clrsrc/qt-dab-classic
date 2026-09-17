@@ -76,8 +76,9 @@ impl DataDirs {
     pub fn logos_dir(&self) -> PathBuf { self.root.join("logos") }
     /// RadioDNS-Zwischenspeicher (crate::radiodns): hosts.json, SI.xml je Server.
     pub fn radiodns_dir(&self) -> PathBuf { self.root.join("radiodns") }
+    /// Aufnahmen (WAV) und Musik-Exporte (MP3); Durchsage-Mitschnitte im
+    /// Unterordner "durchsagen" (crate::traffic, crate::storage).
     pub fn recordings_dir(&self) -> PathBuf { self.root.join("recordings") }
-    pub fn music_dir(&self) -> PathBuf { self.root.join("music") }
     pub fn timeshift_dir(&self) -> PathBuf { self.root.join("timeshift") }
     pub fn log_dir(&self) -> PathBuf { self.root.join("log") }
 
@@ -88,7 +89,6 @@ impl DataDirs {
             self.epg_dir(),
             self.logos_dir(),
             self.recordings_dir(),
-            self.music_dir(),
             self.log_dir(),
         ] {
             std::fs::create_dir_all(d)?;

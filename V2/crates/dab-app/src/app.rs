@@ -71,6 +71,8 @@ pub enum AppEvent {
     RadioDns { status: crate::radiodns::RadioDnsStatus },
     /// TPEG-Verkehrsmeldungen (crate::tpeg): Status/Liste geaendert (wie `AppState::tpeg`).
     Tpeg { status: crate::tpeg::TpegStatus },
+    /// Belegung Aufnahmeordner / Durchsagen-Unterordner (crate::storage, N2).
+    Storage { storage: crate::storage::StorageInfo },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -278,6 +280,9 @@ impl App {
             .cmd(Command::SetTpeg { enabled: s.tpeg_enabled });
         fx.append(self.debug_startup());
         fx.append(self.timeshift_startup());
+        // Durchsagen-Unterordner auf die Obergrenze beschneiden und die
+        // Belegung beider Ordner melden (crate::storage).
+        fx.append(self.announcement_prune());
         if s.ppm != 0 {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
         }
@@ -463,6 +468,11 @@ impl App {
         fx.append(self.traffic_on_event(ev, crate::state::unix_now()));
         fx.append(self.radiodns_on_event(ev, now));
         fx.append(self.tpeg_on_event(ev, crate::state::unix_now()));
+        if matches!(ev, Event::RecordingState { active: false, .. }) {
+            // Eine Datei ist fertig (Aufnahme, Export oder Durchsage-
+            // Mitschnitt): Durchsagen-Ordner beschneiden, Belegung neu melden.
+            fx.append(self.announcement_prune());
+        }
         fx.append(self.tick(now));
         fx
     }
@@ -820,6 +830,9 @@ impl App {
         fx.append(self.timeshift_on_settings(&old));
         fx.append(self.music_on_settings(&old));
         fx.append(self.radiodns_on_settings(&old, Instant::now()));
+        if old.announcement_keep_files != s.announcement_keep_files || old.announcement_keep_mb != s.announcement_keep_mb || old.recording_dir != s.recording_dir {
+            fx.append(self.announcement_prune());
+        }
         fx.append(self.save_settings());
         fx
     }

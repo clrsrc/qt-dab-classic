@@ -4,13 +4,13 @@
   // Rust-Seite schickt die Kern-Kommandos (set_agc, set_ppm, set_audio_device,
   // set_volume, set_ews, set_epg, set_tii, set_scopes) selbst nach.
   import { untrack } from "svelte";
-  import { api, type Gain } from "$lib/core";
+  import { api, type DirUsage, type Gain } from "$lib/core";
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, patchSettings, s, ui } from "$lib/state.svelte";
   import SleepTimer from "./SleepTimer.svelte";
   import { debugApi } from "$lib/debug";
   import { CAPACITY_MAX_MIN, CAPACITY_MIN_MIN } from "$lib/timeshift";
-  import { fmtShort } from "$lib/timers";
+  import { fmtBytes, fmtShort } from "$lib/timers";
 
   /** Statuszeile des RadioDNS-Abrufs (dab_app::radiodns::RadioDnsStatus). */
   function radiodnsStatus(): string {
@@ -37,6 +37,8 @@
   const sel = (e: Event) => (e.target as HTMLSelectElement).value;
   const chk = (e: Event) => (e.target as HTMLInputElement).checked;
   const num = (e: Event) => Number((e.target as HTMLInputElement).value);
+  /** Belegung eines Ordners (dab_app::storage::DirUsage): "N Dateien, 4.9 MB". */
+  const usage = (u: DirUsage) => t(u.files === 1 ? "settings.storage_usage_one" : "settings.storage_usage", { files: u.files, size: fmtBytes(u.bytes) });
 
   // TII / Debug-Panel (lib/debug.ts): Heimatkoordinaten, Detektor, DX, Scope-Rate
   // Befund 9: `min`/`max` am number-Input halten getippte Werte nicht auf, und
@@ -287,6 +289,25 @@
           <input type="text" class="dir" value={st.recording_dir ?? ""} placeholder={t("rec.dir_default")} onchange={(e) => patchSettings({ recording_dir: (e.target as HTMLInputElement).value.trim() || null })} />
           <button class="btn mini" onclick={pickRecordingDir}>{t("settings.pick_dir")}</button>
           {#if st.recording_dir}<button class="btn mini" onclick={() => patchSettings({ recording_dir: null })}>{t("settings.dir_clear")}</button>{/if}
+        </span>
+        <!-- Belegung (dab_app::storage, N2): Aufnahmen/Musik nur anzeigen, Durchsagen mit Obergrenze -->
+        <span class="lbl"></span>
+        <span class="row">
+          <span class="k">{usage(s.storage.recordings)}</span>
+          <button class="btn mini" onclick={() => run(api.openFolder(s.storage.recording_dir))}>{t("settings.open_dir")}</button>
+        </span>
+        <span class="lbl" title={t("settings.keep_hint")}>{t("settings.announcements")}</span>
+        <span class="row" title={t("settings.keep_hint")}>
+          <span class="k">{t("settings.keep_max")}</span>
+          <input type="number" class="ppm" value={st.announcement_keep_files} min="0" max="9999" onchange={(e) => patchSettings({ announcement_keep_files: Math.max(0, Math.round(num(e))) })} />
+          <span class="k">{t("settings.keep_files")}</span>
+          <input type="number" class="ppm" value={st.announcement_keep_mb} min="0" max="100000" onchange={(e) => patchSettings({ announcement_keep_mb: Math.max(0, Math.round(num(e))) })} />
+          <span class="k">{t("settings.keep_mb")}</span>
+        </span>
+        <span class="lbl"></span>
+        <span class="row">
+          <span class="k">{usage(s.storage.announcements)}</span>
+          <button class="btn mini" onclick={() => run(api.openFolder(s.storage.announcement_dir))}>{t("settings.open_dir")}</button>
         </span>
         <span class="lbl">{t("settings.pre_post")}</span>
         <span class="row">

@@ -58,6 +58,7 @@ export function emptyState(): AppState {
     traffic_supported: false,
     radiodns: { enabled: false, busy: false, eid: 0, services_found: 0, services_none: 0, logos: 0, schedules: 0, last_unix: 0, error: null },
     tpeg: { enabled: true, available: false, sid: 0, service_name: "", description: "", provider: "", tec_version: "", last_unix: 0, groups: 0, frames: 0, tfp_seen: false, home_known: false, messages: [] },
+    storage: { recording_dir: "", announcement_dir: "", recordings: { files: 0, bytes: 0 }, announcements: { files: 0, bytes: 0 } },
   };
 }
 
@@ -460,6 +461,10 @@ export function applyAppEvent(ev: AppEvent) {
     // TPEG-Verkehrsmeldungen (dab_app::tpeg): Dienst, Zaehler, Liste.
     case "tpeg":
       s.tpeg = ev.status;
+      break;
+    // Belegung Aufnahmeordner / Durchsagen (dab_app::storage, N2).
+    case "storage":
+      s.storage = ev.storage;
       break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:

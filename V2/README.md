@@ -135,6 +135,16 @@ ersten Punkt, Anschlussstellen am Anfang und Ende. Die Binärregeln (ISO 21219-3
 Mitschnitt nachvollzogen und gegen die Apache-2.0-Referenz `fenghlkevin/tpeg-item`
 abgeglichen; TFP (Verkehrsfluss) wird nur erkannt.
 
+Speicherplatz der Mitschnitte (17.09.2026): Durchsagen und Notfallwarnungen werden im
+Hintergrund als MP3 nach `<Aufnahmeordner>/durchsagen/` mitgeschnitten (`dab-app::traffic`).
+Damit der Ordner nicht unbegrenzt wächst, beschneidet `dab-app::storage` ihn beim Start,
+nach jeder beendeten Datei und nach einer Änderung der Grenzen auf
+`announcement_keep_files` Dateien / `announcement_keep_mb` MB (Standard 50 / 200, 0 =
+unbegrenzt, älteste zuerst; laufende Mitschnitte bleiben, gelöschte verlieren ihren
+Abspielknopf). Aufnahmen und Musik-Exporte im Aufnahmeordner selbst werden nie
+automatisch gelöscht; die UI zeigt für beide Ordner nur Zahl und Größe der Dateien
+(`AppState.storage`, Ereignis `storage`, Einstellungen › Aufnahme mit „Ordner öffnen“).
+
 Ortsabgleich (Geofencing) beim EWS-Alarm: Die Heimatkoordinaten gehen als
 `set_home_location` in den Kern, der die Ortscodes eines Alarms (TS 104 089
 Annex F) damit vergleicht und sein Urteil als `ews_alert.relevant` zurückmeldet.

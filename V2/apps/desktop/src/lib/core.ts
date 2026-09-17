@@ -140,6 +140,24 @@ export interface AppState {
   radiodns: RadioDnsStatus;
   /** TPEG-Verkehrsmeldungen (dab_app::tpeg): Dienst, Zaehler, Meldungsliste. */
   tpeg: TpegStatus;
+  /** Belegung Aufnahmeordner / Durchsagen-Unterordner (dab_app::storage, N2). */
+  storage: StorageInfo;
+}
+
+/** Zahl und Groesse der Dateien direkt in einem Ordner (dab_app::storage::DirUsage). */
+export interface DirUsage {
+  files: number;
+  bytes: number;
+}
+
+/** Belegung der Aufnahmeordner (dab_app::storage::StorageInfo). */
+export interface StorageInfo {
+  recording_dir: string;
+  announcement_dir: string;
+  /** Aufnahmen (WAV) und Musik-Exporte (MP3) im Aufnahmeordner selbst - werden nie automatisch geloescht. */
+  recordings: DirUsage;
+  /** Durchsage-/Warnungs-Mitschnitte; Obergrenze announcement_keep_files / announcement_keep_mb. */
+  announcements: DirUsage;
 }
 
 /** Status des TPEG-Empfangs (dab_app::tpeg::TpegStatus). */
@@ -374,6 +392,9 @@ export interface Settings {
   traffic_autoswitch: boolean;
   /** Durchsagen und Notfallwarnungen im Hintergrund als MP3 mitschneiden. */
   announcement_record: boolean;
+  /** Obergrenze fuer den Unterordner "durchsagen": Dateien bzw. MB, aelteste zuerst weg; 0 = unbegrenzt. */
+  announcement_keep_files: number;
+  announcement_keep_mb: number;
   record_pre_s: number;
   record_post_s: number;
   /** Musik-Trennung insgesamt an/aus; aus loescht die Vorschlagsliste. */
@@ -438,6 +459,7 @@ export type AppEvent =
   | { type: "traffic"; active: TrafficEntry | null; history: TrafficEntry[]; supported: boolean }
   | { type: "radiodns"; status: RadioDnsStatus }
   | { type: "tpeg"; status: TpegStatus }
+  | { type: "storage"; storage: StorageInfo }
   | EpgAppEvent
   | TimerAppEvent
   | DebugAppEvent
@@ -473,6 +495,8 @@ export interface Transport {
   updateSettings(settings: Settings): Promise<void>;
   getPresets(): Promise<Presets>;
   dataDir(): Promise<[string, boolean]>;
+  /** Ordner im Explorer oeffnen (Aufnahmeordner, Durchsagen). */
+  openFolder(path: string): Promise<void>;
 
   openDevice(source: SourceKind): Promise<void>;
   setChannel(channel: string): Promise<void>;
@@ -566,6 +590,9 @@ class TauriTransport implements Transport {
   }
   dataDir() {
     return invoke<[string, boolean]>("data_dir");
+  }
+  openFolder(path: string) {
+    return invoke<void>("open_folder", { path });
   }
   openDevice(source: SourceKind) {
     return invoke<void>("open_device", { source });

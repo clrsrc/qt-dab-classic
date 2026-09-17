@@ -20,6 +20,7 @@ pub mod settings;
 pub mod sleep;
 pub mod state;
 pub mod stations;
+pub mod storage;
 pub mod tii;
 pub mod timer;
 pub mod timeshift;

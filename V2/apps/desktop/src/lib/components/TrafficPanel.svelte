@@ -16,6 +16,7 @@
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, s, ui, patchSettings } from "$lib/state.svelte";
   import { playRecording, playback } from "$lib/playback.svelte";
+  import { fmtBytes } from "$lib/timers";
 
   const KIND_KEYS = ["alarm", "road", "transport", "warning", "news", "weather", "event", "special", "programme", "sport", "financial"] as const;
 
@@ -175,7 +176,7 @@
     <span>{t("panel.traffic")}</span>
     <span class="grow"></span>
     <span class="k" title={t("traffic.support_hint")}>{supported ? t("traffic.supported") : t("traffic.unsupported")}</span>
-    <label class="inl" title={t("traffic.record_hint")}>
+    <label class="inl" title={`${t("traffic.record_hint")} ${t(s.storage.announcements.files === 1 ? "traffic.record_usage_one" : "traffic.record_usage", { files: s.storage.announcements.files, size: fmtBytes(s.storage.announcements.bytes) })}`}>
       <input type="checkbox" checked={ui.settings?.announcement_record ?? true} onchange={(e) => void patchSettings({ announcement_record: (e.currentTarget as HTMLInputElement).checked })} />
       {t("traffic.record")}
     </label>

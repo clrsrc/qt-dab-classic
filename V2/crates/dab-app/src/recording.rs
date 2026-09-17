@@ -393,13 +393,14 @@ mod tests {
         let mine = started_path(&fx);
         a.handle_event(&rec_state(true, Some(&mine)), now);
 
-        let export = a.dirs.music_dir().join("20260916_120000_Dlf_Titel.mp3");
+        let export = a.dirs.recordings_dir().join("20260916_120000_Dlf_Titel.mp3");
         let fx = a.handle_event(&rec_state(false, Some(&export.display().to_string())), now);
         assert!(a.state.recording, "Export-Ende hat die Umschaltsperre aufgehoben");
         assert!(a.rec.info.active);
         assert_eq!(a.rec.info.timer_id, Some(7));
         assert_eq!(a.rec.info.path.as_deref(), Some(mine.as_str()), "Exportpfad darf die Aufnahme nicht ueberschreiben");
-        assert!(fx.events.is_empty(), "kein RecordingChanged fuer den Export: {:?}", fx.events);
+        // (Das Dateiende loest nur die Belegungsmeldung von crate::storage aus.)
+        assert!(!fx.events.iter().any(|e| !matches!(e, AppEvent::Storage { .. })), "kein RecordingChanged fuer den Export: {:?}", fx.events);
         // Ein Export-Ende OHNE laufende Aufnahme ist ebenso keine Aufnahmemeldung.
         a.handle_event(&rec_state(false, Some(&mine)), now);
         assert!(!a.state.recording);

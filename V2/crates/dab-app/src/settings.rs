@@ -32,6 +32,11 @@ pub struct Settings {
     /// Durchsagen und Notfallwarnungen im Background-Slot als MP3 mitschneiden
     /// (crate::traffic, Unterordner "durchsagen" des Aufnahmeordners), Standard an.
     pub announcement_record: bool,
+    /// Obergrenze fuer den Unterordner "durchsagen" (crate::storage, Punkt N2,
+    /// 17.09.2026): hoechstens so viele Dateien bzw. so viele MB, aelteste
+    /// zuerst weg; 0 = unbegrenzt. Standard 50 Dateien / 200 MB.
+    pub announcement_keep_files: u32,
+    pub announcement_keep_mb: u32,
     pub record_pre_s: u32,
     pub record_post_s: u32,
     /// Musik-Trennung (Titelerkennung aus DL+/DLS, Schnitt aus dem Timeshift-Ring)
@@ -132,6 +137,8 @@ impl Default for Settings {
             ews_autoswitch: true,
             traffic_autoswitch: false,
             announcement_record: true,
+            announcement_keep_files: 50,
+            announcement_keep_mb: 200,
             record_pre_s: 2 * 60,
             record_post_s: 5 * 60,
             music_enabled: false,

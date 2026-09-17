@@ -285,6 +285,17 @@ fn data_dir(shared: State<'_, Shared>) -> R<(String, bool)> {
     Ok((a.dirs.root.display().to_string(), a.dirs.portable))
 }
 
+/// Ordner im Explorer oeffnen (Einstellungen > Aufnahme: Aufnahmeordner,
+/// Durchsagen). Nur vorhandene Ordner, sonst Fehlertext an die UI.
+#[tauri::command]
+fn open_folder(path: String) -> R<()> {
+    let p = std::path::PathBuf::from(&path);
+    if !p.is_dir() {
+        return Err(format!("{path}: kein Ordner"));
+    }
+    tauri_plugin_opener::open_path(p, None::<&str>).map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Kernstart und Ereignis-Bruecke
 // ---------------------------------------------------------------------------
@@ -522,6 +533,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             recording_bytes,
+            open_folder,
             get_state,
             get_settings,
             update_settings,
