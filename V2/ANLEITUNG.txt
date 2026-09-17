@@ -61,6 +61,13 @@ INHALT
      bereits mitbringt - auf aktuellen Windows-10/11-Rechnern die Regel.
      Fehlt sie, meldet die App das beim Start; dann das grosse Paket
      nehmen oder die "WebView2 Evergreen Runtime" von Microsoft installieren.
+     Windows 10 mit dem grossen Paket: Microsoft verlangt fuer die
+     mitgelieferte Laufzeit einmalig Leserechte fuer App-Container auf dem
+     Ordner webview2\ (Windows 11 braucht das nicht). Dafuer liegt
+     "webview2-rechte-win10.cmd" bei: einmal per Doppelklick ausfuehren
+     (oder in einer Eingabeaufforderung im Programmordner:
+       icacls webview2 /grant *S-1-15-2-2:(OI)(CI)(RX)
+       icacls webview2 /grant *S-1-15-2-1:(OI)(CI)(RX)  ).
 
   2. dab-classic.exe doppelklicken. Fertig.
 

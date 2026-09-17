@@ -122,6 +122,18 @@ if ($WebView2Runtime) {
     }
     if (-not (Test-Path "$wv\msedgewebview2.exe")) { throw "webview2\msedgewebview2.exe fehlt nach dem Entpacken" }
     $wvVersion = (Get-Item "$wv\msedgewebview2.exe").VersionInfo.ProductVersion
+    # Windows 10: Fixed Version >= 120 braucht Leserechte fuer App-Container auf dem Ordner
+    # (learn.microsoft.com/microsoft-edge/webview2/concepts/distribution); Windows 11 nicht.
+    Set-Content -Path (Join-Path $Dist 'webview2-rechte-win10.cmd') -Encoding ascii -Value @'
+@echo off
+rem DAB Classic: Leserechte fuer App-Container auf der mitgelieferten WebView2-Laufzeit (nur Windows 10 noetig)
+cd /d "%~dp0"
+icacls webview2 /grant *S-1-15-2-2:(OI)(CI)(RX)
+icacls webview2 /grant *S-1-15-2-1:(OI)(CI)(RX)
+echo.
+echo Fertig. Jetzt dab-classic.exe starten.
+pause
+'@
 }
 
 $size = (Get-ChildItem $Dist -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
@@ -141,12 +153,16 @@ if ($Zip) {
     $wvKeep = Join-Path $distParent '_webview2-keep'
     $hadWv = Test-Path "$Dist\webview2"
     if ($hadWv) { if (Test-Path $wvKeep) { Remove-Item -Recurse -Force $wvKeep }; Move-Item "$Dist\webview2" $wvKeep }
+    $cmdKeep = Join-Path $distParent '_webview2-cmd-keep'
+    $hadCmd = Test-Path "$Dist\webview2-rechte-win10.cmd"
+    if ($hadCmd) { Move-Item "$Dist\webview2-rechte-win10.cmd" $cmdKeep -Force }
     try {
         Write-Host "== ZIP (lite, ohne WebView2-Laufzeit): $zipLite"
         Compress-Archive -Path $Dist -DestinationPath $zipLite -CompressionLevel Optimal
         Write-Host ("ZIP: {0} ({1:N0} MB)" -f $zipLite, ((Get-Item $zipLite).Length / 1MB))
     } finally {
         if ($hadWv) { Move-Item $wvKeep "$Dist\webview2" }
+        if ($hadCmd) { Move-Item $cmdKeep "$Dist\webview2-rechte-win10.cmd" -Force }
     }
 }
 

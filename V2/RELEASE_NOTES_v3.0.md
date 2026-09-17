@@ -61,7 +61,10 @@ Release Notes. Entpacken, `dab-classic.exe` starten.
 - Windows 10/11, 64 Bit; CPU mit AVX2 empfohlen (Viterbi-Decoder mit
   SSE/AVX2-Laufzeitauswahl)
 - HackRF One oder RTL-SDR (R820T/R828D) mit WinUSB-Treiber (Zadig liegt bei)
-- WebView2-Laufzeit: im Vollpaket enthalten, beim Lite-Paket vom System
+- WebView2-Laufzeit: im Vollpaket enthalten, beim Lite-Paket vom System.
+  Windows 10 mit dem Vollpaket: einmalig `webview2-rechte-win10.cmd` ausführen
+  (Leserechte für App-Container auf `webview2\`, Vorgabe von Microsoft für
+  Fixed-Version-Laufzeiten ab Version 120; Windows 11 braucht das nicht)
 
 ## Umstieg von v2.0
 

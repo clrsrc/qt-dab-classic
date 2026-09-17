@@ -57,10 +57,21 @@ Ordner `core\`, lädt der Kern sie zur Laufzeit und dekodiert damit AAC
 
 ### Microsoft Edge WebView2
 
-- `WebView2Loader.dll` (WebView2 SDK) und, nur im Vollpaket, die Fixed-Version-
-  Laufzeit 153.0.4234.32 im Ordner `webview2\`
-- Weitergabe gemäß den Lizenzbedingungen von Microsoft für das WebView2 SDK
-  und die WebView2 Runtime (https://developer.microsoft.com/microsoft-edge/webview2/)
+- `WebView2Loader.dll` aus dem WebView2 SDK (NuGet `Microsoft.Web.WebView2`),
+  Lizenz BSD-3-Clause, Copyright (C) Microsoft Corporation. All rights reserved.
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the copyright notice, the list of
+  conditions and the disclaimer are retained; neither the name of Microsoft
+  Corporation nor the names of its contributors may be used to endorse or
+  promote products derived from this software without specific prior written
+  permission. THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+- Nur im Vollpaket: die WebView2 Fixed Version Runtime 153.0.4234.32 im Ordner
+  `webview2\`. Microsoft stellt diesen Verteilmodus ausdrücklich dafür bereit,
+  die Laufzeit zusammen mit der eigenen Anwendung auszuliefern
+  (https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution);
+  die Weitergabe erfolgt gemäß den beim Download akzeptierten Lizenzbedingungen
+  von Microsoft. Die Laufzeit ist ein eigenständiges Programm von Microsoft und
+  kein Bestandteil des GPL-lizenzierten Programmcodes.
 - Das Lite-Paket nutzt die auf dem System installierte Evergreen-Laufzeit.
 
 ### Rust-Crates
