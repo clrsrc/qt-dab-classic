@@ -40,7 +40,14 @@ pub struct Settings {
     pub music_auto_save: bool,
     pub music_keep_aac: bool,
     pub music_mp3_kbps: u16,
-    pub audio_device: Option<u32>,
+    /// Audio-Ausgabegeraet: `id` aus `audio_devices` (Windows: WASAPI-
+    /// Endpoint-ID, stabil ueber Sitzungen und Umstecken), None = Standard-
+    /// geraet des Systems. Bis 17.09.2026 stand hier ein PortAudio-Index.
+    #[serde(deserialize_with = "de_audio_device")]
+    pub audio_device: Option<String>,
+    /// Anzeigename des gewaehlten Geraets, damit die UI es auch benennen
+    /// kann, wenn es gerade nicht angeschlossen ist.
+    pub audio_device_name: Option<String>,
     /// EPG/SPI-Paketdienst im Kern automatisch mitlaufen lassen (`set_epg`), Standard an.
     pub epg_enabled: bool,
     /// Hybrid Radio (crate::radiodns): Logos und Sendeplaene fuer Dienste ohne
@@ -128,6 +135,7 @@ impl Default for Settings {
             music_keep_aac: false,
             music_mp3_kbps: 256,
             audio_device: None,
+            audio_device_name: None,
             epg_enabled: true,
             radiodns_enabled: false,
             preset_short_labels: true,
@@ -148,6 +156,23 @@ impl Default for Settings {
             window_height: None,
         }
     }
+}
+
+/// `audio_device` war bis 17.09.2026 ein PortAudio-Index (Zahl). Eine alte
+/// Zahl wird zu None (Standardgeraet) statt die ganze settings.json zu
+/// verwerfen (`Settings::load` faellt bei einem Lesefehler komplett auf
+/// Standard zurueck).
+fn de_audio_device<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Id(String),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(match Option::<Raw>::deserialize(d)? {
+        Some(Raw::Id(id)) if !id.is_empty() => Some(id),
+        _ => None,
+    })
 }
 
 impl Settings {
@@ -202,6 +227,22 @@ mod tests {
         assert_eq!(s.volume_percent, 42);
         assert_eq!(s.music_mp3_kbps, 256);
         assert!(s.epg_enabled);
+    }
+
+    #[test]
+    fn audio_device_old_index_becomes_default() {
+        // settings.json von vor N1 (PortAudio-Index): Standardgeraet, Rest bleibt
+        let s: Settings = serde_json::from_str(r#"{"audio_device": 3, "volume_percent": 7}"#).unwrap();
+        assert_eq!(s.audio_device, None);
+        assert_eq!(s.volume_percent, 7);
+        let s: Settings = serde_json::from_str(r#"{"audio_device": null}"#).unwrap();
+        assert_eq!(s.audio_device, None);
+        let s: Settings = serde_json::from_str(r#"{"audio_device": "{0.0.0.00000000}.{abc}", "audio_device_name": "USB DAC"}"#).unwrap();
+        assert_eq!(s.audio_device.as_deref(), Some("{0.0.0.00000000}.{abc}"));
+        assert_eq!(s.audio_device_name.as_deref(), Some("USB DAC"));
+        // Hin und zurueck
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
     }
 
     #[test]

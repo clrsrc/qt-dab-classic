@@ -45,11 +45,19 @@ export type Command =
   | { type: "stop_scan" }
   | { type: "set_volume"; percent: number }
   | { type: "set_mute"; muted: boolean }
-  | { type: "set_audio_device"; index: number | null }
+  | { type: "set_audio_device"; id: string | null }
+  | { type: "refresh_audio_devices" }
   | { type: "set_ews"; enabled: boolean; autoswitch: boolean }
   | { type: "ews_dismiss" }
   | { type: "get_state" }
   | { type: "shutdown" };
+
+/** Audio-Ausgabegeraet (dab_api::AudioDevice). */
+export interface AudioDevice {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
 
 export interface ServiceInfo {
   sid: number;
@@ -104,8 +112,9 @@ export interface AppState {
   ews_switched_from: number | null;
   recording: boolean;
   file: { path: string; loop: boolean; position_s: number; length_s: number; ended: boolean } | null;
-  audio_devices: string[];
-  audio_device_current: number | null;
+  /** Ausgabegeraete des Kerns (nur WASAPI, je Geraet einmal) und die id des spielenden. */
+  audio_devices: AudioDevice[];
+  audio_device_current: string | null;
   pending: { slot: number | null; channel: string; name: string } | null;
   clock_utc: number | null;
   log_tail: string[];
@@ -288,7 +297,10 @@ export interface Settings {
   music_auto_save: boolean;
   music_keep_aac: boolean;
   music_mp3_kbps: number;
-  audio_device: number | null;
+  /** Geraetekennung aus audio_devices (WASAPI-Endpoint-ID), null = Standardgeraet des Systems. */
+  audio_device: string | null;
+  /** Anzeigename dazu, fuer die Liste wenn das Geraet gerade fehlt. */
+  audio_device_name: string | null;
   /** EPG-Paketdienst im Kern mitlaufen lassen (set_epg). */
   epg_enabled: boolean;
   /** Hybrid Radio: Logos/Sendeplaene per RadioDNS aus dem Internet nachladen (Standard aus). */

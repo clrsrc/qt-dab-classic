@@ -140,6 +140,18 @@ pub struct Gain {
     pub amp: bool,
 }
 
+/// Audio-Ausgabegeraet (`audio_devices`): `id` ist die stabile Kennung
+/// (Windows: WASAPI-Endpoint-ID `{0.0.0.00000000}.{guid}`, sonst
+/// `<hostapi>:<name>`), `name` der Anzeigename wie in den Windows-
+/// Soundeinstellungen, `is_default` das aktuelle Standardgeraet des Systems.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct AudioDevice {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ServiceInfo {
     pub sid: u32,
@@ -195,7 +207,15 @@ pub enum Command {
     // Audio
     SetVolume { percent: u8 },
     SetMute { muted: bool },
-    SetAudioDevice { index: Option<u32> },
+    /// `id` aus `audio_devices`; fehlend/None = Standardgeraet des Systems
+    /// (folgt dessen Wechseln). Eine unbekannte id merkt sich der Kern, bis
+    /// das Geraet angesteckt wird; solange spielt der Standard.
+    SetAudioDevice {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+    },
+    /// Geraeteliste neu einlesen (an-/abgesteckte Geraete), danach `audio_devices`.
+    RefreshAudioDevices,
 
     // Aufnahme / Dumps
     StartRecording {
@@ -337,7 +357,8 @@ pub enum Event {
     AudioFormat { rate: u32, channels: u8 },
     AudioLevel { left: f32, right: f32 },
     AudioUnderrun { missed: u32 },
-    AudioDevices { names: Vec<String>, current: Option<u32> },
+    /// `current` = id des Geraets, das spielt bzw. beim Start benutzt wuerde.
+    AudioDevices { devices: Vec<AudioDevice>, current: Option<String> },
 
     // EWS / EWF
     EwsPresent,

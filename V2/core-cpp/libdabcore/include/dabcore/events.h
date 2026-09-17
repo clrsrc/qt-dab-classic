@@ -24,6 +24,16 @@ bool isLatestWins(const std::string& type);
 enum class Slot { Primary, Background };
 const char* slotName(Slot s);
 
+// Audio-Ausgabegeraet (audio_devices): id = stabile Kennung (Windows: die
+// WASAPI-Endpoint-ID "{0.0.0.00000000}.{guid}", sonst "<hostapi>:<name>"),
+// name = Anzeigename wie in den Windows-Soundeinstellungen, isDefault = das
+// aktuelle Standardgeraet des Systems.
+struct AudioDeviceInfo {
+    std::string id;
+    std::string name;
+    bool isDefault = false;
+};
+
 enum class EwsPhase { PreTrigger, Trigger, Sustain, End };
 const char* ewsPhaseName(EwsPhase p);
 
@@ -94,7 +104,7 @@ json announcement(uint32_t sid, uint16_t kind, uint8_t subCh, bool active, uint8
 json audioFormat(uint32_t rate, uint8_t channels);
 json audioLevel(float left, float right);
 json audioUnderrun(uint32_t missed);
-json audioDevices(const std::vector<std::string>& names, int current);
+json audioDevices(const std::vector<AudioDeviceInfo>& devices, const std::string& current);
 
 json ewsPresent();
 // stageRaw: rohes Status-Byte der FIG 0/15 (Bit 7 Last, Bits 6..4 Stage, Bits 3..0 IId), Warntag 2026: 0x01

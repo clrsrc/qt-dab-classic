@@ -221,7 +221,7 @@ INHALT
     Scan            Ergebnisse des Band-III-Scans.
     Einstellungen   Gruppen Geraet/Empfang (Geraet, RTL-SDR-Index, PPM,
                     AGC, manueller Gain, Merker je Geraet/Kanal), Audio
-                    (Ausgabegeraet, Lautstaerke), Notfallwarnung (EWS
+                    (Ausgabegeraet - siehe unten, Lautstaerke), Notfallwarnung (EWS
                     auswerten, automatisch umschalten, Warnton), EPG
                     (Broadcast-EPG, Internet-Ergaenzung per RadioDNS -
                     siehe unten), Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
@@ -256,7 +256,23 @@ INHALT
     dem Internet. Stand 17.09.2026 antworten z. B. Deutschlandradio
     (Dlf, Dlf Kultur, Dlf Nova), die ARD-Programme (WDR) und Absolut
     Radio; wer keinen DNS-Eintrag hat, wird 24 h nicht erneut gefragt
-    (dataadiodns\hosts.json).
+    (data
+adiodns\hosts.json).
+
+  Audio-Ausgabegeraet (Einstellungen > Audio)
+    Die Liste zeigt jedes Ausgabegeraet genau einmal, mit dem Namen aus
+    den Windows-Soundeinstellungen (WASAPI); das Windows-Standardgeraet
+    ist markiert. "Standard (folgt Windows)" spielt immer auf dem Geraet,
+    das Windows gerade als Standard fuehrt - wechselt man es dort (z. B.
+    Kopfhoerer eingesteckt), folgt DAB Classic binnen 2 s. Ein fest ge-
+    waehltes Geraet wird ueber seine Geraetekennung gemerkt, nicht ueber
+    eine Position in der Liste; sie bleibt ueber Sitzungen und Umstecken
+    gleich. Fehlt das Geraet (USB-DAC abgezogen), spielt solange das
+    Standardgeraet, die Statuszeile sagt es, und sobald es wieder da ist,
+    wird darauf zurueckgeschaltet. "Aktualisieren" liest die Liste sofort
+    neu ein (kurze Tonluecke). Geraete, deren Mischformat nicht 48 kHz
+    ist, wandelt Windows selbst um (kein Umstellen in der Systemsteuerung
+    noetig).
 
   Gain und AGC (Einstellungen)
     Die SNR-gesteuerte AGC ist Standard. Fuer manuelle Werte AGC
@@ -498,7 +514,8 @@ INHALT
   data\logos\<EId>\      Senderlogos aus dem SPI-Dienst (PNG/JPEG), bei
                          eingeschalteter Internet-Ergaenzung auch aus dem
                          Netz (gleiches Namensschema <SId>_<Name>_<BxH>)
-  dataadiodns\         Internet-Ergaenzung: hosts.json (DNS-Ergebnisse
+  data
+adiodns\         Internet-Ergaenzung: hosts.json (DNS-Ergebnisse
                          je Dienst, 24 h gueltig) und SI.xml je Server;
                          loeschen erzwingt eine neue Abfrage
   data\tii-files.csv     TII-Protokoll im DX-Modus (Zeit, Kanal, Ensemble,

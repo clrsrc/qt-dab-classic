@@ -89,7 +89,7 @@ else {
     elseif ($types[$snapIdx[0] + 1] -ne 'audio_devices') { $fail += 'audio_devices folgt nicht direkt auf state_snapshot' }
 }
 $ad = $ev | Where-Object { $_.type -eq 'audio_devices' } | Select-Object -First 1
-if ($ad -and $ad.names.Count -ne 0) { $fail += '--no-audio: audio_devices.names nicht leer' }
+if ($ad -and $ad.devices.Count -ne 0) { $fail += '--no-audio: audio_devices.devices nicht leer' }
 
 # 2. state_snapshot
 $snap = $ev | Where-Object { $_.type -eq 'state_snapshot' } | Select-Object -First 1

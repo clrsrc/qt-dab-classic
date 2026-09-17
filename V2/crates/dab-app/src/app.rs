@@ -275,8 +275,8 @@ impl App {
         if s.ppm != 0 {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
         }
-        if let Some(idx) = s.audio_device {
-            fx = fx.cmd(Command::SetAudioDevice { index: Some(idx) });
+        if s.audio_device.is_some() {
+            fx = fx.cmd(Command::SetAudioDevice { id: s.audio_device.clone() });
         }
         if !s.autostart {
             return fx;
@@ -799,7 +799,7 @@ impl App {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
         }
         if old.audio_device != s.audio_device {
-            fx = fx.cmd(Command::SetAudioDevice { index: s.audio_device });
+            fx = fx.cmd(Command::SetAudioDevice { id: s.audio_device.clone() });
         }
         fx.append(self.debug_on_settings(&old));
         fx.append(self.timeshift_on_settings(&old));

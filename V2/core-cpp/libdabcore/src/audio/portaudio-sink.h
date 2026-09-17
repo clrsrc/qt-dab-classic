@@ -1,35 +1,26 @@
 // DAB Classic v3: portiert aus Qt-DAB sources/output/portaudio/audiosink.h
 // (Jan van Katwijk, GPLv2+): QString/QStringList/QComboBox gestrichen,
-// Geraetewahl ueber Index in der 48-kHz-Geraeteliste, Ring 65 536 Float
-// (~0,7 s) statt 16 * 32 768 (~5,4 s). PortAudio-Callback unveraendert.
+// Ring 65 536 Float (~0,7 s) statt 16 * 32 768 (~5,4 s). PortAudio-Callback
+// unveraendert.
+// Geraetewahl (N1, 17.09.2026): Liste nur aus dem WASAPI-Host-API (sonst
+// erscheint jedes Geraet unter MME/DirectSound/WASAPI/WDM-KS vierfach und
+// der PortAudio-Index ist zwischen Sitzungen nicht stabil). Kennung je Geraet
+// ist die WASAPI-Endpoint-ID (PaWasapi_GetIMMDevice -> IMMDevice::GetId), wie
+// im Crossmixer. "" = Standardgeraet des Systems. Ein Waechter-Thread fragt
+// alle 2 s die Endpoints ab (IMMDeviceEnumerator) und liest bei Aenderung die
+// PortAudio-Liste neu ein (Pa_Terminate/Pa_Initialize, kurze Luecke), damit
+// der Standard einem Wechsel in Windows folgt und ein spaeter angestecktes,
+// gemerktes Geraet uebernommen wird.
 #
-/*
- *    Copyright (C)  2014 .. 2023
- *    Jan van Katwijk (J.vanKatwijk@gmail.com)
- *    Lazy Chair Computing
- *
- *    This file is part of the Qt-DAB.
- *
- *    Qt-DAB is free software; you can redistribute it and/or modify
- *    it under the terms of the GNU General Public License as published by
- *    the Free Software Foundation; either version 2 of the License, or
- *    (at your option) any later version.
- *
- *    Qt-DAB is distributed in the hope that it will be useful,
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *    GNU General Public License for more details.
- *
- *    You should have received a copy of the GNU General Public License
- *    along with Qt-DAB; if not, write to the Free Software
- *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- */
 #pragma once
 #ifdef	DABCORE_AUDIO_PORTAUDIO
 
 #include	<vector>
 #include	<string>
 #include	<atomic>
+#include	<mutex>
+#include	<thread>
+#include	<condition_variable>
 #include	"dab-constants.h"
 #include	<portaudio.h>
 #include	<cstdio>
@@ -43,32 +34,49 @@ public:
 	bool		start			() override;
 	void		stop			() override;
 	void		write			(const float *, uint32_t) override;
-	std::vector<std::string> devices	() override;
-	int		currentDevice		() override;
-	bool		selectDevice		(int index) override;
+	std::vector<dabcore::AudioDeviceInfo> devices () override;
+	std::string	currentDevice		() override;
+	bool		selectDevice		(const std::string &id) override;
+	void		refreshDevices		() override;
+	void		setChangeHandler	(std::function<void()> h) override;
 	uint32_t	takeMissed		() override;
 	void		flush			() override;
 	const char	*name			() const override { return "portaudio"; }
 	bool		ok			() const { return portAudio; }
 private:
-	bool		openDevice		(int paDevice);
-	void		closeStream		();
-	bool		OutputrateIsSupported	(int16_t, int32_t);
-	std::string	outputChannelwithRate	(int16_t, int32_t);
+	struct Entry {
+	   dabcore::AudioDeviceInfo info;
+	   PaDeviceIndex paDevice;
+	};
+	bool		openDevice		(PaDeviceIndex paDevice);	// m_ gehalten
+	void		closeStream		();				// m_ gehalten
+	void		enumerate		();				// m_ gehalten
+	PaDeviceIndex	resolve			(bool *found = nullptr);	// m_ gehalten
+	bool		reinitLocked		();				// m_ gehalten
+	std::string	idOf			(PaDeviceIndex dev, PaHostApiIndex api, const char *apiName);
+	bool		OutputrateIsSupported	(PaDeviceIndex, int32_t);
+	void		watch			();
+	std::string	endpointSignature	();
 	int32_t		CardRate;
 	int16_t		latency;
 	bool		portAudio;
-	bool		writerRunning;
-	int16_t		numofDevices;
+	std::atomic<bool>	writerRunning;
 	int		paCallbackReturn;
 	int16_t		bufSize;
 	PaStream	*ostream;
 	RingBuffer<float>	_O_Buffer;
 	PaStreamParameters	outputParameters;
 	std::atomic<uint32_t>	theMissed;
-	std::vector<int16_t>	outTable;	// Listenindex -> PortAudio-Geraet
-	int		currentIndex;
-	int		currentPaDevice;
+	std::mutex	m_;			// Pa-Init, Liste, Stream, Auswahl
+	std::vector<Entry>	list_;		// Ergebnis von enumerate()
+	std::string	wantedId_;		// "" = Standardgeraet
+	PaDeviceIndex	currentPaDevice;	// offen bzw. beim Start zu oeffnen
+	bool		missingLogged_;
+	std::function<void()>	changeHandler_;
+	std::thread	watcher_;
+	std::mutex	watchM_;
+	std::condition_variable	watchCv_;
+	bool		quit_;
 protected:
 static	int		paCallback_o	(const void	*input,
 	                                 void		*output,

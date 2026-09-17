@@ -201,14 +201,17 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
     }
 #endif
     if (!audioSink_) audioSink_ = std::make_unique<NullAudioSink>();
+    // --audio-device NAME (dabcored): Teil des Anzeigenamens, Gross/Klein egal
     if (opt_.audio && !opt_.audioDevice.empty()) {
-        auto names = audioSink_->devices();
-        for (size_t i = 0; i < names.size(); ++i)
-            if (lower(names[i]).find(lower(opt_.audioDevice)) != std::string::npos) {
-                audioSink_->selectDevice(static_cast<int>(i));
+        for (const auto& d : audioSink_->devices())
+            if (lower(d.name).find(lower(opt_.audioDevice)) != std::string::npos) {
+                audioSink_->selectDevice(d.id);
                 break;
             }
     }
+    // Waechter des Sinks (Geraet an-/abgesteckt, Standard gewechselt): Liste
+    // an die App melden, damit Auswahl und "aktiv" stimmen.
+    audioSink_->setChangeHandler([this] { emitAudioDevices(); });
     emitAudioDevices();
 }
 
@@ -266,8 +269,9 @@ void DabCore::stopActionThread() {
     if (actionThread_.joinable()) actionThread_.join();
 }
 
-// audio_devices kommt nach ready, auf get_state und nach set_audio_device;
-// ohne Audio-Ausgabe (--no-audio) mit leerer Liste und current = null.
+// audio_devices kommt nach ready, auf get_state, nach set_audio_device und
+// refresh_audio_devices sowie von selbst, wenn der Sink eine Aenderung der
+// Geraete meldet; ohne Audio-Ausgabe (--no-audio) leere Liste, current = null.
 void DabCore::emitAudioDevices() {
     sink_(events::audioDevices(audioSink_->devices(), audioSink_->currentDevice()));
 }
@@ -917,11 +921,18 @@ bool DabCore::handle(const json& c) {
         for (auto& rs : services_) if (rs->audio) rs->audio->setMute(m);
         return true;
     }
+    // set_audio_device {id?}: id = Geraetekennung aus audio_devices, fehlend/
+    // leer = Standardgeraet des Systems. Unbekannte id bleibt im Sink gemerkt
+    // (spaeter angestecktes Geraet), solange spielt der Standard.
     if (type == "set_audio_device") {
-        if (c.contains("index") && c["index"].is_number()) {
-            if (!audioSink_->selectDevice(c["index"].get<int>()))
-                sink_(events::log("warn", "Audiogeraet nicht waehlbar"));
-        }
+        const std::string id = c.contains("id") && c["id"].is_string() ? c["id"].get<std::string>() : "";
+        if (!audioSink_->selectDevice(id) && !id.empty())
+            sink_(events::log("warn", "Audiogeraet nicht angeschlossen, Standardgeraet verwendet"));
+        emitAudioDevices();
+        return true;
+    }
+    if (type == "refresh_audio_devices") {
+        audioSink_->refreshDevices();
         emitAudioDevices();
         return true;
     }

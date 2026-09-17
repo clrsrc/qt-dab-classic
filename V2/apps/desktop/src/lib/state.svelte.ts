@@ -301,7 +301,7 @@ export function applyCoreEvent(ev: CoreEvent) {
       s.level = [e.left, e.right];
       break;
     case "audio_devices":
-      s.audio_devices = e.names;
+      s.audio_devices = e.devices;
       s.audio_device_current = e.current ?? null;
       break;
     case "ews_present":

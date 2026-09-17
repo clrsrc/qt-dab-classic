@@ -102,9 +102,13 @@ json announcement(uint32_t sid, uint16_t kind, uint8_t subCh, bool active, uint8
 json audioFormat(uint32_t rate, uint8_t ch) { auto j = ev("audio_format"); j["rate"] = rate; j["channels"] = ch; return j; }
 json audioLevel(float l, float r) { auto j = ev("audio_level"); j["left"] = l; j["right"] = r; return j; }
 json audioUnderrun(uint32_t m) { auto j = ev("audio_underrun"); j["missed"] = m; return j; }
-json audioDevices(const std::vector<std::string>& names, int current) {
-    auto j = ev("audio_devices"); j["names"] = names;
-    if (current >= 0) j["current"] = current; else j["current"] = nullptr; return j;
+json audioDevices(const std::vector<AudioDeviceInfo>& devices, const std::string& current) {
+    auto j = ev("audio_devices");
+    j["devices"] = json::array();
+    for (const auto& d : devices)
+        j["devices"].push_back({{"id", d.id}, {"name", d.name}, {"is_default", d.isDefault}});
+    if (!current.empty()) j["current"] = current; else j["current"] = nullptr;
+    return j;
 }
 
 json ewsPresent() { return ev("ews_present"); }

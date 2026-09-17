@@ -22,6 +22,18 @@
   }
 
   const run = (p: Promise<unknown>) => p.catch((e) => notify("warn", tError(e)));
+
+  // Audio-Ausgabegeraet (N1): Auswahl speichert id + Anzeigename; Statuszeile
+  // nennt das Geraet, das der Kern tatsaechlich benutzt (audio_device_current).
+  const setAudioDevice = (id: string) =>
+    patchSettings({ audio_device: id === "" ? null : id, audio_device_name: s.audio_devices.find((d) => d.id === id)?.name ?? null });
+  const audioMissing = () => !!ui.settings?.audio_device && !s.audio_devices.some((d) => d.id === ui.settings?.audio_device);
+  function audioStatus(): string {
+    if (s.audio_devices.length === 0) return t("settings.audio_none");
+    const cur = s.audio_devices.find((d) => d.id === s.audio_device_current);
+    if (!cur) return "";
+    return audioMissing() ? t("settings.audio_fallback", { name: cur.name }) : t("settings.audio_active", { name: cur.name });
+  }
   const sel = (e: Event) => (e.target as HTMLSelectElement).value;
   const chk = (e: Event) => (e.target as HTMLInputElement).checked;
   const num = (e: Event) => Number((e.target as HTMLInputElement).value);
@@ -200,13 +212,25 @@
       <!-- Audio -->
       <div class="group">{t("settings.group_audio")}</div>
       <div class="grid">
+        <!-- N1: Liste nur WASAPI (je Geraet einmal), Auswahl per stabiler
+             Endpoint-ID; "Standard" folgt dem Windows-Standardgeraet. Ein
+             gemerktes, gerade fehlendes Geraet bleibt waehlbar (Kern nimmt
+             es, sobald es wieder da ist). -->
         <span class="lbl">{t("settings.audio_device")}</span>
-        <select value={st.audio_device ?? ""} onchange={(e) => patchSettings({ audio_device: sel(e) === "" ? null : Number(sel(e)) })}>
-          <option value="">{t("settings.audio_default")}</option>
-          {#each s.audio_devices as name, i (i)}
-            <option value={i}>{name}</option>
-          {/each}
-        </select>
+        <span class="row">
+          <select value={st.audio_device ?? ""} onchange={(e) => setAudioDevice(sel(e))}>
+            <option value="">{t("settings.audio_default")}</option>
+            {#each s.audio_devices as d (d.id)}
+              <option value={d.id}>{d.name}{d.is_default ? ` (${t("settings.audio_system_default")})` : ""}</option>
+            {/each}
+            {#if audioMissing()}
+              <option value={st.audio_device}>{st.audio_device_name ?? st.audio_device} ({t("settings.audio_missing")})</option>
+            {/if}
+          </select>
+          <button class="btn mini" onclick={() => run(api.send({ type: "refresh_audio_devices" }))}>{t("settings.audio_refresh")}</button>
+        </span>
+        <span class="lbl"></span>
+        <span class="k">{audioStatus()}</span>
 
         <span class="lbl">{t("settings.volume")}</span>
         <span class="row">

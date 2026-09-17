@@ -3,7 +3,7 @@
 //! (`get_state`) geliefert; danach spiegelt das Frontend dieselben
 //! Delta-Ereignisse. Alles hier ist reine Datenhaltung ohne Nebenwirkungen.
 
-use dab_api::{Codec, Event, EwsPhase, Gain, ServiceInfo, ServiceSlot, SourceKind};
+use dab_api::{AudioDevice, Codec, Event, EwsPhase, Gain, ServiceInfo, ServiceSlot, SourceKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -181,8 +181,9 @@ pub struct AppState {
     pub ews_switched_from: Option<u32>,
     pub recording: bool,
     pub file: Option<FileState>,
-    pub audio_devices: Vec<String>,
-    pub audio_device_current: Option<u32>,
+    /// Ausgabegeraete des Kerns (`audio_devices`) und die id des spielenden.
+    pub audio_devices: Vec<AudioDevice>,
+    pub audio_device_current: Option<String>,
     pub pending: Option<PendingState>,
     pub clock_utc: Option<i64>,
     pub log_tail: Vec<String>,
@@ -397,9 +398,9 @@ impl AppState {
                 });
             }
             Event::AudioLevel { left, right } => self.level = (*left, *right),
-            Event::AudioDevices { names, current } => {
-                self.audio_devices = names.clone();
-                self.audio_device_current = *current;
+            Event::AudioDevices { devices, current } => {
+                self.audio_devices = devices.clone();
+                self.audio_device_current = current.clone();
             }
             Event::EwsPresent => self.ews_present = true,
             Event::EwsAlert { phase, sub_ch, stage, stage_raw, iid, locations, is_test, relevant } => {

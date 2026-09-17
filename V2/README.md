@@ -105,7 +105,11 @@ Umschaltsperre, Sleep-Timer, EPG-Panel mit Jetzt/Danach, Senderlogos,
 TII-Sendestandorte mit Entfernung/Azimut, Debug-Panel (Spektrum, Konstellation,
 SNR-Verlauf, Zähler), Datei-Wiedergabe, vollständiges Einstellungs-Panel
 (Gerät/Gain je Gerät und Kanal, Audio, EWS, EPG, Aufnahmeordner, Panels,
-Sprache DE/EN), portabler Datenordner `data/`.
+Sprache DE/EN), portabler Datenordner `data/`. Audio-Ausgabegerät (17.09.2026):
+Liste nur aus WASAPI (jedes Gerät einmal, Windows-Standard markiert), Auswahl per
+stabiler Endpoint-ID statt PortAudio-Index, „Standard“ folgt dem Windows-Standardgerät
+zur Laufzeit (Wächter im Kern), fehlende Geräte fallen auf den Standard zurück und
+werden beim Anstecken wieder übernommen.
 
 Hybrid Radio (17.09.2026, Standard aus): Mit dem Schalter „Internet-Ergänzung
 (RadioDNS)“ in den Einstellungen holt `dab-app::radiodns` für die Audiodienste des

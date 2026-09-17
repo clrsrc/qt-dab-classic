@@ -83,6 +83,10 @@ endif()
 if(DABCORE_AUDIO_PORTAUDIO)
     target_compile_definitions(dabcore PUBLIC DABCORE_AUDIO_PORTAUDIO)
     target_link_libraries(dabcore PUBLIC PkgConfig::PORTAUDIO)
+    if(WIN32)
+        # Geraetekennung/-waechter ueber WASAPI (IMMDeviceEnumerator, COM)
+        target_link_libraries(dabcore PUBLIC ole32)
+    endif()
 endif()
 # FDK-AAC: nur der Header (Typen) wird gebraucht, die DLL wird zur Laufzeit
 # geladen (Entscheidung 20). Ohne Header entfaellt der FDK-Pfad.
