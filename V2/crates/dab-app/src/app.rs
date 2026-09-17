@@ -513,11 +513,15 @@ impl App {
         if let Some(slot) = p.slot {
             if let Some(preset) = self.presets.slots.get_mut(slot).and_then(|x| x.as_mut()) {
                 let eid = self.state.ensemble.as_ref().map(|e| e.eid).unwrap_or(preset.eid);
-                if preset.sid != s.sid || preset.eid != eid || preset.name != s.name.trim() {
+                let short = s.short_name.trim();
+                if preset.sid != s.sid || preset.eid != eid || preset.name != s.name.trim() || (!short.is_empty() && preset.short_name != short) {
                     preset.sid = s.sid;
                     preset.scids = s.scids;
                     preset.eid = eid;
                     preset.name = s.name.trim().to_string();
+                    if !short.is_empty() {
+                        preset.short_name = short.to_string();
+                    }
                     fx.append(self.save_presets());
                 }
             }
@@ -881,6 +885,7 @@ impl App {
             sid: svc.sid,
             scids: svc.scids,
             name: svc.name.trim().to_string(),
+            short_name: svc.short_name.trim().to_string(),
             logo_path: None,
             logo_data_url: None,
             stored_at: crate::state::unix_now(),
@@ -935,7 +940,7 @@ impl App {
             let Some(slot) = self.presets.first_free() else { break };
             self.presets.set(
                 slot,
-                Preset { channel: fav.channel, eid: 0, sid: 0, scids: 0, name: fav.name, logo_path: None, logo_data_url: None, stored_at: crate::state::unix_now() },
+                Preset { channel: fav.channel, eid: 0, sid: 0, scids: 0, name: fav.name, short_name: String::new(), logo_path: None, logo_data_url: None, stored_at: crate::state::unix_now() },
             );
             n += 1;
         }
@@ -964,7 +969,7 @@ mod tests {
     }
 
     fn svc(sid: u32, name: &str) -> ServiceInfo {
-        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0 }
+        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0, short_name: String::new(), language: 0 }
     }
 
     fn tune(a: &mut App, channel: &str, eid: u16, services: &[(u32, &str)], now: Instant) {
@@ -982,7 +987,7 @@ mod tests {
     }
 
     fn preset(channel: &str, sid: u32, name: &str) -> Preset {
-        Preset { channel: channel.into(), eid: 0x10BC, sid, scids: 0, name: name.into(), logo_path: None, logo_data_url: None, stored_at: 0 }
+        Preset { channel: channel.into(), eid: 0x10BC, sid, scids: 0, name: name.into(), short_name: String::new(), logo_path: None, logo_data_url: None, stored_at: 0 }
     }
 
     #[test]
@@ -1241,6 +1246,31 @@ mod tests {
         a.presets.set(3, preset("5C", 0xD210, "Dlf"));
         a.state.recording = true;
         assert_eq!(a.preset_recall(3, now).unwrap_err(), AppError::Recording);
+    }
+
+    /// 17.09.2026: Kurzlabel (FIG 1 Zeichen-Flags) wandert in den Speicher und
+    /// wird beim Aufruf nachgetragen, wenn der Speicher noch keins hat (Favoriten-Import).
+    #[test]
+    fn store_keeps_short_label_and_recall_fills_it() {
+        let now = Instant::now();
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Deutschlandfunk")], now);
+        let mut full = svc(0xD210, "Deutschlandfunk");
+        full.short_name = "Dlf".into();
+        full.language = 0x08;
+        a.handle_event(&Event::ServiceAdded { service: full }, now);
+        started(&mut a, 0xD210, now);
+        let (r, _) = a.preset_store(0, false).unwrap();
+        assert!(r.stored);
+        assert_eq!(a.presets.get(0).unwrap().short_name, "Dlf");
+        assert_eq!(a.state.service(0xD210, 0).unwrap().language, 0x08);
+        // Favoriten-Import ohne Kurzlabel: beim Aufruf wird es aus dem FIC ergaenzt
+        a.presets.set(1, preset("5C", 0, "Deutschlandfunk"));
+        assert!(a.preset_recall(1, now).is_ok());
+        let p = a.presets.get(1).unwrap();
+        assert_eq!(p.sid, 0xD210);
+        assert_eq!(p.short_name, "Dlf");
     }
 
     #[test]

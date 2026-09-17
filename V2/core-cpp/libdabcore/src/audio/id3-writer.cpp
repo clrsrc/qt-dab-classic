@@ -73,6 +73,7 @@ std::vector<uint8_t> build(const Id3Tags& tags) {
     appendText(frames, "TPE1", tags.artist);
     appendText(frames, "TALB", tags.album);
     appendText(frames, "TDRC", tags.date);
+    appendText(frames, "TCON", tags.genre);
     if (!tags.coverPngB64.empty()) {
         const std::vector<uint8_t> png = base64Decode(tags.coverPngB64);
         if (!png.empty()) {

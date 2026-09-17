@@ -36,6 +36,10 @@ struct ServiceInfo {
     uint8_t  subCh = 0;
     uint16_t bitrateKbps = 0;
     uint8_t  pty = 0;
+    // Kurzlabel (FIG 1, Zeichen-Flags, max. 8 Zeichen) und Sprache der
+    // Primaerkomponente (FIG 0/5, TS 101 756 Tabellen 9/10), 0 = unbekannt.
+    std::string shortName;
+    uint8_t  language = 0;
     json toJson() const;
 };
 

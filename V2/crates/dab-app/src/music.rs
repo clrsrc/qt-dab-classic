@@ -254,6 +254,12 @@ impl App {
     }
 
     /// Name des laufenden Dienstes (fuer Album-Tag und Dateiname).
+    /// Programmtyp (FIG 0/17) des laufenden Dienstes, 0/unbekannt -> None.
+    pub(crate) fn current_service_pty(&self) -> Option<u8> {
+        let c = self.state.current.as_ref()?;
+        self.state.service(c.sid, c.scids).map(|s| s.pty).filter(|p| *p != 0)
+    }
+
     pub(crate) fn current_service_name(&self) -> Option<String> {
         let c = self.state.current.as_ref()?;
         Some(
@@ -362,6 +368,7 @@ impl App {
             artist: c.artist.clone(),
             album: Some(station).filter(|s| !s.is_empty()),
             date: Some(now.format("%Y-%m-%d").to_string()),
+            genre: self.current_service_pty().and_then(dab_api::pty_name).map(str::to_string),
             cover_png_b64: self.music_cover_png_b64(),
         };
         let format = RecFormat::Mp3 { kbps: self.settings.music_mp3_kbps, id3: Some(id3) };
@@ -417,7 +424,7 @@ mod tests {
         a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
         a.state.channel = Some("5C".into());
         a.state.ensemble = Some(crate::state::EnsembleState { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() });
-        a.state.services.push(ServiceInfo { sid: 0xD210, scids: 0, name: "Dlf".into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 104, pty: 0 });
+        a.state.services.push(ServiceInfo { sid: 0xD210, scids: 0, name: "Dlf".into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 104, pty: 0, short_name: String::new(), language: 0 });
         a.state.current = Some(crate::state::CurrentService { sid: 0xD210, scids: 0, codec: None, stereo: true });
         a.music.service_since = 1000;
         a

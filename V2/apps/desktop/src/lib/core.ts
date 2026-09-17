@@ -59,7 +59,12 @@ export interface ServiceInfo {
   is_primary: boolean;
   sub_ch: number;
   bitrate_kbps: number;
+  /** Programmtyp (FIG 0/17), 0 = keiner; Namen in lib/metadata.ts. */
   pty: number;
+  /** Kurzlabel aus den Zeichen-Flags des Labels (max. 8 Zeichen, ggf. leer). */
+  short_name: string;
+  /** Sprache der Primaerkomponente (FIG 0/5), 0 = unbekannt. */
+  language: number;
 }
 
 export type Codec =
@@ -213,6 +218,8 @@ export interface Preset {
   sid: number;
   scids: number;
   name: string;
+  /** Kurzlabel des Senders fuer die Taste; leer = `name` zeigen. */
+  short_name?: string;
   logo_path: string | null;
   logo_data_url?: string | null;
   stored_at: number;
@@ -269,6 +276,8 @@ export interface Settings {
   audio_device: number | null;
   /** EPG-Paketdienst im Kern mitlaufen lassen (set_epg). */
   epg_enabled: boolean;
+  /** Speichertasten zeigen das Kurzlabel (FIG 1 Zeichen-Flags) statt des vollen Namens. */
+  preset_short_labels: boolean;
   autostart: boolean;
   last_file: string | null;
   file_loop: boolean;

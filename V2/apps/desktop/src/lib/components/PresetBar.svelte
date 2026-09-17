@@ -3,7 +3,11 @@
   import { t } from "$lib/i18n.svelte";
   import { clearPreset, importFavorites, parseDragPayload, recallPreset, storePreset } from "$lib/presets";
   import { activePresetSlot, s, ui } from "$lib/state.svelte";
+  import { shortLabel } from "$lib/metadata";
   import Logo from "./Logo.svelte";
+
+  // Kurzlabel (FIG 1 Zeichen-Flags) auf der Taste, wenn eingestellt und vom Sender gesetzt.
+  const useShort = $derived(ui.settings?.preset_short_labels ?? true);
 
   const LONG_PRESS_MS = 500;
   let pressTimer: ReturnType<typeof setTimeout> | undefined;
@@ -76,7 +80,7 @@
         <span class="num">{i === 9 ? 0 : i + 1}</span>
         <span class="name">
           {#if p}<Logo src={p.logo_data_url ?? null} eid={p.eid} sid={p.sid} size="small" name={p.name} px={14} />{/if}
-          {p ? p.name : t("preset.empty")}
+          {p ? shortLabel(p, useShort) : t("preset.empty")}
         </span>
         <span class="ch">{p ? p.channel : ""}</span>
       </button>

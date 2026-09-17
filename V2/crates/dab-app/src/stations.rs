@@ -41,6 +41,11 @@ pub struct StationEntry {
     pub bitrate_kbps: u16,
     #[serde(default)]
     pub pty: u8,
+    /// Kurzlabel (FIG 1 Zeichen-Flags) und Sprache (FIG 0/5), siehe `ServiceInfo`.
+    #[serde(default)]
+    pub short_name: String,
+    #[serde(default)]
+    pub language: u8,
     /// Unix-Zeit (UTC) der letzten Meldung (Scan oder Empfang).
     #[serde(default)]
     pub last_seen_unix: i64,
@@ -58,6 +63,8 @@ impl StationEntry {
             is_audio: s.is_audio,
             bitrate_kbps: s.bitrate_kbps,
             pty: s.pty,
+            short_name: s.short_name.trim().to_string(),
+            language: s.language,
             last_seen_unix: now,
         }
     }
@@ -73,6 +80,8 @@ impl StationEntry {
             && self.is_audio == o.is_audio
             && self.bitrate_kbps == o.bitrate_kbps
             && self.pty == o.pty
+            && self.short_name == o.short_name
+            && self.language == o.language
     }
 
     pub fn matches(&self, channel: &str, eid: u16, sid: u32, scids: u8) -> bool {
@@ -313,6 +322,7 @@ impl App {
             sid: entry.sid,
             scids: entry.scids,
             name: entry.name.clone(),
+            short_name: entry.short_name.clone(),
             logo_path: None,
             logo_data_url: None,
             stored_at: unix_now(),
@@ -343,7 +353,7 @@ mod tests {
     }
 
     fn svc(sid: u32, name: &str, audio: bool) -> ServiceInfo {
-        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: audio, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0 }
+        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: audio, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0, short_name: String::new(), language: 0 }
     }
 
     fn scan(channel: &str, eid: Option<u16>, ensemble: &str, services: Vec<ServiceInfo>) -> Event {

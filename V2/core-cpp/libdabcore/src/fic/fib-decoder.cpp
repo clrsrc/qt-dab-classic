@@ -631,6 +631,8 @@ fibConfig::SC_language comp;
 	      return bitOffset / 8;
 
 	   localBase -> add_to_language_table (comp);
+	   if (CN_bit == 0 && channelConnected)
+	      emitCb (cb -> language, (int)comp. subChId, (int)comp. language);
 	   return bitOffset / 8;
 	}
 	else {
@@ -648,6 +650,8 @@ fibConfig::SC_language comp;
 	      return bitOffset / 8;
 
 	   localBase -> add_to_language_table (comp);
+	   if (CN_bit == 0 && channelConnected)
+	      emitCb (cb -> language, res, (int)language);
 	   return bitOffset / 8;
 	}
 }

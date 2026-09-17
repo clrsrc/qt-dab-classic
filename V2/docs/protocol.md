@@ -36,7 +36,7 @@ feldgenau übereinstimmen; `cargo test -p dab-api` prüft die Rust-Seite,
 | `start_recording` | `path`, `format: {format: wav} \| {format: mp3, kbps, id3?} \| {format: aac_passthrough}`, `slot`, `sid?` (`wav`: 48 kHz, Stereo, 16 Bit, vor der Lautstärke abgegriffen; `mp3`: LAME CBR, `kbps` 32..320, Datei beginnt mit dem `id3`-Tag falls angegeben; `aac_passthrough` noch nicht umgesetzt, `log error`), `pre_s?` (additiv, M4: Vorlauf aus dem Timeshift-Ring, siehe „Timeshift“) |
 | `stop_recording` | `slot`, `sid?` |
 | `export_timeshift_range` | `from_s`, `to_s`, `path`, `format` (wie `start_recording`, additiv M4b: `mp3`) – `from_s`/`to_s` = Sekunden hinter live, `from_s > to_s >= 0`; der Kern kopiert die Rahmen aus dem Ring und dekodiert sie in einem eigenen Thread durch eine zweite Decoder-Instanz (~250× Echtzeit). `format: wav` → WAV (48 kHz, Stereo, 16 Bit); `format: mp3` → MP3 mit optionalem ID3v2.4-Tag vor den Rahmen; `aac_passthrough` noch nicht umgesetzt, `log warn` und stattdessen WAV. Ende: `recording_state{slot: primary, sid, active: false, path, bytes, seconds}` mit dem Exportpfad. Höchstens ein Export gleichzeitig (sonst `log warn`); ohne Primary-Dienst oder bei leerem Bereich nur `log warn` |
-| `id3` (additiv in `format: mp3`) | `title?`, `artist?`, `album?`, `date?` (ISO `yyyy-mm-dd`) als ID3v2.4-Textrahmen (`TIT2`/`TPE1`/`TALB`/`TDRC`, UTF-8); `cover_png_b64?` als `APIC` (Cover front) – **nur PNG**, andere Formate werden vom Kern nicht geprüft/konvertiert, die App muss PNG liefern. Alle Felder optional, leerer/fehlender Tag wird nicht geschrieben |
+| `id3` (additiv in `format: mp3`) | `title?`, `artist?`, `album?`, `date?` (ISO `yyyy-mm-dd`), `genre?` (additiv 17.09.2026, z. B. Programmtyp aus FIG 0/17) als ID3v2.4-Textrahmen (`TIT2`/`TPE1`/`TALB`/`TDRC`/`TCON`, UTF-8); `cover_png_b64?` als `APIC` (Cover front) – **nur PNG**, andere Formate werden vom Kern nicht geprüft/konvertiert, die App muss PNG liefern. Alle Felder optional, leerer/fehlender Tag wird nicht geschrieben |
 | `start_iq_dump` / `stop_iq_dump` | `path` – Samples der Quelle als `.uff` (Qt-DAB-XML-Format, 8 Bit: HackRF `int8`, RTL-SDR `uint8`, Datei-Quelle `int8` der resampelten 2,048 MS/s); von `open_device{file}` wieder lesbar |
 | `start_frame_dump` / `stop_frame_dump` | `path` |
 | `timeshift_configure` | `capacity_s` (60..14400, wird geklemmt, Standard 3600), `backing: {backing: ram} \| {backing: disk, dir}` (`disk` wird angenommen, aber wie `ram` behandelt und geloggt – Entscheidung 4). Nur bei **geänderter** Kapazität wird der Ring neu angelegt (und ist dann leer); der Speicherbedarf steht als `log info` |
@@ -72,7 +72,7 @@ und die App bei Überlast verwerfen darf.
 | `fic_quality` **LW** | `ok`, `total` |
 | `frequency_offset` **LW** | `hz` |
 | `ensemble_found` | `eid`, `name`, `channel` |
-| `service_added` | `service: {sid, scids, name, is_audio, is_primary, sub_ch, bitrate_kbps, pty}` – kann für dasselbe `sid`/`scids` erneut kommen (z. B. sobald der Programmtyp aus FIG 0/17 bekannt ist); die App ersetzt den Eintrag |
+| `service_added` | `service: {sid, scids, name, is_audio, is_primary, sub_ch, bitrate_kbps, pty, short_name, language}` – kann für dasselbe `sid`/`scids` erneut kommen (z. B. sobald der Programmtyp aus FIG 0/17 oder die Sprache aus FIG 0/5 bekannt ist); die App ersetzt den Eintrag. `pty` = Programmtyp (FIG 0/17, TS 101 756 Tabelle 12, 0 = keiner), `short_name` = Kurzlabel aus den 16 Zeichen-Flags des FIG-1-Labels (max. 8 Zeichen, leer wenn der Sender keine Flags setzt), `language` = Sprache der Primärkomponente (FIG 0/5, TS 101 756 Tabellen 9/10, 0 = unbekannt, 0x08 Deutsch, 0x09 Englisch) |
 | `ensemble_reconfigured` | |
 | `clock_time` | `unix_utc`, `lto_minutes` |
 | `service_started` | `slot`, `sid`, `scids`, `codec: {codec: he_aac, sbr, ps, sample_rate} \| {codec: mp2, sample_rate} \| {codec: data}`, `stereo` – bei Audio erst mit dem ersten dekodierten Block (Codec-Daten stammen aus dem Superframe/Decoder), bei Paketdiensten sofort |
@@ -202,7 +202,7 @@ beim bisherigen Verhalten (umschalten).
 ← {"type":"device_opened","name":"file","serial":"warnung-110030-2min.uff","bit_depth":8}
 ← {"type":"synced","synced":true}
 ← {"type":"ensemble_found","eid":4284,"name":"DR Deutschland","channel":"5C"}
-← {"type":"service_added","service":{"sid":53776,"scids":0,"name":"Dlf","is_audio":true,"is_primary":true,"sub_ch":4,"bitrate_kbps":96,"pty":1}}
+← {"type":"service_added","service":{"sid":53776,"scids":0,"name":"Dlf","is_audio":true,"is_primary":true,"sub_ch":4,"bitrate_kbps":96,"pty":1,"short_name":"Dlf","language":8}}
 → {"type":"select_service","sid":53776,"scids":0,"slot":"primary"}
 ← {"type":"service_started","slot":"primary","sid":53776,"scids":0,"codec":{"codec":"he_aac","sbr":true,"ps":false,"sample_rate":48000},"stereo":true}
 ← {"type":"audio_format","rate":48000,"channels":2}

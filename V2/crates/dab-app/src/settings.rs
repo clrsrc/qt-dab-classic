@@ -43,6 +43,9 @@ pub struct Settings {
     pub audio_device: Option<u32>,
     /// EPG/SPI-Paketdienst im Kern automatisch mitlaufen lassen (`set_epg`), Standard an.
     pub epg_enabled: bool,
+    /// Speichertasten zeigen das Kurzlabel des Senders (FIG 1 Zeichen-Flags,
+    /// max. 8 Zeichen) statt des vollen Namens, Standard an (17.09.2026).
+    pub preset_short_labels: bool,
     /// Beim Start das zuletzt benutzte Geraet oeffnen und den letzten Dienst wiederherstellen.
     pub autostart: bool,
     /// Letzte Datei fuer die Datei-Wiedergabe (Entscheidung 13).
@@ -122,6 +125,7 @@ impl Default for Settings {
             music_mp3_kbps: 256,
             audio_device: None,
             epg_enabled: true,
+            preset_short_labels: true,
             autostart: true,
             last_file: None,
             file_loop: true,

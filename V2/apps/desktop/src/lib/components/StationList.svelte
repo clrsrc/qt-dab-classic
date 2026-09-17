@@ -9,14 +9,26 @@
   import { startServiceDrag, storePreset } from "$lib/presets";
   import { notify, s, togglePanel, ui } from "$lib/state.svelte";
   import { groupStations, hexEid, stationsApi, type StationEntry } from "$lib/stations";
+  import { matchesPty, metaTooltip, ptyName, ptyOptions } from "$lib/metadata";
   import Logo from "./Logo.svelte";
 
   let filter = $state("");
   let audioOnly = $state(true);
+  // Genre-Filter (Programmtyp FIG 0/17), 0 = alle. Der Textfilter trifft auch den Genre-Namen.
+  let ptyFilter = $state(0);
+  const options = $derived(ptyOptions(s.stations));
+  $effect(() => {
+    if (ptyFilter && !options.some((o) => o.pty === ptyFilter)) ptyFilter = 0;
+  });
 
   const visible = $derived.by(() => {
     const q = filter.trim().toLowerCase();
-    return s.stations.filter((e) => (!audioOnly || e.is_audio) && (!q || e.name.toLowerCase().includes(q) || e.ensemble.toLowerCase().includes(q)));
+    return s.stations.filter(
+      (e) =>
+        (!audioOnly || e.is_audio) &&
+        (!e.is_audio || matchesPty(e, ptyFilter)) &&
+        (!q || e.name.toLowerCase().includes(q) || e.ensemble.toLowerCase().includes(q) || ptyName(e.pty).toLowerCase().includes(q)),
+    );
   });
   const groups = $derived(groupStations(visible));
   const total = $derived(s.stations.length);
@@ -61,6 +73,12 @@
     <span>{t("panel.stations")}</span>
     <input type="text" class="filter" bind:value={filter} placeholder={t("stations.filter")} title={t("stations.filter_hint")} />
     <label class="k"><input type="checkbox" bind:checked={audioOnly} />{t("stations.audio_only")}</label>
+    {#if options.length}
+      <select class="pty" bind:value={ptyFilter} title={t("services.filter_title")}>
+        <option value={0}>{t("services.filter_all")}</option>
+        {#each options as o (o.pty)}<option value={o.pty}>{o.label}</option>{/each}
+      </select>
+    {/if}
     <span class="grow"></span>
     <span class="cnt">{total ? t(ensembles === 1 ? "stations.count_one" : "stations.count", { n: total, m: ensembles }) : t("services.empty")}</span>
     {#if total}<button class="btn mini" onclick={clearAll} title={t("stations.clear_hint")}>{t("stations.clear")}</button>{/if}
@@ -90,10 +108,11 @@
           ondragstart={(ev) => startServiceDrag(ev, e)}
           onclick={() => tune(e)}
           oncontextmenu={(ev) => menu(e, ev)}
-          title={e.is_audio ? t("stations.row_hint") : ""}
+          title={e.is_audio ? [metaTooltip(e), t("stations.row_hint")].filter(Boolean).join("\n") : ""}
         >
           {#if e.is_audio}<Logo eid={e.eid} sid={e.sid} size="small" name={e.name} px={16} />{/if}
           <span class="grow">{e.name}{e.scids ? ` (${e.scids})` : ""}</span>
+          <span class="meta pty">{e.is_audio ? ptyName(e.pty) : ""}</span>
           <span class="meta">{e.is_audio ? `${e.bitrate_kbps} kbps` : t("services.data")}</span>
           <span class="meta">{e.sid.toString(16).toUpperCase().padStart(4, "0")}</span>
         </button>
@@ -106,6 +125,8 @@
   .stations { display: flex; flex-direction: column; flex: 1 1 160px; min-height: 100px; }
   .list { flex: 1; margin: 3px 4px; }
   .filter { width: 110px; min-height: 14px; padding: 0 3px; font-size: 10px; }
+  .pty { min-height: 14px; padding: 0 2px; font-size: 9px; font-weight: normal; letter-spacing: 0; text-transform: none; }
+  .meta.pty { font-family: var(--font); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
   .k { display: flex; align-items: center; gap: 2px; font-weight: normal; letter-spacing: 0; text-transform: none; font-size: 9px; }
   .cnt { font-weight: normal; letter-spacing: 0; text-transform: none; color: var(--green); }
   .grp { position: sticky; top: 0; background: #0e1614; color: #7fd6a0; font-size: 10px; font-weight: bold; padding: 1px 6px; border-bottom: 1px solid #1a2e22; }

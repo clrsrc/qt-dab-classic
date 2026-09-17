@@ -15,6 +15,11 @@ pub struct Preset {
     pub scids: u8,
     /// Anzeige-Cache; der echte Name kommt beim Empfang aus dem FIC.
     pub name: String,
+    /// Kurzlabel des Dienstes (FIG 1 Zeichen-Flags, max. 8 Zeichen) fuer die
+    /// Speichertasten; leer, wenn der Sender keines setzt oder der Eintrag
+    /// aus dem Favoriten-Import stammt (dann zeigt die Leiste `name`).
+    #[serde(default)]
+    pub short_name: String,
     #[serde(default)]
     pub logo_path: Option<PathBuf>,
     /// Kleines Logo (32x32) als `data:`-URL fuer die Speicherleiste (Entscheidung 8).
@@ -99,7 +104,7 @@ mod tests {
     use super::*;
 
     fn p(sid: u32) -> Preset {
-        Preset { channel: "5C".into(), eid: 0x10BC, sid, scids: 0, name: "Dlf".into(), logo_path: None, logo_data_url: None, stored_at: 0 }
+        Preset { channel: "5C".into(), eid: 0x10BC, sid, scids: 0, name: "Dlf".into(), short_name: "Dlf".into(), logo_path: None, logo_data_url: None, stored_at: 0 }
     }
 
     #[test]

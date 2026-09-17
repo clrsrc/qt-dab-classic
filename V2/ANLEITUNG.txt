@@ -178,7 +178,9 @@ INHALT
                     laesst sich an der Titelleiste verschieben und am Rand
                     in der Groesse aendern.
     Anzeige         Ensemble (EId), Dienst, Bitrate, Codec, Stereo/Mono,
-                    FIC-Qualitaet, LIVE bzw. "TIMESHIFT -m:ss",
+                    Programmtyp (Genre aus dem Sendersignal, Tooltip zeigt
+                    die gemeldete Sprache), FIC-Qualitaet, LIVE bzw.
+                    "TIMESHIFT -m:ss",
                     Kanal/Frequenz/SNR, Senderlogo bzw.
                     Dia-Show, Jetzt/Danach aus dem EPG, Lauftext (DLS) mit
                     Titel/Interpret (DL+), Aussteuerung L/R.
@@ -188,7 +190,12 @@ INHALT
                     Abspielmarke, Zeitversatz und "letzte n min sichern"
                     (Abschnitt 9); bei Datei-Wiedergabe ausgeblendet.
     Speicher        Die 10 Speicherknoepfe mit Logo, Name und Kanal;
-                    "Favoriten importieren".
+                    "Favoriten importieren". Die Knoepfe zeigen das vom
+                    Sender vorgesehene Kurzlabel (max. 8 Zeichen, z. B.
+                    "Dlf Kult" fuer "Dlf Kultur"); der volle Name steht im
+                    Tooltip. Abschaltbar unter Einstellungen > Allgemein
+                    ("Kurzlabel auf den Speichertasten"). Importierte
+                    Favoriten bekommen ihr Kurzlabel beim ersten Aufruf.
     Geraet/Kanal    Geraetewahl, Oeffnen/Schliessen, Kanalliste, Scan.
     Panel-Leiste    Knoepfe Speicher, Ensemble, Senderliste, Scan,
                     Einstellungen, EPG, Timer, Debug - jedes Panel laesst
@@ -202,11 +209,15 @@ INHALT
   Panels
     Speicher        Speicherleiste (Abschnitt 4).
     Ensemble        Dienstliste des abgestimmten Ensembles (Klick =
-                    Umschalten, Drag auf einen Speicherknopf).
+                    Umschalten, Drag auf einen Speicherknopf) mit
+                    Programmtyp je Dienst (Popmusik, Nachrichten, ...);
+                    das Auswahlfeld "Alle Genres" filtert die Liste nach
+                    Programmtyp. Tooltip: Genre, Sprache, Kurzlabel.
     Senderliste     Alle Dienste aller bekannten Ensembles, gruppiert je
                     Ensemble; Klick = Umschalten auch ueber Kanalgrenzen,
-                    Filter, "nur Audio", Rechtsklick/Drag = Speicher
-                    belegen, "Leeren" (Abschnitt 4).
+                    Filter (trifft auch das Genre), Genre-Auswahl, "nur
+                    Audio", Rechtsklick/Drag = Speicher belegen, "Leeren"
+                    (Abschnitt 4).
     Scan            Ergebnisse des Band-III-Scans.
     Einstellungen   Gruppen Geraet/Empfang (Geraet, RTL-SDR-Index, PPM,
                     AGC, manueller Gain, Merker je Geraet/Kanal), Audio
@@ -214,9 +225,9 @@ INHALT
                     auswerten, automatisch umschalten, Warnton), EPG,
                     Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
                     Vor-/Nachlauf, Sleep-Timer), Timeshift (Puffergroesse
-                    in Minuten), Allgemein (Sprache,
-                    Autostart, sichtbare Panels, Datenordner, Kern-Version
-                    und Kern-Neustart), TII/Debug (Heimatkoordinaten,
+                    in Minuten), Allgemein (Sprache, Autostart, Kurzlabel
+                    auf den Speichertasten, sichtbare Panels, Datenordner,
+                    Kern-Version und Kern-Neustart), TII/Debug (Heimatkoordinaten,
                     TII-Auswertung, Schwelle, DX-Modus, Scope-Rate).
     EPG             Tagesknoepfe (heute, morgen, ...), Dienstwahl, Sende-
                     plan mit laufender Sendung; Klick auf eine Sendung

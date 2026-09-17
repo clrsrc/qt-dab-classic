@@ -890,7 +890,7 @@ mod tests {
     }
 
     fn svc(sid: u32, name: &str) -> ServiceInfo {
-        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0 }
+        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0, short_name: String::new(), language: 0 }
     }
 
     fn tune(a: &mut App, channel: &str, eid: u16, services: &[(u32, &str)]) {

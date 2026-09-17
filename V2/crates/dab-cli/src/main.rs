@@ -577,7 +577,16 @@ fn print_event(t: Duration, ev: &Event) {
         Event::Ready { .. } => {}
         Event::Synced { synced } => println!("{ts}  SYNC {}", if *synced { "ja" } else { "nein" }),
         Event::EnsembleFound { eid, name, channel } => println!("{ts}  ENSEMBLE {name} ({eid:04X}) auf {channel}"),
-        Event::ServiceAdded { service } => println!("{ts}  DIENST {:<20} SId {:04X} SubCh {:2} {} kbit/s", service.name, service.sid, service.sub_ch, service.bitrate_kbps),
+        Event::ServiceAdded { service } => println!(
+            "{ts}  DIENST {:<20} SId {:04X} SubCh {:2} {} kbit/s  kurz={:<8} pty={} sprache={}",
+            service.name,
+            service.sid,
+            service.sub_ch,
+            service.bitrate_kbps,
+            service.short_name,
+            dab_api::pty_name(service.pty).unwrap_or("-"),
+            dab_api::language_name(service.language).unwrap_or("-")
+        ),
         Event::ServiceStarted { slot, sid, codec, stereo, .. } => println!("{ts}  START {slot:?} {sid:04X} {codec:?} stereo={stereo}"),
         Event::ServiceStopped { slot, sid } => println!("{ts}  STOP  {slot:?} {sid:04X}"),
         Event::Dls { sid, text, .. } => println!("{ts}  DLS  [{sid:04X}] {text}"),

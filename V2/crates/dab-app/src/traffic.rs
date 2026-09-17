@@ -287,6 +287,7 @@ impl App {
                             artist: Some(service),
                             album: Some(album.to_string()),
                             date: Some(now.format("%Y-%m-%d").to_string()),
+                            genre: None,
                             cover_png_b64: None,
                         }),
                     },
@@ -436,7 +437,7 @@ mod tests {
     use std::time::Instant;
 
     fn svc(sid: u32, name: &str, sub_ch: u8) -> ServiceInfo {
-        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: true, is_primary: true, sub_ch, bitrate_kbps: 88, pty: 0 }
+        ServiceInfo { sid, scids: 0, name: name.into(), is_audio: true, is_primary: true, sub_ch, bitrate_kbps: 88, pty: 0, short_name: String::new(), language: 0 }
     }
 
     fn app(autoswitch: bool) -> App {

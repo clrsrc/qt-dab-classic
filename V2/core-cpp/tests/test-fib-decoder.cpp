@@ -171,6 +171,37 @@ int main() {
         check(anns.size() == 2 && anns[1].flags == 0, "Announcement: Ende (ASw 0) wird gemeldet");
     }
 
+    // --- FIB 6: FIG 1/1 Label mit Kurzlabel-Flags, FIG 0/5 Sprache (17.09.2026) ---
+    {
+        struct Lang { int subCh, language; };
+        std::vector<Lang> langs;
+        cb.language = [&](int subCh, int language) { langs.push_back({subCh, language}); };
+        FibBuilder b;
+        b.figHeader(1, 1 + 2 + 16 + 2);
+        b.put(0, 4); b.put(0, 1); b.put(1, 3);   // Charset EBU Latin, Rfu, Ext 1
+        b.put(0xD210, 16);
+        const char* label = "Deutschlandfunk ";  // 16 Zeichen
+        for (int i = 0; i < 16; ++i) b.put((uint8_t)label[i], 8);
+        // Flags: D,e,u,t,s,c,h,l,a,n,d,f,u,n,k,' ' -> "Dlf" = Bits 0, 7, 11
+        b.put(0x8110, 16);
+        b.figHeader(0, 1 + 2);
+        b.fig0Byte1(5);
+        b.put(0, 1); b.put(0, 1); b.put(1, 6);   // L/S 0, Rfu, Subkanal 1
+        b.put(0x08, 8);                          // Deutsch
+        b.endMarker();
+        dec.feed(b);
+        int idx = dec.getServiceComp(0xD210u, 0);
+        audiodata ad;
+        if (idx >= 0) dec.audioData(idx, ad);
+        check(idx >= 0 && ad.defined, "FIG 1/1: Dienst D210 hat Audiodaten");
+        check(ad.serviceName == "Deutschlandfunk ", "FIG 1/1: Label 'Deutschlandfunk '");
+        check(ad.shortName == "Dlf", "FIG 1/1: Kurzlabel aus Zeichen-Flags = 'Dlf'");
+        check(ad.language == 0x08, "FIG 0/5: Sprache der Komponente = 0x08 Deutsch");
+        check(langs.size() == 1 && langs[0].subCh == 1 && langs[0].language == 8, "FIG 0/5: language-Callback (Subkanal 1, 0x08)");
+        dec.feed(b);
+        check(langs.size() == 1, "FIG 0/5: Wiederholung loest keinen zweiten Callback aus");
+    }
+
     std::printf("%s (%d Fehler)\n", failures == 0 ? "ALLE TESTS OK" : "FEHLER", failures);
     return failures == 0 ? 0 : 1;
 }

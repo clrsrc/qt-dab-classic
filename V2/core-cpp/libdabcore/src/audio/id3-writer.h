@@ -14,10 +14,11 @@ struct Id3Tags {
     std::string artist;       // TPE1
     std::string album;        // TALB, z. B. Sendername
     std::string date;         // TDRC, ISO yyyy-mm-dd
+    std::string genre;        // TCON, z. B. Programmtyp (FIG 0/17)
     std::string coverPngB64;  // APIC, PNG als Base64 (auch als data:-URL)
 
     bool empty() const {
-        return title.empty() && artist.empty() && album.empty() && date.empty() && coverPngB64.empty();
+        return title.empty() && artist.empty() && album.empty() && date.empty() && genre.empty() && coverPngB64.empty();
     }
 };
 

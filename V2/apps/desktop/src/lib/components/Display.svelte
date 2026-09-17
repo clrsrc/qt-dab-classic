@@ -8,6 +8,7 @@
   import { fmtClock, remainingMin } from "$lib/epg";
   import { fmtOffset } from "$lib/timeshift";
   import { linkify } from "$lib/linkify";
+  import { languageName, ptyName } from "$lib/metadata";
   import Logo from "./Logo.svelte";
 
   const svc = $derived(currentService());
@@ -81,6 +82,7 @@
     <span>{svc ? `${svc.bitrate_kbps} kbps` : "--- kbps"}</span>
     <span>{codecText || "---"}</span>
     <span>{s.current ? (s.current.stereo ? t("display.stereo") : t("display.mono")) : "----"}</span>
+    {#if svc && ptyName(svc.pty)}<span class="pty" title={svc.language ? `${t("display.language")}: ${languageName(svc.language)}` : ""}>{ptyName(svc.pty)}</span>{/if}
     <span class="dim">{s.fic_total ? `FIC ${s.fic_ok}/${s.fic_total}` : ""}</span>
     {#if tsOffset}
       <span class="ts" class:paused={s.timeshift.mode === "paused"} title={t("ts.display_tip")}>TIMESHIFT {tsOffset}</span>
@@ -160,6 +162,7 @@
   .row1 { display: flex; gap: 12px; font-size: 10px; white-space: nowrap; }
   .row1 .ens { flex: 1; overflow: hidden; text-overflow: ellipsis; }
   .tech span { min-width: 56px; }
+  .tech .pty { color: #7fd6a0; font-size: 9px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
   .tech .ts { color: var(--green-hi); font-weight: bold; min-width: 120px; }
   .tech .ts.paused { color: var(--amber, #e8b23a); animation: blink 1s steps(2, start) infinite; }
   .name { font-size: 16px; font-weight: bold; color: var(--green-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }

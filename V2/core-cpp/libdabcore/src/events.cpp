@@ -22,7 +22,8 @@ const char* ewsPhaseName(EwsPhase p) {
 
 json ServiceInfo::toJson() const {
     return {{"sid", sid}, {"scids", scids}, {"name", name}, {"is_audio", isAudio},
-            {"is_primary", isPrimary}, {"sub_ch", subCh}, {"bitrate_kbps", bitrateKbps}, {"pty", pty}};
+            {"is_primary", isPrimary}, {"sub_ch", subCh}, {"bitrate_kbps", bitrateKbps}, {"pty", pty},
+            {"short_name", shortName}, {"language", language}};
 }
 
 static json ev(const char* type) { return json{{"type", type}}; }

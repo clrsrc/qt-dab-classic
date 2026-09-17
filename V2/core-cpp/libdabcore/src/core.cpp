@@ -55,6 +55,7 @@ RecFormat recFormatFromJson(const json& f) {
         fmt.id3.artist = jsonStr(t, "artist");
         fmt.id3.album = jsonStr(t, "album");
         fmt.id3.date = jsonStr(t, "date");
+        fmt.id3.genre = jsonStr(t, "genre");
         fmt.id3.coverPngB64 = jsonStr(t, "cover_png_b64");
     }
     return fmt;
@@ -473,6 +474,16 @@ void DabCore::wireCallbacks() {
             }
         }
     };
+    cb.language = [this](int subChId, int language) {
+        // Sprache kam nach dem Label: Dienst(e) dieses Subkanals erneut melden
+        std::lock_guard<std::mutex> lk(stateM_);
+        for (auto& s : state_["services"]) {
+            if (s.value("sub_ch", -1) == subChId && s.value("language", 0) != language) {
+                s["language"] = language;
+                sink_(json{{"type", "service_added"}, {"service", s}});
+            }
+        }
+    };
     cb.changeInConfiguration = [this] {
         // Review M1: der fibDecoder meldet direkt danach alle Dienste der
         // neuen Konfiguration erneut (addToEnsemble -> service_added), die
@@ -578,11 +589,14 @@ void DabCore::emitService(const std::string& rawName, uint32_t sid, int subChId,
                 s.subCh = static_cast<uint8_t>(ad.subchId);
                 s.bitrateKbps = static_cast<uint16_t>(ad.bitRate);
                 s.pty = static_cast<uint8_t>(ad.programType);
+                s.shortName = trimRight(ad.shortName);
+                s.language = static_cast<uint8_t>(ad.language);
             }
         } else {
             packetdata pd;
             fic.packetData(index, pd);
             s.isAudio = false;
+            s.shortName = trimRight(pd.shortName);
             if (pd.defined) {
                 s.scids = static_cast<uint8_t>(pd.SCIds);
                 s.subCh = static_cast<uint8_t>(pd.subchId);
@@ -1807,6 +1821,7 @@ void DabCore::startScan(const std::vector<std::string>& channelsIn, const std::s
             si.sid = e.value("sid", 0u); si.scids = e.value("scids", 0); si.name = e.value("name", "");
             si.isAudio = e.value("is_audio", true); si.isPrimary = e.value("is_primary", true);
             si.subCh = e.value("sub_ch", 0); si.bitrateKbps = e.value("bitrate_kbps", 0); si.pty = e.value("pty", 0);
+            si.shortName = e.value("short_name", ""); si.language = e.value("language", 0);
             s.services.push_back(si);
         }
         s.snr = s.eid >= 0 ? lastSnrDb_.load() : 0.0f;

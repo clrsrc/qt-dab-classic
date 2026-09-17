@@ -17,6 +17,8 @@ export interface StationEntry {
   is_audio: boolean;
   bitrate_kbps: number;
   pty: number;
+  short_name: string;
+  language: number;
   last_seen_unix: number;
 }
 

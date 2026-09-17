@@ -9,6 +9,8 @@
 //! snake_case. Binaerdaten (MOT-Slides, Spektrum) als Base64-String.
 
 pub mod protocol;
+pub mod tables;
+pub use tables::{language_name, pty_is_music, pty_name};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -68,6 +70,9 @@ pub struct Id3Tags {
     pub album: Option<String>,
     /// ISO yyyy-mm-dd
     pub date: Option<String>,
+    /// TCON, z. B. der Programmtyp des Dienstes ([`pty_name`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genre: Option<String>,
     pub cover_png_b64: Option<String>,
 }
 
@@ -144,7 +149,16 @@ pub struct ServiceInfo {
     pub is_primary: bool,
     pub sub_ch: u8,
     pub bitrate_kbps: u16,
+    /// Programmtyp (FIG 0/17, TS 101 756 Tabelle 12), 0 = keiner; siehe [`pty_name`].
     pub pty: u8,
+    /// Kurzlabel aus den Zeichen-Flags des FIG-1-Labels (max. 8 Zeichen),
+    /// leer wenn der Sender keine Flags setzt.
+    #[serde(default)]
+    pub short_name: String,
+    /// Sprache der Primaerkomponente (FIG 0/5, TS 101 756 Tabellen 9/10),
+    /// 0 = unbekannt; siehe [`language_name`].
+    #[serde(default)]
+    pub language: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

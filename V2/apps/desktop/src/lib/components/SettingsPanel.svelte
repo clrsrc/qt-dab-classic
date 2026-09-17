@@ -277,6 +277,12 @@
           <span class="k">{t("settings.autostart_hint")}</span>
         </span>
 
+        <span class="lbl">{t("settings.preset_short_labels")}</span>
+        <span class="row">
+          <input type="checkbox" checked={st.preset_short_labels} onchange={(e) => patchSettings({ preset_short_labels: chk(e) })} />
+          <span class="k">{t("settings.preset_short_labels_hint")}</span>
+        </span>
+
         <span class="lbl">{t("settings.panels")}</span>
         <span class="row">
           {#each panelNames as name (name)}

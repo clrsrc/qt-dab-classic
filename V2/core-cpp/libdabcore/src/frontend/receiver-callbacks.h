@@ -42,6 +42,10 @@ struct ReceiverCallbacks {
     std::function<void(int lto, int ecc)>     ltoEcc;
     std::function<void()>                     freqListChanged;
     std::function<void(int sid, int pty)>     programType;
+    // Sprache einer Komponente aus FIG 0/5 (TS 101 756), subChId = Subkanal
+    // der Komponente; kommt haeufig vor dem Label des Dienstes, dann liest
+    // emitService sie direkt aus audioData, sonst wird der Dienst neu gemeldet.
+    std::function<void(int subChId, int language)> language;
     std::function<void(bool)>                 alarmFlag;
     std::function<void(bool active, int subChId)> ewfAlarm;
     // EWS (FIG 0/15): phase 0 Pre-trigger, 1 Trigger, 2 Sustain, 3 End;
