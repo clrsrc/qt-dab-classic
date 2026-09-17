@@ -1,12 +1,15 @@
 # Erzeugt den portablen Ordner fuer DAB Classic (Entscheidung 12):
 #   dab-classic.exe + WebView2Loader.dll + core\ (dabcored.exe + DLLs) + tii\ (txdata.tii) + data\
-#   + webview2\ (Fixed-Version-Runtime) + zadig + ANLEITUNG.txt.
+#   + webview2\ (Fixed-Version-Runtime) + zadig + ANLEITUNG.txt + LICENSE + THIRD_PARTY_NOTICES.md
+#   + RELEASE_NOTES_v3.0.md.
 #   Kein Installer, keine Start.bat: `data\` neben der EXE schaltet den
 #   portablen Modus ein (dab-app::paths).
 #
 #   .\tools\deploy-portable.ps1                 # baut Kern + App (release), packt nach dist\DAB-Classic-portable\
 #   .\tools\deploy-portable.ps1 -SkipBuild      # nur packen
-#   .\tools\deploy-portable.ps1 -Zip            # zusaetzlich dist\DAB-Classic-v3.0-dev-portable-win64.zip
+#   .\tools\deploy-portable.ps1 -Zip            # zusaetzlich dist\DAB-Classic-v<Version>-portable-win64.zip
+#                                               # (mit WebView2-Laufzeit) und ...-lite.zip (ohne, nutzt die
+#                                               # Evergreen-Laufzeit des Systems); Version aus tauri.conf.json
 #   .\tools\deploy-portable.ps1 -WebView2Runtime C:\Downloads\Microsoft.WebView2.FixedVersionRuntime.x64.cab
 #
 # WebView2: Die Fixed-Version-Runtime (~300 MB .cab, entpackt ~600 MB) kommt von
@@ -89,6 +92,12 @@ Copy-Item $tiiSrc "$Dist\tii"
 if (Test-Path $Zadig) { Copy-Item $Zadig $Dist }
 $readme = Join-Path $root 'ANLEITUNG.txt'
 if (Test-Path $readme) { Copy-Item $readme $Dist }
+# Lizenz (Repo-Wurzel), Third-Party-Hinweise und Release Notes gehoeren ins Paket
+$repo = Split-Path -Parent $root
+foreach ($doc in @((Join-Path $repo 'LICENSE'), (Join-Path $root 'THIRD_PARTY_NOTICES.md'), (Join-Path $root 'RELEASE_NOTES_v3.0.md'))) {
+    if (-not (Test-Path $doc)) { throw "Fehlt im Paket: $doc" }
+    Copy-Item $doc $Dist
+}
 # Leere data\ mit Platzhalter, damit der Ordner auch im ZIP erhalten bleibt
 Set-Content -Path "$Dist\data\README.txt" -Encoding utf8 -Value @'
 Datenordner von DAB Classic (portabler Modus): settings.json, presets.json,
@@ -119,11 +128,26 @@ $size = (Get-ChildItem $Dist -Recurse -File | Measure-Object Length -Sum).Sum / 
 Write-Host ("Portable-Ordner: {0} ({1:N0} MB, WebView2 {2})" -f $Dist, $size, $wvVersion)
 
 if ($Zip) {
-    $zipPath = Join-Path $distParent 'DAB-Classic-v3.0-dev-portable-win64.zip'
-    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    Write-Host "== ZIP: $zipPath"
-    Compress-Archive -Path $Dist -DestinationPath $zipPath -CompressionLevel Optimal
-    Write-Host ("ZIP: {0} ({1:N0} MB)" -f $zipPath, ((Get-Item $zipPath).Length / 1MB))
+    $version = (Get-Content (Join-Path $app 'src-tauri\tauri.conf.json') -Raw | ConvertFrom-Json).version
+    $zipPath = Join-Path $distParent "DAB-Classic-v$version-portable-win64.zip"
+    $zipLite = Join-Path $distParent "DAB-Classic-v$version-portable-win64-lite.zip"
+    foreach ($z in @($zipPath, $zipLite)) { if (Test-Path $z) { Remove-Item $z -Force } }
+    if ($WebView2Runtime) {
+        Write-Host "== ZIP (mit WebView2-Laufzeit): $zipPath"
+        Compress-Archive -Path $Dist -DestinationPath $zipPath -CompressionLevel Optimal
+        Write-Host ("ZIP: {0} ({1:N0} MB)" -f $zipPath, ((Get-Item $zipPath).Length / 1MB))
+    }
+    # Lite: derselbe Ordner ohne webview2\ (die App nutzt dann die Evergreen-Laufzeit des Systems)
+    $wvKeep = Join-Path $distParent '_webview2-keep'
+    $hadWv = Test-Path "$Dist\webview2"
+    if ($hadWv) { if (Test-Path $wvKeep) { Remove-Item -Recurse -Force $wvKeep }; Move-Item "$Dist\webview2" $wvKeep }
+    try {
+        Write-Host "== ZIP (lite, ohne WebView2-Laufzeit): $zipLite"
+        Compress-Archive -Path $Dist -DestinationPath $zipLite -CompressionLevel Optimal
+        Write-Host ("ZIP: {0} ({1:N0} MB)" -f $zipLite, ((Get-Item $zipLite).Length / 1MB))
+    } finally {
+        if ($hadWv) { Move-Item $wvKeep "$Dist\webview2" }
+    }
 }
 
 if ($dataKeep) {

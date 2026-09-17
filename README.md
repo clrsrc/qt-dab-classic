@@ -1,4 +1,27 @@
-# Qt-DAB v2.0 Custom Build — DAB+ Empfänger für HackRF One
+# DAB Classic – DAB+ Empfänger für HackRF One und RTL-SDR
+
+## Aktuell: DAB Classic v3.0 (Ordner `V2/`)
+
+Version 3.0 ist ein Neuaufbau: Qt-freier C++-Empfangskern als eigener Prozess,
+Anwendungslogik in Rust, Oberfläche mit Tauri 2 und Svelte 5. Der Empfangspfad
+geht weiterhin auf Qt-DAB von Jan van Katwijk zurück. Funktionen, Aufbau und
+Build-Schritte: [`V2/README.md`](V2/README.md); Bedienung:
+[`V2/ANLEITUNG.txt`](V2/ANLEITUNG.txt); Änderungen:
+[`V2/RELEASE_NOTES_v3.0.md`](V2/RELEASE_NOTES_v3.0.md); Lizenzen der
+Bestandteile: [`V2/THIRD_PARTY_NOTICES.md`](V2/THIRD_PARTY_NOTICES.md).
+
+Portable Pakete (Windows 10/11, 64 Bit) liegen unter
+[Releases](https://github.com/clrsrc/qt-dab-classic/releases): das Vollpaket
+mit WebView2-Laufzeit und ein Lite-Paket, das die WebView2-Laufzeit des Systems
+nutzt. Entpacken, `dab-classic.exe` starten, Treiber einmalig mit dem
+beiliegenden Zadig einrichten.
+
+Der Qt-DAB-Code der Version 2.0 bleibt als Referenz im Ordner
+`qt-dab-master/`; die Beschreibung dieser Vorgängerversion folgt.
+
+---
+
+# Qt-DAB v2.0 Custom Build — DAB+ Empfänger für HackRF One (Vorgängerversion)
 
 Ein angepasster DAB+-Empfänger auf Basis des exzellenten
 [Qt-DAB](https://github.com/JvanKatwijk/qt-dab) von **Jan van Katwijk**

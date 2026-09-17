@@ -51,9 +51,16 @@ INHALT
 
 2. PORTABLE-ORDNER ENTPACKEN UND STARTEN
 ----------------------------------------
-  1. ZIP "DAB-Classic-v3.0-dev-portable-win64.zip" an einen beliebigen
+  1. ZIP "DAB-Classic-v3.0-portable-win64.zip" an einen beliebigen
      Ort entpacken (Festplatte oder USB-Stick), z. B. D:\DAB-Classic\.
      Der Pfad darf Leerzeichen und Umlaute enthalten.
+     Zwei Pakete stehen zur Wahl: das grosse (ca. 330 MB) bringt die
+     WebView2-Laufzeit von Microsoft im Ordner webview2\ mit und laeuft
+     auf jedem Windows 10/11 (64 Bit). Das kleine "-lite" (ca. 40 MB)
+     nutzt die WebView2-Laufzeit, die Windows ueber Microsoft Edge
+     bereits mitbringt - auf aktuellen Windows-10/11-Rechnern die Regel.
+     Fehlt sie, meldet die App das beim Start; dann das grosse Paket
+     nehmen oder die "WebView2 Evergreen Runtime" von Microsoft installieren.
 
   2. dab-classic.exe doppelklicken. Fertig.
 
@@ -646,6 +653,6 @@ adiodns\         Internet-Ergaenzung: hosts.json (DNS-Ergebnisse
     .\target\release\dab-cli.exe live --channel 5C --gain 40,24,0 --no-agc --iq-dump 5c.uff --duration 10
 
 ============================================================
-  DAB Classic v3.0 (Entwicklungsstand M3) - Stefan Kammann (DM2TIM)
+  DAB Classic v3.0 (September 2026) - Stefan Kammann (DM2TIM)
   Lizenz: GPLv3 - Empfangskern auf Basis von Qt-DAB (Jan van Katwijk)
 ============================================================

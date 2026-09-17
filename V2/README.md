@@ -1,4 +1,4 @@
-# DAB Classic v3.0 (Entwicklung)
+# DAB Classic v3.0
 
 Neuer Unterbau des DAB+-Empfängers: Qt-freier C++-Empfangskern als eigener
 Prozess, Rust-Workspace mit Kanal-API (Kommandos rein, Ereignisse raus),
@@ -152,10 +152,12 @@ Nur passende Alarme schalten um und öffnen das Alarmfenster; ortsfremde (z. B.
 der Eiffelturm-Funktionstest des Bundesmux) werden still in der EWF-Historie
 vermerkt. Ohne Heimatkoordinaten bleibt es beim ungefilterten Verhalten.
 
-Portable-Paket: `.	ools\deploy-portable.ps1 -Zip` baut Kern und Shell im
+Portable-Paket: `.\tools\deploy-portable.ps1 -Zip` baut Kern und Shell im
 Release und packt `dist\DAB-Classic-portable\` (EXE, `core\`, `tii\`, `data\`,
-WebView2-Fixed-Version-Runtime aus `third_party\webview2\*.cab`) sowie
-`dist\DAB-Classic-v3.0-dev-portable-win64.zip`.
+`LICENSE`, `THIRD_PARTY_NOTICES.md`, `RELEASE_NOTES_v3.0.md`, `ANLEITUNG.txt`,
+WebView2-Fixed-Version-Runtime aus `third_party\webview2\*.cab`) sowie zwei
+ZIPs: `dist\DAB-Classic-v<Version>-portable-win64.zip` (mit WebView2-Laufzeit)
+und `...-lite.zip` (ohne; nutzt die WebView2-Laufzeit des Systems).
 
 ## Meilensteine
 

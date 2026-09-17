@@ -1,6 +1,6 @@
 {
   "name": "dab-classic-desktop",
-  "version": "3.0.0-dev",
+  "version": "3.0.0",
   "description": "DAB Classic – DAB+-Empfaenger (Tauri 2 + Svelte 5)",
   "type": "module",
   "scripts": {

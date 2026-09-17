@@ -184,6 +184,7 @@ impl Roads {
         let mut best: Option<(&str, f64)> = None;
         for &ji in self.by_road.get(road as usize)? {
             let j = &self.junctions[ji as usize];
+            debug_assert_eq!(j.road, road, "by_road-Index passt nicht zur Anschlussstelle");
             // Zusammengelegte Knoten heissen "Dreieck X;Y": jede Teilbezeichnung zaehlt
             if not.is_some_and(|n| n.split(';').any(|a| j.name.split(';').any(|b| a.trim() == b.trim()))) {
                 continue;
