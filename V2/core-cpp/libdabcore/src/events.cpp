@@ -93,6 +93,9 @@ json motObject(uint16_t eid, uint32_t sid, uint16_t ct, const std::string& name,
 json epgObject(uint16_t eid, uint32_t sid, uint32_t date, const std::string& name, const std::string& xml) {
     auto j = ev("epg_object"); j["eid"] = eid; j["sid"] = sid; j["date_yyyymmdd"] = date; j["name"] = name; j["xml"] = xml; return j;
 }
+json tdcGroup(uint32_t sid, uint8_t groupType, const std::vector<uint8_t>& d) {
+    auto j = ev("tdc_group"); j["sid"] = sid; j["group_type"] = groupType; j["data_b64"] = base64Encode(d); return j;
+}
 json announcement(uint32_t sid, uint16_t kind, uint8_t subCh, bool active, uint8_t cluster) {
     auto j = ev("announcement");
     j["sid"] = sid; j["kind"] = kind; j["sub_ch"] = subCh; j["active"] = active; j["cluster"] = cluster;

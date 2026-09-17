@@ -66,7 +66,14 @@ struct CoreOptions {
     // SPI/EPG-Paketdienst des Ensembles automatisch als Background-Slot
     // starten (Logos, EPG); Kommando set_epg{enabled} schaltet zur Laufzeit.
     bool epg = true;
+    // TPEG-Paketdienst (FIG 0/13 UA-Typ 4, DSCTy 5 TDC, z. B. "ARD TPEG" auf
+    // 11D/9A) automatisch als Background-Slot starten; die Datengruppen gehen
+    // als tdc_group an die App. Kommando set_tpeg{enabled} schaltet zur Laufzeit.
+    bool tpeg = true;
 };
+
+// Vom Kern selbst gestarteter Datendienst (SPI/EPG bzw. TPEG, Punkt 3)
+enum class AutoData { None, Epg, Tpeg };
 
 struct RunningService;
 
@@ -128,13 +135,13 @@ private:
     void stopIqDump();
 
     // Dienste (serviceM_ haelt der Aufrufer nicht; die Methoden sperren selbst)
-    // autoEpg: vom Kern gestarteter SPI/EPG-Hintergrunddienst (set_epg false
-    // beendet nur diese)
-    void selectService(uint32_t sid, uint8_t scids, Slot slot, bool autoEpg = false);
+    // autoData: vom Kern selbst gestarteter Datendienst (SPI/EPG bzw. TPEG);
+    // set_epg/set_tpeg false beenden nur diese.
+    void selectService(uint32_t sid, uint8_t scids, Slot slot, AutoData autoData = AutoData::None);
     // Backend + Pipeline fuer die FIC-Komponente ficIndex anlegen und in
     // services_ eintragen (serviceM_ gehalten). false: nicht gestartet
     // (Log kam schon).
-    bool startServiceLocked(int ficIndex, uint32_t sid, uint8_t scids, Slot slot, bool autoEpg);
+    bool startServiceLocked(int ficIndex, uint32_t sid, uint8_t scids, Slot slot, AutoData autoData);
     void stopService(Slot slot, int64_t sid);      // sid < 0: alle im Slot
     void stopAllServicesLocked();
     void stopOneLocked(RunningService* rs);
@@ -152,6 +159,11 @@ private:
     // SPI-Dienst (FIG 0/13 Appl-Type 7) automatisch als Background starten
     void maybeStartEpg(const ServiceInfo& s);
     void setEpg(bool enabled);
+    // TPEG-Dienst (FIG 0/13 UA-Typ 4) automatisch als Background starten (Punkt 3)
+    void maybeStartTpeg(const ServiceInfo& s);
+    void setTpeg(bool enabled);
+    // gemeinsamer Kern von setEpg/setTpeg
+    void setAutoData(AutoData kind, bool enabled);
     uint16_t currentEid() const;
     // SId eines Ensemble-Dienstes aus dem Objektnamen (4/8 Hex-Zeichen vor '_'), sonst 0
     uint32_t sidFromLogoName(const std::string& name) const;
@@ -294,7 +306,7 @@ private:
         uint32_t sid = 0;             // Select
         uint8_t scids = 0;
         Slot slot = Slot::Primary;
-        bool autoEpg = false;
+        AutoData autoData = AutoData::None;
         int phase = 0;                // Ews
         uint32_t subChId = 0;
         bool isTest = false;
@@ -334,6 +346,7 @@ private:
     std::atomic<bool> autoWavStarted_{false};   // Aktions- und Kommandothread
     // EPG/SPI-Hintergrunddienst
     std::atomic<bool> epgEnabled_{true};
+    std::atomic<bool> tpegEnabled_{true};   // TPEG-Hintergrunddienst (Punkt 3)
     std::atomic<int> lto_{0};                // FIG 0/9 LTO (Stunden), fuer den epg-compiler
     std::atomic<int> ecc_{0};                // FIG 0/9 ECC (0 = unbekannt), fuer RadioDNS; Reset bei Kanalwechsel
 

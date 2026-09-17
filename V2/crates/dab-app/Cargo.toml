@@ -16,6 +16,8 @@ thiserror = { workspace = true }
 log = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
+# TPEG (crate::tpeg): Dienstrahmen der ARD sind zlib-gepackt (reiner Rust-Backend)
+flate2 = "1"
 # RadioDNS (crate::radiodns): DNS ueber den System-Resolver, HTTP(S) ueber
 # den Windows-Zertifikatspeicher (schannel) - kein rustls/nasm noetig.
 hickory-resolver = { version = "0.24", default-features = false, features = ["system-config", "tokio-runtime"] }

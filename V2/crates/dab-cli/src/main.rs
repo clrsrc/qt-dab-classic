@@ -544,6 +544,7 @@ fn event_name(ev: &Event) -> &'static str {
         Event::MotSlide { .. } => "mot_slide",
         Event::MotObject { .. } => "mot_object",
         Event::EpgObject { .. } => "epg_object",
+        Event::TdcGroup { .. } => "tdc_group",
         Event::Announcement { .. } => "announcement",
         Event::AudioFormat { .. } => "audio_format",
         Event::AudioLevel { .. } => "audio_level",

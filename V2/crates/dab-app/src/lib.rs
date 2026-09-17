@@ -23,6 +23,7 @@ pub mod stations;
 pub mod tii;
 pub mod timer;
 pub mod timeshift;
+pub mod tpeg;
 pub mod traffic;
 
 pub use app::{App, AppError, AppEvent, Effects, NoticeLevel, PresetStatus, StoreResult, DEFAULT_HACKRF_GAIN, PRESET_TIMEOUT};

@@ -120,6 +120,18 @@ von heute und morgen – per RadioDNS (ETSI TS 103 270: CNAME auf
 aus FIG 0/9 (`ensemble_found.ecc`, `ensemble_ecc`). Broadcast hat Vorrang; die Zwischen-
 ergebnisse liegen in `data/radiodns/`.
 
+TPEG-Verkehrsmeldungen (17.09.2026, Standard an, nur Broadcast): Der Kern erkennt den
+TPEG-Paketdienst des Ensembles (FIG 0/13 Appl-Type 4, DSCTy 5 TDC, ETSI TS 103 551 – in
+NRW „ARD TPEG“ auf WDR 11D/9A, nicht im Bundesmux) und startet ihn wie den EPG-Dienst als
+Background-Slot (`set_tpeg`, `--no-tpeg`); die geprüften MSC-Datengruppen gehen als
+`tdc_group` an die App. `dab-app::tpeg` dekodiert TPEG2: Transport-/Dienstrahmen (zlib),
+SNI, TEC 3.2 (MMC, Ereignis mit Ursache/Unterursache, Spuren, Länge, Verzögerung, Zeiten,
+Hinweise) und die Ortsreferenz (OpenLR-Koordinaten, Straßenklasse/-art, Richtung, Länge;
+TMC-Code zusätzlich). Das Verkehr-Panel (TA) zeigt die Liste, mit Heimatkoordinaten nach
+Entfernung sortiert. Die Binärregeln (ISO 21219-3) wurden am Mitschnitt nachvollzogen und
+gegen die Apache-2.0-Referenz `fenghlkevin/tpeg-item` abgeglichen; TFP (Verkehrsfluss)
+wird nur erkannt.
+
 Ortsabgleich (Geofencing) beim EWS-Alarm: Die Heimatkoordinaten gehen als
 `set_home_location` in den Kern, der die Ortscodes eines Alarms (TS 104 089
 Annex F) damit vergleicht und sein Urteil als `ews_alert.relevant` zurückmeldet.

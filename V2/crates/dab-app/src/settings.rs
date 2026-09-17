@@ -50,6 +50,10 @@ pub struct Settings {
     pub audio_device_name: Option<String>,
     /// EPG/SPI-Paketdienst im Kern automatisch mitlaufen lassen (`set_epg`), Standard an.
     pub epg_enabled: bool,
+    /// TPEG-Paketdienst im Kern automatisch mitlaufen lassen (`set_tpeg`) und
+    /// TEC-Verkehrsmeldungen dekodieren (crate::tpeg), Standard an (Punkt 3,
+    /// 17.09.2026). Nur Broadcast, kein Internet.
+    pub tpeg_enabled: bool,
     /// Hybrid Radio (crate::radiodns): Logos und Sendeplaene fuer Dienste ohne
     /// Broadcast-EPG per RadioDNS/SPI ueber IP nachladen. Standard AUS - die
     /// App spricht dann nie mit dem Internet (17.09.2026).
@@ -137,6 +141,7 @@ impl Default for Settings {
             audio_device: None,
             audio_device_name: None,
             epg_enabled: true,
+            tpeg_enabled: true,
             radiodns_enabled: false,
             preset_short_labels: true,
             autostart: true,
@@ -227,6 +232,7 @@ mod tests {
         assert_eq!(s.volume_percent, 42);
         assert_eq!(s.music_mp3_kbps, 256);
         assert!(s.epg_enabled);
+        assert!(s.tpeg_enabled);
     }
 
     #[test]

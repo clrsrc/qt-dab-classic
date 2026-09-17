@@ -22,11 +22,82 @@
  *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #
+#include	<cstdlib>
 #include	"dab-constants.h"
 #include	"bit-extractors.h"
 #include	"crc-handlers.h"
 #include	"data-processor.h"
 #include	"mot-handler.h"
+
+
+//	TDC mit Datengruppen (DSCTy 5), u. a. TPEG (ETSI TS 103 551): der
+//	MSC-Datengruppen-Kopf (EN 300 401 5.3.3) wird geprueft, die Nutzdaten
+//	(ein oder mehrere komplette TPEG-Transportrahmen) gehen als Bytes an
+//	den Kern. Diagnose: DABCORE_TDC_DUMP=<datei> schreibt jede Gruppe als
+//	[u16 BE Laenge][Bytes] roh weg (Befund Punkt 3 TPEG, 17.09.2026).
+class	tdcHandler: public IDataHandler {
+public:
+	tdcHandler	(BackendCallbacks *cb, uint32_t SId): cb (cb), SId (SId) {
+	   const char *d = getenv ("DABCORE_TDC_DUMP");
+	   if (d != nullptr && *d != 0)
+	      dump = fopen (d, "wb");
+	}
+	~tdcHandler	() override {
+	   if (dump != nullptr)
+	      fclose (dump);
+	}
+	void	add_mscDatagroup	(const std::vector<uint8_t> &msc) override {
+	   const uint8_t *data	= msc. data ();
+	   if (msc. size () < 24)
+	      return;
+	   bool	extensionFlag	= getBits_1 (data, 0) != 0;
+	   bool	crcFlag		= getBits_1 (data, 1) != 0;
+	   bool	segmentFlag	= getBits_1 (data, 2) != 0;
+	   bool	userAccessFlag	= getBits_1 (data, 3) != 0;
+	   uint8_t groupType	= getBits_4 (data, 4);
+	   if (crcFlag && !check_CRC_bits (data, msc. size ())) {
+	      crcErrors ++;
+	      return;
+	   }
+	   int32_t next = 16;
+	   if (extensionFlag)
+	      next += 16;
+	   if (segmentFlag)
+	      next += 16;
+	   if (userAccessFlag) {
+	      uint8_t lengthInd = getBits_4 (data, next + 4);
+	      next += 8 + lengthInd * 8;
+	   }
+	   int32_t sizeInBits = (int32_t)msc. size () - next - (crcFlag ? 16 : 0);
+	   if (sizeInBits < 8)
+	      return;
+	   std::vector<uint8_t> bytes (sizeInBits / 8);
+	   for (size_t i = 0; i < bytes. size (); i ++) {
+	      uint8_t t = 0;
+	      for (int j = 0; j < 8; j ++)
+	         t = (t << 1) | data [next + 8 * i + j];
+	      bytes [i] = t;
+	   }
+	   groups ++;
+	   if (groups == 1)
+	      emitBe (cb -> log, "info", "TDC: erste Datengruppe, Typ " +
+	              std::to_string (groupType) + ", " + std::to_string (bytes. size ()) +
+	              " Bytes, CRC " + (crcFlag ? "ja" : "nein"));
+	   if (dump != nullptr) {
+	      uint8_t len [2] = { (uint8_t)(bytes. size () >> 8), (uint8_t)(bytes. size () & 0xFF) };
+	      fwrite (len, 1, 2, dump);
+	      fwrite (bytes. data (), 1, bytes. size (), dump);
+	      fflush (dump);
+	   }
+	   emitBe (cb -> tdcGroup, SId, groupType, bytes);
+	}
+private:
+	BackendCallbacks *cb;
+	uint32_t	SId;
+	FILE		*dump		= nullptr;
+	uint32_t	groups		= 0;
+	uint32_t	crcErrors	= 0;
+};
 
 //	\class dataProcessor
 //	The main function of this class is to ASSEMBLE the
@@ -55,8 +126,12 @@
 	switch (DSCTy) {
 	   default:
 	      emitBe (cb -> log, "info", "DSCTy " + std::to_string (DSCTy) +
-	                                 " wird nicht unterstuetzt (nur MOT)");
+	                                 " wird nicht unterstuetzt (nur MOT und TDC)");
 	      my_dataHandler. reset (new IDataHandler ());
+	      break;
+
+	   case 5:
+	      my_dataHandler. reset (new tdcHandler (cb, SId));
 	      break;
 
 	   case 60:

@@ -213,6 +213,8 @@ pub struct AppState {
     pub traffic_supported: bool,
     /// Hybrid Radio / RadioDNS (crate::radiodns): Schalter, laufender Abruf, Zaehler.
     pub radiodns: crate::radiodns::RadioDnsStatus,
+    /// TPEG-Verkehrsmeldungen (crate::tpeg): Dienst, Zaehler, Meldungsliste.
+    pub tpeg: crate::tpeg::TpegStatus,
 }
 
 pub fn unix_now() -> i64 {

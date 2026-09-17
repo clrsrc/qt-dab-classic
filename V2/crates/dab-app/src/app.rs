@@ -69,6 +69,8 @@ pub enum AppEvent {
     Traffic { active: Option<crate::traffic::TrafficEntry>, history: Vec<crate::traffic::TrafficEntry>, supported: bool },
     /// Hybrid Radio / RadioDNS (crate::radiodns): Status geaendert (wie `AppState::radiodns`).
     RadioDns { status: crate::radiodns::RadioDnsStatus },
+    /// TPEG-Verkehrsmeldungen (crate::tpeg): Status/Liste geaendert (wie `AppState::tpeg`).
+    Tpeg { status: crate::tpeg::TpegStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -167,6 +169,8 @@ pub struct App {
     pub traffic: crate::traffic::TrafficCtl,
     /// Hybrid Radio / RadioDNS (crate::radiodns): Auftragsplanung.
     pub radiodns: crate::radiodns::RadioDnsCtl,
+    /// TPEG-Verkehrsmeldungen (crate::tpeg).
+    pub tpeg: crate::tpeg::TpegCtl,
     pending: Option<Pending>,
     /// SIds, deren `service_stopped` wir noch erwarten, weil wir sie selbst
     /// durch eine neuere Auswahl ersetzt haben (Fund 15.09.2026: bei
@@ -244,6 +248,7 @@ impl App {
             music: Default::default(),
             traffic: Default::default(),
             radiodns: Default::default(),
+            tpeg: Default::default(),
             pending: None,
             expected_stops: Default::default(),
             optimistic: None,
@@ -269,7 +274,8 @@ impl App {
             // umschaltet, und meldet sein Urteil als `EwsAlert.relevant` zurueck.
             // Ohne Koordinaten (None/None) bleibt es beim ungefilterten Verhalten.
             .cmd(Command::SetHomeLocation { lat: s.home_lat, lon: s.home_lon })
-            .cmd(Command::SetEpg { enabled: s.epg_enabled });
+            .cmd(Command::SetEpg { enabled: s.epg_enabled })
+            .cmd(Command::SetTpeg { enabled: s.tpeg_enabled });
         fx.append(self.debug_startup());
         fx.append(self.timeshift_startup());
         if s.ppm != 0 {
@@ -456,6 +462,7 @@ impl App {
         fx.append(self.music_on_event(ev, crate::state::unix_now()));
         fx.append(self.traffic_on_event(ev, crate::state::unix_now()));
         fx.append(self.radiodns_on_event(ev, now));
+        fx.append(self.tpeg_on_event(ev, crate::state::unix_now()));
         fx.append(self.tick(now));
         fx
     }
@@ -794,6 +801,14 @@ impl App {
         }
         if old.epg_enabled != s.epg_enabled {
             fx = fx.cmd(Command::SetEpg { enabled: s.epg_enabled });
+        }
+        if old.tpeg_enabled != s.tpeg_enabled {
+            fx = fx.cmd(Command::SetTpeg { enabled: s.tpeg_enabled });
+            fx.append(self.tpeg_set_enabled(s.tpeg_enabled));
+        }
+        if old.home_lat != s.home_lat || old.home_lon != s.home_lon {
+            // Entfernungen/Sortierung der TPEG-Liste haengen am Heimatort
+            fx.append(self.tpeg_set_enabled(s.tpeg_enabled));
         }
         if old.ppm != s.ppm {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });

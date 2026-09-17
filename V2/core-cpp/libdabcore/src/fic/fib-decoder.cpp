@@ -1838,6 +1838,14 @@ bool res;
 return res;
 }
 
+bool	fibDecoder::is_TPEG	(const uint32_t SId) {
+bool res;
+	fibLocker. lock ();
+	res = currentConfig -> is_TPEG (SId);
+	fibLocker. unlock ();
+return res;
+}
+
 std::vector<basicService> fibDecoder::getServices	() {
 	return theEnsemble. getServices ();
 }

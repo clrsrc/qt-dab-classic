@@ -30,6 +30,9 @@ struct BackendCallbacks {
     // motObject (X-PAD-Slide oder Paketdienst): fertiges Objekt
     std::function<void(const std::vector<uint8_t>& data, const std::string& name,
                        int contentType, bool dirElement, uint32_t sid)> motObject;
+    // tdcHandler (DSCTy 5 mit Datengruppen, z. B. TPEG): Nutzdaten einer
+    // gepruefen MSC-Datengruppe als Bytes (ein oder mehrere TPEG-Rahmen)
+    std::function<void(uint32_t sid, uint8_t groupType, const std::vector<uint8_t>& data)> tdcGroup;
     // Diagnose (v1: fprintf (stderr, ...))
     std::function<void(const char* level, const std::string& text)> log;
 };

@@ -57,6 +57,7 @@ public:
 	bool		language_comp_exists	(int);
 
 	bool		is_SPI			(const uint32_t);
+	bool		is_TPEG			(const uint32_t);	// FIG 0/13 UA-Typ 4
 	uint8_t		serviceType		(const int);
 	int		getNrComps		(const uint32_t);
 	int		getServiceComp		(const std::string &);

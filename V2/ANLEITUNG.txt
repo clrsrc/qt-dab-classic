@@ -223,8 +223,8 @@ INHALT
                     AGC, manueller Gain, Merker je Geraet/Kanal), Audio
                     (Ausgabegeraet - siehe unten, Lautstaerke), Notfallwarnung (EWS
                     auswerten, automatisch umschalten, Warnton), EPG
-                    (Broadcast-EPG, Internet-Ergaenzung per RadioDNS -
-                    siehe unten), Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
+                    (Broadcast-EPG, TPEG-Verkehrsmeldungen, Internet-
+                    Ergaenzung per RadioDNS - siehe unten), Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
                     Vor-/Nachlauf, Sleep-Timer), Timeshift (Puffergroesse
                     in Minuten), Allgemein (Sprache, Autostart, Kurzlabel
                     auf den Speichertasten, sichtbare Panels, Datenordner,
@@ -258,6 +258,33 @@ INHALT
     Radio; wer keinen DNS-Eintrag hat, wird 24 h nicht erneut gefragt
     (data
 adiodns\hosts.json).
+
+  Verkehr-Panel (Knopf "TA" neben EPG)
+    Oben die Verkehrs- und Sonderdurchsagen (FIG 0/18, 0/19) des
+    abgestimmten Ensembles: laufende Durchsage zuerst, darunter die
+    beendeten dieser Sitzung mit Mitschnitt (MP3 im Unterordner
+    "durchsagen" des Aufnahmeordners, Haekchen "mitschneiden") und der
+    Autoradio-Funktion "umschalten" (waehrend der Durchsage auf den
+    Durchsage-Dienst und danach zurueck).
+    Darunter die TPEG-Verkehrsmeldungen (ISO 21219 TEC, ETSI TS 103 551):
+    Der Kern startet den TPEG-Datendienst des Ensembles automatisch im
+    Hintergrund (Einstellungen > EPG "TPEG-Verkehrsmeldungen dekodieren",
+    Standard an; kein Internet). In NRW sendet ihn der WDR auf 11D
+    "WDR NRW" und 9A "WDR Regional" als "ARD TPEG" (bundesweiter Bestand,
+    etwa 350 Meldungen, Umlauf rund 35 s); der Bundesmux 5C und die
+    Privatradio-Muxe haben keinen TPEG-Dienst. Je Meldung: Wirkung
+    (Stau, stockend, Sperrung ...), Ursache mit Unterursache (Unfall,
+    Baustelle, Gegenstaende ...), gesperrte Spuren, Laenge, Verzoegerung,
+    Zeitraum, Hinweise (Umleitung folgen ...) sowie der Ort. Strassen-
+    namen werden nicht gesendet - der Ort kommt als OpenLR-Koordinaten:
+    angezeigt werden Strassenart (Autobahn, Auf-/Abfahrt ...), Strassen-
+    klasse, Fahrtrichtung und die Koordinaten; ein Klick darauf oeffnet
+    OpenStreetMap im Browser. Mit Heimatkoordinaten (Einstellungen >
+    TII/Debug) steht bei jeder Meldung Entfernung und Richtung und die
+    Liste ist nach Entfernung sortiert, sonst neueste zuerst. Das Filter-
+    feld sucht in allen Texten. Meldungen verschwinden mit ihrer Ablauf-
+    zeit (plus 2 min Karenz) oder beim Kanalwechsel. Die Statuszeile
+    nennt Dienst, TEC-Version, Anzahl und Zeitpunkt der letzten Daten.
 
   Audio-Ausgabegeraet (Einstellungen > Audio)
     Die Liste zeigt jedes Ausgabegeraet genau einmal, mit dem Namen aus

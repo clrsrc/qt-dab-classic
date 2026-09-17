@@ -92,7 +92,7 @@ struct RunningService {
     json codec;                                    // wie service_started.codec oder null
     bool stereo = false;
     std::unique_ptr<epgCompiler> epg;              // Paketdienste: Binaer-EPG -> XML
-    bool autoEpg = false;                          // vom Kern gestarteter SPI-Dienst
+    AutoData autoData = AutoData::None;   // vom Kern gestarteter Datendienst (EPG/TPEG)
     // Das SPI-Karussell liefert jedes Objekt mit jeder neuen Verzeichnis-
     // Version erneut (Bundesmux: alle ~25 min); unveraenderte Objekte
     // (Name + FNV-1a-Hash des Inhalts) werden nicht noch einmal gemeldet.
@@ -158,10 +158,11 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
         {"primary", nullptr}, {"background", nullptr},
         {"volume_percent", 70}, {"muted", false}, {"timeshift", nullptr},
         {"recording", false}, {"ews_enabled", true}, {"ews_autoswitch", true},
-        {"epg_enabled", options.epg},
+        {"epg_enabled", options.epg}, {"tpeg_enabled", options.tpeg},
         {"clock_time", nullptr}, {"ppm", 0},
     };
     epgEnabled_.store(options.epg);
+    tpegEnabled_.store(options.tpeg);
 #ifdef __ARCH_X86__
     __builtin_cpu_init();
     int has_avx2 = __builtin_cpu_supports("avx2") != 0 ? AVX_SUPPORT : 0;
@@ -252,7 +253,7 @@ void DabCore::runActions() {
             if (a.generation != actionGeneration_) continue;
         }
         switch (a.kind) {
-        case Action::Select:      selectService(a.sid, a.scids, a.slot, a.autoEpg); break;
+        case Action::Select:      selectService(a.sid, a.scids, a.slot, a.autoData); break;
         case Action::Ews:         handleEwsAutoswitch(a.phase, a.subChId, a.isTest, a.relevant); break;
         case Action::Reconfigure: reconcileServices(); break;
         }
@@ -637,7 +638,7 @@ void DabCore::emitService(const std::string& rawName, uint32_t sid, int subChId,
     }
     sink_(events::serviceAdded(s));
     maybeAutoSelect(s, replaced);
-    if (!s.isAudio) maybeStartEpg(s);
+    if (!s.isAudio) { maybeStartEpg(s); maybeStartTpeg(s); }
 }
 
 // v1 radio.cpp addToEnsemble: ein Paketdienst mit Appl-Type 7 (SPI, FIG 0/13)
@@ -650,18 +651,42 @@ void DabCore::maybeStartEpg(const ServiceInfo& s) {
     // Start im Aktionsthread (Review K1): wird aus dem FIC-Callback gerufen
     Action a;
     a.kind = Action::Select;
-    a.sid = s.sid; a.scids = s.scids; a.slot = Slot::Background; a.autoEpg = true;
+    a.sid = s.sid; a.scids = s.scids; a.slot = Slot::Background; a.autoData = AutoData::Epg;
     enqueueAction(a);
 }
 
 void DabCore::setEpg(bool enabled) {
     epgEnabled_.store(enabled);
     { std::lock_guard<std::mutex> lk(stateM_); state_["epg_enabled"] = enabled; }
+    setAutoData(AutoData::Epg, enabled);
+}
+
+// TPEG (Punkt 3, 17.09.2026): wie maybeStartEpg, Erkennung ueber FIG 0/13
+// UA-Typ 4. Der Dienst laeuft als Background-Datendienst (DSCTy 5 -> tdcHandler),
+// seine Datengruppen gehen als tdc_group an die App, die TPEG dekodiert.
+void DabCore::maybeStartTpeg(const ServiceInfo& s) {
+    if (!tpegEnabled_.load() || scanning_.load() || !ofdm_) return;
+    if (!ofdm_->fic().is_TPEG(s.sid)) return;
+    if (msc_->serviceRuns(s.sid, s.subCh)) return;
+    sink_(events::log("info", "TPEG-Dienst erkannt: " + s.name + " (SId " + std::to_string(s.sid) + ")"));
+    Action a;
+    a.kind = Action::Select;
+    a.sid = s.sid; a.scids = s.scids; a.slot = Slot::Background; a.autoData = AutoData::Tpeg;
+    enqueueAction(a);
+}
+
+void DabCore::setTpeg(bool enabled) {
+    tpegEnabled_.store(enabled);
+    { std::lock_guard<std::mutex> lk(stateM_); state_["tpeg_enabled"] = enabled; }
+    setAutoData(AutoData::Tpeg, enabled);
+}
+
+void DabCore::setAutoData(AutoData kind, bool enabled) {
     if (!enabled) {
-        // nur die vom Kern gestarteten SPI-Dienste beenden
+        // nur die vom Kern gestarteten Dienste dieser Art beenden
         std::lock_guard<std::mutex> lk(serviceM_);
         std::vector<RunningService*> victims;
-        for (auto& rs : services_) if (rs->autoEpg) victims.push_back(rs.get());
+        for (auto& rs : services_) if (rs->autoData == kind) victims.push_back(rs.get());
         for (auto* v : victims) stopOneLocked(v);
         updateServiceState();
         return;
@@ -677,7 +702,9 @@ void DabCore::setEpg(bool enabled) {
             data.push_back(si);
         }
     }
-    for (auto& si : data) maybeStartEpg(si);
+    for (auto& si : data) {
+        if (kind == AutoData::Epg) maybeStartEpg(si); else maybeStartTpeg(si);
+    }
 }
 
 uint16_t DabCore::currentEid() const {
@@ -949,6 +976,7 @@ bool DabCore::handle(const json& c) {
     if (type == "start_frame_dump") { startFrameDump(c.value("path", "")); return true; }
     if (type == "stop_frame_dump") { stopFrameDump(); return true; }
     if (type == "set_epg") { setEpg(c.value("enabled", true)); return true; }
+    if (type == "set_tpeg") { setTpeg(c.value("enabled", true)); return true; }
     if (type == "set_ews") {
         const bool enabled = c.value("enabled", true);
         const bool autoswitch = c.value("autoswitch", true);
@@ -1140,6 +1168,10 @@ void DabCore::wireBackend(RunningService* rs) {
         }
         onMotObject(rs, data, name, contentType, objSid);
     };
+    // TDC-Datengruppen (DSCTy 5, TPEG): roh an die App (dab-app::tpeg dekodiert)
+    cb.tdcGroup = [this](uint32_t dataSid, uint8_t groupType, const std::vector<uint8_t>& data) {
+        sink_(events::tdcGroup(dataSid, groupType, data));
+    };
     if (rs->isAudio) {
         cb.pcm = [rs](const complex16* pcm, int n, int rate, bool ps, bool sbr, bool stereo) {
             if (rs->audio) rs->audio->push(pcm, n, rate, ps, sbr, stereo);
@@ -1165,7 +1197,7 @@ void DabCore::wireBackend(RunningService* rs) {
     }
 }
 
-void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot, bool autoEpg) {
+void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot, AutoData autoData) {
     std::lock_guard<std::mutex> lk(serviceM_);
     if (closing_ || !ofdm_) {
         sink_(events::log("warn", "select_service ohne geoeffnete Quelle"));
@@ -1196,7 +1228,7 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot, bool autoEpg
             stopOneLocked(p);
         }
     }
-    startServiceLocked(index, sid, scids, slot, autoEpg);
+    startServiceLocked(index, sid, scids, slot, autoData);
 }
 
 // Review M1: nach FIG 0/0 Change-Flag jeden laufenden Dienst gegen die
@@ -1209,9 +1241,9 @@ void DabCore::reconcileServices() {
     std::lock_guard<std::mutex> lk(serviceM_);
     if (closing_ || retuning_ || !ofdm_) return;
     auto& fic = ofdm_->fic();
-    struct Item { RunningService* rs; uint32_t sid; uint8_t scids; Slot slot; bool autoEpg; };
+    struct Item { RunningService* rs; uint32_t sid; uint8_t scids; Slot slot; AutoData autoData; };
     std::vector<Item> items;
-    for (auto& rs : services_) items.push_back({rs.get(), rs->sid, rs->scids, rs->slot, rs->autoEpg});
+    for (auto& rs : services_) items.push_back({rs.get(), rs->sid, rs->scids, rs->slot, rs->autoData});
     int kept = 0, restarted = 0, stopped = 0;
     for (auto& it : items) {
         int index = fic.getServiceComp_SCIds(it.sid, it.scids);
@@ -1245,7 +1277,7 @@ void DabCore::reconcileServices() {
             ++stopped;
             continue;
         }
-        if (startServiceLocked(index, it.sid, it.scids, it.slot, it.autoEpg)) ++restarted;
+        if (startServiceLocked(index, it.sid, it.scids, it.slot, it.autoData)) ++restarted;
         else ++stopped;
     }
     updateServiceState();
@@ -1253,11 +1285,11 @@ void DabCore::reconcileServices() {
                               std::to_string(restarted) + " neu gestartet, " + std::to_string(stopped) + " beendet"));
 }
 
-bool DabCore::startServiceLocked(int index, uint32_t sid, uint8_t scids, Slot slot, bool autoEpg) {
+bool DabCore::startServiceLocked(int index, uint32_t sid, uint8_t scids, Slot slot, AutoData autoData) {
     auto& fic = ofdm_->fic();
     auto rs = std::make_unique<RunningService>();
     rs->slot = slot; rs->sid = sid; rs->scids = scids;
-    rs->autoEpg = autoEpg;
+    rs->autoData = autoData;
     rs->cb = std::make_unique<BackendCallbacks>();
     uint8_t tmid = fic.serviceType(index);
     if (tmid == 0) {

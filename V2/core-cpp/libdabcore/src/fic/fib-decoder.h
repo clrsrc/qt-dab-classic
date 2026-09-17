@@ -69,6 +69,7 @@ public:
 	int		freeSpace		();
 	std::vector<contentType> contentPrint		();
 	bool		is_SPI			(const uint32_t);
+	bool		is_TPEG			(const uint32_t);
 	std::vector<basicService> getServices	();
 //	EWS: name of the (primary) service carried in a subchannel
 	std::string		serviceNameOnSubChannel	(int subChId);

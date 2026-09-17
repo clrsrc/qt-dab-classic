@@ -130,6 +130,19 @@ int index	= getServiceComp (SId, 0);
 	return AppType_table [index]. Apptype == 7;
 }
 
+//	TPEG-Datendienst (ETSI TS 103 551): Paketdienst mit UA-Typ 4 in FIG 0/13
+bool	fibConfig::is_TPEG (const uint32_t SId) {
+int index	= getServiceComp (SId, 0);
+	if (index < 0)
+	   return false;
+	if (SC_C_table [index]. TMid != 3)
+	   return false;
+	index = findIndexApptype_table (SId, 0);
+	if (index < 0)
+	   return false;
+	return AppType_table [index]. Apptype == 4;
+}
+
 uint8_t	fibConfig::serviceType (const int index) {
 	return SC_C_table [index]. TMid;
 }

@@ -100,6 +100,11 @@ json epgObject(uint16_t eid, uint32_t sid, uint32_t dateYyyymmdd, const std::str
 // active = kind != 0, cluster = Cluster-Id. dab-api kennt bisher
 // kind/sub_ch/active; sid/cluster sind additiv (serde ignoriert Unbekanntes).
 json announcement(uint32_t sid, uint16_t kind, uint8_t subCh, bool active, uint8_t cluster);
+// TDC-Paketdienst mit Datengruppen (DSCTy 5, z. B. TPEG nach ETSI TS 103 551,
+// Punkt 3 17.09.2026): Nutzdaten einer gepruefen MSC-Datengruppe als Rohbytes
+// (bei TPEG ein oder mehrere komplette Transportrahmen, Padding 0 moeglich).
+// group_type = Datengruppentyp (TPEG: 0). Die App dekodiert (dab-app::tpeg).
+json tdcGroup(uint32_t sid, uint8_t groupType, const std::vector<uint8_t>& data);
 
 json audioFormat(uint32_t rate, uint8_t channels);
 json audioLevel(float left, float right);

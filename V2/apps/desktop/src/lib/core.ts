@@ -138,6 +138,80 @@ export interface AppState {
   traffic_supported: boolean;
   /** Hybrid Radio / RadioDNS (dab_app::radiodns): Schalter, laufender Abruf, Zaehler. */
   radiodns: RadioDnsStatus;
+  /** TPEG-Verkehrsmeldungen (dab_app::tpeg): Dienst, Zaehler, Meldungsliste. */
+  tpeg: TpegStatus;
+}
+
+/** Status des TPEG-Empfangs (dab_app::tpeg::TpegStatus). */
+export interface TpegStatus {
+  enabled: boolean;
+  /** Ein TPEG-Dienst ist im Ensemble. */
+  available: boolean;
+  sid: number;
+  service_name: string;
+  description: string;
+  provider: string;
+  /** z. B. "TEC 3.2" */
+  tec_version: string;
+  /** letzte Datengruppe (Unix), 0 = noch keine */
+  last_unix: number;
+  groups: number;
+  frames: number;
+  tfp_seen: boolean;
+  /** Heimatkoordinaten bekannt: distance_km/direction_deg gefuellt, Liste nach Entfernung sortiert */
+  home_known: boolean;
+  messages: TpegEntry[];
+}
+
+/** Ursache einer TEC-Meldung (tec002 + Untertabellen tec1xx). */
+export interface TecCause {
+  main: number;
+  warning_level: number;
+  unverified: boolean;
+  sub: number | null;
+  length_m: number | null;
+  lane_restriction: number | null;
+  lanes: number | null;
+  offset_m: number | null;
+  text: string[];
+}
+
+export interface TecAdvice {
+  code: number | null;
+  sub: number | null;
+  text: string[];
+}
+
+/** Eine TEC-Verkehrsmeldung (dab_app::tpeg::TpegEntry); Codes -> Texte per i18n "tpeg.*". */
+export interface TpegEntry {
+  id: number;
+  version: number;
+  /** tec001 Wirkung: 1 unbekannt, 2 frei, 3 dicht, 4 zaeh, 5 stockend, 6 Stau, 7 gesperrt; 0 = ohne Ereignis */
+  effect: number;
+  causes: TecCause[];
+  advices: TecAdvice[];
+  start_unix: number | null;
+  stop_unix: number | null;
+  expiry_unix: number;
+  length_m: number | null;
+  delay_min: number | null;
+  speed_kmh: number | null;
+  tendency: number | null;
+  junction_closure: number | null;
+  lat: number | null;
+  lon: number | null;
+  /** Stuetzpunkte [lon, lat] */
+  points: [number, number][];
+  /** OpenLR Strassenklasse 0..7 und Strassenart (olr002) */
+  frc: number | null;
+  fow: number | null;
+  bearing_deg: number | null;
+  tmc_code: number | null;
+  location_text: string[];
+  distance_km: number | null;
+  direction_deg: number | null;
+  first_seen: number;
+  updated: number;
 }
 
 /** Status des RadioDNS-Abrufs (dab_app::radiodns::RadioDnsStatus). */
@@ -303,6 +377,8 @@ export interface Settings {
   audio_device_name: string | null;
   /** EPG-Paketdienst im Kern mitlaufen lassen (set_epg). */
   epg_enabled: boolean;
+  /** TPEG-Paketdienst im Kern mitlaufen lassen (set_tpeg) und TEC-Verkehrsmeldungen dekodieren. */
+  tpeg_enabled: boolean;
   /** Hybrid Radio: Logos/Sendeplaene per RadioDNS aus dem Internet nachladen (Standard aus). */
   radiodns_enabled: boolean;
   /** Speichertasten zeigen das Kurzlabel (FIG 1 Zeichen-Flags) statt des vollen Namens. */
@@ -351,6 +427,7 @@ export type AppEvent =
   | { type: "ews_history"; history: EwsHistoryEntry[] }
   | { type: "traffic"; active: TrafficEntry | null; history: TrafficEntry[]; supported: boolean }
   | { type: "radiodns"; status: RadioDnsStatus }
+  | { type: "tpeg"; status: TpegStatus }
   | EpgAppEvent
   | TimerAppEvent
   | DebugAppEvent

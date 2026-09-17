@@ -259,6 +259,11 @@ pub enum Command {
     // als Background-Slot laufen lassen (Logos, EPG). Standard an; `false`
     // beendet den vom Kern gestarteten Dienst.
     SetEpg { enabled: bool },
+    // TPEG (Punkt 3, 17.09.2026): den TPEG-Paketdienst des Ensembles (FIG 0/13
+    // Appl-Type 4, DSCTy 5 TDC, z. B. "ARD TPEG" auf 11D/9A) automatisch als
+    // Background-Slot laufen lassen; seine Datengruppen kommen als `TdcGroup`.
+    // Standard an; `false` beendet den vom Kern gestarteten Dienst.
+    SetTpeg { enabled: bool },
 
     // Diagnose. Scopes: `spectrum` und `iq` getrennt schaltbar, gemeinsame
     // Rate 1..10 Hz (Standard 5; der Kern klemmt); beide aus = kein Aufwand.
@@ -340,6 +345,12 @@ pub enum Event {
     /// Service-Information (Logo-Zuordnung, v1 `list.xml`): `sid` = 0,
     /// `date_yyyymmdd` = 0, Wurzel `<serviceInformation>`.
     EpgObject { eid: u16, sid: u32, date_yyyymmdd: u32, name: String, xml: String },
+    /// Nutzdaten einer MSC-Datengruppe eines TDC-Paketdienstes (DSCTy 5, ETSI
+    /// TS 101 759 mit Datengruppen), Kopf und CRC vom Kern geprueft. Bei TPEG
+    /// (ETSI TS 103 551) ein oder mehrere komplette Transportrahmen, ggf. mit
+    /// Null-Padding; `group_type` = Datengruppentyp (TPEG: 0). dab-app::tpeg
+    /// dekodiert daraus TEC-Verkehrsmeldungen (additiv 17.09.2026).
+    TdcGroup { sid: u32, group_type: u8, data_b64: String },
     /// Ankuendigung (FIG 0/18/0/19). `sid`/`cluster` ergaenzt der Kern seit
     /// 2026-09-16 (Dienst, fuer den die Ankuendigung gilt, und Cluster-Id
     /// der FIG 0/19); aeltere Kerne liefern sie nicht -> Standard 0.
@@ -520,6 +531,9 @@ pub struct CoreState {
     /// SPI/EPG-Hintergrunddienst automatisch starten (`SetEpg`).
     #[serde(default = "default_true")]
     pub epg_enabled: bool,
+    /// TPEG-Hintergrunddienst automatisch starten (`SetTpeg`); additiv 17.09.2026.
+    #[serde(default = "default_true")]
+    pub tpeg_enabled: bool,
     /// ECC des Ensembles (FIG 0/9), 0 = unbekannt; additiv 17.09.2026.
     #[serde(default)]
     pub ensemble_ecc: u8,
@@ -670,6 +684,10 @@ mod tests {
         let ev: Event = serde_json::from_str(js).unwrap();
         assert_eq!(ev, Event::MotObject { eid: 0x10BC, sid: 0xD210, content_type: 0x0203, name: "d210_Dlf_32x32.png".into(), data_b64: "iVBORw0KGgo=".into() });
         assert_eq!(serde_json::to_string(&Command::SetEpg { enabled: false }).unwrap(), r#"{"type":"set_epg","enabled":false}"#);
+        assert_eq!(serde_json::to_string(&Command::SetTpeg { enabled: false }).unwrap(), r#"{"type":"set_tpeg","enabled":false}"#);
+        let js = r#"{"type":"tdc_group","sid":3771731974,"group_type":0,"data_b64":"/w8="}"#;
+        let ev: Event = serde_json::from_str(js).unwrap();
+        assert_eq!(ev, Event::TdcGroup { sid: 0xE0D01006, group_type: 0, data_b64: "/w8=".into() });
     }
 
     #[test]

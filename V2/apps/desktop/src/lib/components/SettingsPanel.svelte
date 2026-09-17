@@ -258,6 +258,12 @@
           <input type="checkbox" checked={st.epg_enabled} onchange={(e) => patchSettings({ epg_enabled: chk(e) })} />
           <span class="k">{t("settings.epg_hint")}</span>
         </span>
+        <!-- TPEG-Verkehrsmeldungen (dab_app::tpeg), Standard an (nur Broadcast) -->
+        <span class="lbl">{t("settings.tpeg")}</span>
+        <span class="row">
+          <input type="checkbox" checked={st.tpeg_enabled} onchange={(e) => patchSettings({ tpeg_enabled: chk(e) })} />
+          <span class="k">{t("settings.tpeg_hint")}</span>
+        </span>
         <!-- Hybrid Radio / RadioDNS (dab_app::radiodns), Standard aus -->
         <span class="lbl">{t("settings.radiodns")}</span>
         <span class="row">

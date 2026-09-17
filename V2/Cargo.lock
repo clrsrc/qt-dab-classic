@@ -743,6 +743,7 @@ dependencies = [
  "chrono",
  "dab-api",
  "dab-music",
+ "flate2",
  "hickory-resolver",
  "log",
  "serde",
