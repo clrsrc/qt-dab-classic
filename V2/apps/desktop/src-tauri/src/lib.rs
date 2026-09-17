@@ -23,6 +23,8 @@ mod stations_cmds;
 mod timeshift_cmds;
 /// Musik-Trennung (eigenes Modul, Registrierung unten).
 mod music_cmds;
+/// Hybrid Radio / RadioDNS: Worker-Thread und Kommandos (eigenes Modul).
+mod radiodns_cmds;
 
 /// Gemeinsamer Zustand (Tauri-managed).
 pub struct Shared {
@@ -103,7 +105,7 @@ fn trace_json<T: serde::Serialize>(prefix: &str, v: &T) {
 }
 
 /// Fuehrt die Effekte einer Aktion aus: Kommandos an den Kern, Hinweise ans Frontend.
-fn run_effects(handle: &AppHandle, shared: &Shared, fx: Effects) {
+pub(crate) fn run_effects(handle: &AppHandle, shared: &Shared, fx: Effects) {
     if trace_on() {
         for c in &fx.commands {
             trace_json("->", c);
@@ -503,6 +505,9 @@ pub fn run() {
                 log::error!("Kern konnte nicht gestartet werden: {e}");
                 let _ = handle.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: format!("core: {e}") });
             }
+            // Netzzugriffe (RadioDNS) laufen in einem eigenen Thread; er tut
+            // nichts, solange der Schalter in den Einstellungen aus ist.
+            radiodns_cmds::spawn_worker(&handle);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -574,7 +579,9 @@ pub fn run() {
             music_cmds::music_export,
             music_cmds::music_clear,
             music_cmds::music_adjust,
-            music_cmds::music_preview
+            music_cmds::music_preview,
+            radiodns_cmds::radiodns_refresh,
+            radiodns_cmds::radiodns_status
         ])
         .run(tauri::generate_context!())
         .expect("Tauri-App konnte nicht gestartet werden");

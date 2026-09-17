@@ -307,7 +307,10 @@ pub struct NowNext {
 // Parser des v1-Formats
 // ---------------------------------------------------------------------------
 
-/// `yyyy-M-dTHH:mm` (ein- oder zweistellig, optional Sekunden, optional `Z`/Offset ignoriert).
+/// `yyyy-M-dTHH:mm` (ein- oder zweistellig, optional Sekunden). Ohne Zone
+/// ist der Wert Ortszeit (v1-Dateien des Kerns). Mit `Z` oder `+hh:mm`
+/// (SPI 3.1 ueber IP, crate::radiodns) wird in die Ortszeit des Rechners
+/// umgerechnet.
 pub fn parse_time(s: &str) -> Option<NaiveDateTime> {
     let s = s.trim();
     let (d, t) = s.split_once('T').or_else(|| s.split_once(' '))?;
@@ -315,14 +318,32 @@ pub fn parse_time(s: &str) -> Option<NaiveDateTime> {
     let y: i32 = dp.next()?.trim().parse().ok()?;
     let m: u32 = dp.next()?.trim().parse().ok()?;
     let day: u32 = dp.next()?.trim().parse().ok()?;
-    let t: String = t.chars().take_while(|c| c.is_ascii_digit() || *c == ':').collect();
-    let mut tp = t.split(':');
+    let digits: String = t.chars().take_while(|c| c.is_ascii_digit() || *c == ':' || *c == '.').collect();
+    let zone = t[digits.len()..].trim();
+    let mut tp = digits.split(':');
     let h: u32 = tp.next()?.trim().parse().ok()?;
     let mi: u32 = tp.next()?.trim().parse().ok()?;
-    let sec: u32 = tp.next().and_then(|x| x.trim().parse().ok()).unwrap_or(0);
+    let sec: u32 = tp.next().and_then(|x| x.trim().split('.').next()?.parse().ok()).unwrap_or(0);
     let date = NaiveDate::from_ymd_opt(y, m, day)?;
     let time = NaiveTime::from_hms_opt(h, mi, sec)?;
-    Some(NaiveDateTime::new(date, time))
+    let naive = NaiveDateTime::new(date, time);
+    let offset_min: Option<i32> = if zone.eq_ignore_ascii_case("z") {
+        Some(0)
+    } else if let Some(rest) = zone.strip_prefix('+').or_else(|| zone.strip_prefix('-')) {
+        let sign = if zone.starts_with('-') { -1 } else { 1 };
+        let (oh, om) = rest.split_once(':').unwrap_or((rest, "0"));
+        Some(sign * (oh.parse::<i32>().ok()? * 60 + om.parse::<i32>().ok()?))
+    } else {
+        None
+    };
+    match offset_min {
+        None => Some(naive),
+        Some(off) => {
+            let fixed = chrono::FixedOffset::east_opt(off * 60)?;
+            let dt = fixed.from_local_datetime(&naive).single()?;
+            Some(dt.with_timezone(&Local).naive_local())
+        }
+    }
 }
 
 /// `PT04H55M`, `PT05M`, `PT1H`, auch `P1DT2H` -> Minuten.
@@ -370,6 +391,8 @@ pub struct ParsedSchedule {
     pub legacy_time: bool,
     /// Uebersprungene `<programme>`-Elemente (fehlende/unlesbare Zeit).
     pub skipped: usize,
+    /// Aus dem Netz (RadioDNS, `<epg src="radiodns">`), nicht aus dem Broadcast.
+    pub from_ip: bool,
 }
 
 /// Parst ein `<epg system="DAB">`-Dokument. Fehlerhafte Programme werden
@@ -377,7 +400,10 @@ pub struct ParsedSchedule {
 pub fn parse_epg_xml(sid: u32, xml: &str) -> Result<ParsedSchedule, String> {
     let doc = xml::parse(xml);
     let root = doc.iter().find(|e| e.name == "epg").ok_or_else(|| "no <epg> root".to_string())?;
-    let legacy = !root.attr("tz").map(|v| v.eq_ignore_ascii_case("local")).unwrap_or(false);
+    // Altformat = weder `tz="local"` (neuer Kern) noch ein SPI-3.1-Dokument
+    // mit Namensraum (RadioDNS, Zeiten mit Offset).
+    let legacy = !(root.attr("tz").map(|v| v.eq_ignore_ascii_case("local")).unwrap_or(false) || root.attr("xmlns").is_some());
+    let from_ip = root.attr("src").map(|v| v == crate::radiodns::SRC_ATTR).unwrap_or(false);
     let mut programmes = Vec::new();
     let mut skipped = 0;
     fn text_of(e: &Elem, name: &str) -> String {
@@ -434,7 +460,7 @@ pub fn parse_epg_xml(sid: u32, xml: &str) -> Result<ParsedSchedule, String> {
     }
     programmes.sort_by(|a, b| a.start_local.cmp(&b.start_local));
     programmes.dedup_by(|a, b| a.start_local == b.start_local && a.medium_name == b.medium_name);
-    Ok(ParsedSchedule { programmes, legacy_time: legacy, skipped })
+    Ok(ParsedSchedule { programmes, legacy_time: legacy, skipped, from_ip })
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +488,8 @@ pub fn parse_file_name(name: &str) -> Option<(u32, u32)> {
 pub struct EpgCache {
     root: PathBuf,
     index: BTreeMap<(u16, u32, u32), Vec<Programme>>,
+    /// Eintraege aus dem Netz (crate::radiodns); Broadcast darf sie ersetzen.
+    from_ip: std::collections::HashSet<(u16, u32, u32)>,
     last_tick: Option<Instant>,
 }
 
@@ -470,7 +498,7 @@ const TICK_EVERY: Duration = Duration::from_secs(5);
 
 impl EpgCache {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), index: BTreeMap::new(), last_tick: None }
+        Self { root: root.into(), index: BTreeMap::new(), from_ip: Default::default(), last_tick: None }
     }
 
     pub fn root(&self) -> &Path {
@@ -498,6 +526,9 @@ impl EpgCache {
                 match parse_epg_xml(sid, &xml) {
                     Ok(p) => {
                         self.index.insert((eid, sid, day), p.programmes);
+                        if p.from_ip {
+                            self.from_ip.insert((eid, sid, day));
+                        }
                         n += 1;
                     }
                     Err(e) => log::warn!("EPG {}: {e}", f.path().display()),
@@ -514,6 +545,7 @@ impl EpgCache {
         let mut n = 0;
         for key in old {
             self.index.remove(&key);
+            self.from_ip.remove(&key);
             let p = self.file_for(key.0, key.1, key.2);
             if p.is_file() {
                 if std::fs::remove_file(&p).is_ok() {
@@ -555,7 +587,22 @@ impl EpgCache {
         let known = self.index.contains_key(&(eid, sid, day));
         let changed = !same || !known;
         self.index.insert((eid, sid, day), parsed.programmes);
+        if parsed.from_ip {
+            self.from_ip.insert((eid, sid, day));
+        } else {
+            self.from_ip.remove(&(eid, sid, day));
+        }
         Ok(changed)
+    }
+
+    /// Liegt fuer (Ensemble, Dienst, Tag) ein Sendeplan vor?
+    pub fn has(&self, eid: u16, sid: u32, day: u32) -> bool {
+        self.index.contains_key(&(eid, sid, day))
+    }
+
+    /// Stammt der Sendeplan aus dem Netz (RadioDNS) statt aus dem Broadcast?
+    pub fn is_from_ip(&self, eid: u16, sid: u32, day: u32) -> bool {
+        self.from_ip.contains(&(eid, sid, day))
     }
 
     /// Tage mit Daten (aufsteigend).
@@ -705,6 +752,11 @@ impl App {
         fx
     }
 
+    /// Wie [`refresh_current_media`](Self::refresh_current_media), fuer andere Module (crate::radiodns).
+    pub(crate) fn media_refresh(&mut self, include_logo: bool) -> Effects {
+        self.refresh_current_media(include_logo)
+    }
+
     /// Logo (128x128) und Now/Next des aktuellen Dienstes in den Zustand
     /// uebernehmen; bei Aenderung `current_media` an das Frontend.
     fn refresh_current_media(&mut self, include_logo: bool) -> Effects {
@@ -774,13 +826,25 @@ mod tests {
     fn time_and_duration_formats() {
         assert_eq!(parse_time("2026-4-13T22:02"), NaiveDate::from_ymd_opt(2026, 4, 13).unwrap().and_hms_opt(22, 2, 0));
         assert_eq!(parse_time("2026-04-14T07:32"), NaiveDate::from_ymd_opt(2026, 4, 14).unwrap().and_hms_opt(7, 32, 0));
-        assert_eq!(parse_time("2026-4-14T7:05:30Z"), NaiveDate::from_ymd_opt(2026, 4, 14).unwrap().and_hms_opt(7, 5, 30));
+        // `Z` = UTC -> Ortszeit (seit RadioDNS 17.09.2026; v1-Dateien tragen keine Zone)
+        let utc = chrono::DateTime::parse_from_rfc3339("2026-04-14T07:05:30+00:00").unwrap().with_timezone(&Local).naive_local();
+        assert_eq!(parse_time("2026-4-14T7:05:30Z"), Some(utc));
         assert_eq!(parse_time("garbage"), None);
         assert_eq!(parse_duration_min("PT05M"), Some(5));
         assert_eq!(parse_duration_min("PT04H55M"), Some(295));
         assert_eq!(parse_duration_min("PT1H"), Some(60));
         assert_eq!(parse_duration_min("P1DT2H"), Some(26 * 60));
         assert_eq!(parse_duration_min("5 min"), None);
+    }
+
+    #[test]
+    fn time_with_zone_offset_becomes_local() {
+        let expect = |s: &str| chrono::DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Local).naive_local();
+        assert_eq!(parse_time("2026-09-17T06:00:00+02:00"), Some(expect("2026-09-17T06:00:00+02:00")));
+        assert_eq!(parse_time("2026-09-17T04:00:00Z"), Some(expect("2026-09-17T04:00:00+00:00")));
+        assert_eq!(parse_time("2026-09-17T04:00:00.500-05:00"), Some(expect("2026-09-17T04:00:00-05:00")));
+        // ohne Zone: unveraendert
+        assert_eq!(parse_time("2026-4-14T07:02"), Some(NaiveDate::from_ymd_opt(2026, 4, 14).unwrap().and_hms_opt(7, 2, 0).unwrap()));
     }
 
     #[test]

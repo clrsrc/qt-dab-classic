@@ -279,7 +279,18 @@ pub enum Event {
     Snr { db: f32 },
     FicQuality { ok: u16, total: u16 },
     FrequencyOffset { hz: i32 },
-    EnsembleFound { eid: u16, name: String, channel: String },
+    /// `ecc`: Extended Country Code aus FIG 0/9 (0 = noch unbekannt),
+    /// additiv seit 17.09.2026 fuer RadioDNS (dab-app `radiodns`).
+    EnsembleFound {
+        eid: u16,
+        name: String,
+        channel: String,
+        #[serde(default)]
+        ecc: u8,
+    },
+    /// ECC nachgereicht, wenn FIG 0/9 erst nach dem Ensemble-Namen kommt
+    /// (nur bei Aenderung, Reset bei Kanalwechsel). Additiv 17.09.2026.
+    EnsembleEcc { ecc: u8 },
     ServiceAdded { service: ServiceInfo },
     EnsembleReconfigured,
     ClockTime { unix_utc: i64, lto_minutes: i16 },
@@ -488,6 +499,9 @@ pub struct CoreState {
     /// SPI/EPG-Hintergrunddienst automatisch starten (`SetEpg`).
     #[serde(default = "default_true")]
     pub epg_enabled: bool,
+    /// ECC des Ensembles (FIG 0/9), 0 = unbekannt; additiv 17.09.2026.
+    #[serde(default)]
+    pub ensemble_ecc: u8,
     #[serde(default = "default_true")]
     pub tii_enabled: bool,
     #[serde(default = "default_tii_threshold")]

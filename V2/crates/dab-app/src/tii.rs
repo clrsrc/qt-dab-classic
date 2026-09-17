@@ -638,7 +638,7 @@ mod tests {
         a.tii_load(Some(&resource_path()));
         assert!(a.tii.db.is_usable());
         let now = Instant::now();
-        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into(), ecc: 0 }, now);
         let ev = Event::Tii {
             transmitters: vec![
                 TiiEntry { main_id: 20, sub_id: 1, strength: 0.12 },

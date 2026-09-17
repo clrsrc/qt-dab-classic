@@ -1,0 +1,708 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<epg xmlns="http://www.worlddab.org/schemas/spi/31" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.worlddab.org/schemas/spi/31 http://www.worlddab.org/schemas/spi/31/spi_31.xsd">
+  <schedule creationTime="2026-09-17T08:32:02" originator="DLR">
+    <scope startTime="2026-09-17T00:00:00+02:00" stopTime="2026-09-18T00:00:00+02:00">
+      <serviceScope id="dab:de0.10bc.d210.0"/>
+    </scope>
+    <programme id="crid://dradio.de/dlf/1390272" shortId="1390272">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T00:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390273" shortId="1390273">
+      <mediumName xml:lang="de"><![CDATA[Deutschlandfunk]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Deutschlandfunk Radionacht]]></longName>
+      <location>
+        <time time="2026-09-17T00:05:00+02:00" duration="PT4H55M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription xml:lang="de"><![CDATA[00:05-01:00 Fazit
+Kultur vom Tage
+(Wdh.)
+
+01:00-01:05 Nachrichten
+
+01:05-01:10 Kalenderblatt
+
+01:10-01:30 Hintergrund
+(Wdh.)
+
+01:30-02:00 Tag für Tag
+Aus Religion und Gesellsc[...]]]></shortDescription>
+        <longDescription xml:lang="de"><![CDATA[00:05-01:00 Fazit
+Kultur vom Tage
+(Wdh.)
+
+01:00-01:05 Nachrichten
+
+01:05-01:10 Kalenderblatt
+
+01:10-01:30 Hintergrund
+(Wdh.)
+
+01:30-02:00 Tag für Tag
+Aus Religion und Gesellschaft
+(Wdh.)
+
+02:00-02:05 Nachrichten
+
+02:05-02:10 Kommentar
+(Wdh.)
+
+02:10-02:57 Zur Diskussion
+(Wdh.)
+
+02:57-03:00 Sternzeit
+
+03:00-03:05 Nachrichten
+
+03:05-03:30 Weltzeit
+(Wdh.)
+
+03:30-03:52 Forschung aktuell
+(Wdh.)
+
+03:52-04:00 Kalenderblatt
+
+04:00-04:05 Nachrichten
+
+04:05-05:00 Radionacht Information
+Nachrichten um 4:30 Uhr
+
+Am Mikrofon: Tobias Strauß]]></longDescription>
+      </mediaDescription>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390290" shortId="1390290">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T05:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390291" shortId="1390291">
+      <mediumName xml:lang="de"><![CDATA[Informationen am]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Informationen am Morgen]]></longName>
+      <location>
+        <time time="2026-09-17T05:05:00+02:00" duration="PT3H55M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription xml:lang="de"><![CDATA[05:30-05:35 Nachrichten
+
+05:35-05:40 Presseschau
+Aus deutschen Zeitungen
+
+06:00-06:10 Nachrichten
+
+06:30-06:35 Nachrichten
+
+06:35-06:40 Morgenandacht
+Felicitas Richter, Münche[...]]]></shortDescription>
+        <longDescription xml:lang="de"><![CDATA[05:30-05:35 Nachrichten
+
+05:35-05:40 Presseschau
+Aus deutschen Zeitungen
+
+06:00-06:10 Nachrichten
+
+06:30-06:35 Nachrichten
+
+06:35-06:40 Morgenandacht
+Felicitas Richter, Müncheberg
+Katholische Kirche
+
+06:50-06:59 Interview
+EU will sich besser vor hybriden Angriffen schützen - Interview mit Siemtje Möller, SPD
+
+07:00-07:05 Nachrichten
+
+07:05-07:14 Presseschau
+Aus deutschen Zeitungen
+
+07:15-07:25 Interview
+Diskussion um Entlastung bei den Spritpreisen - Interview mit Michael Kellner, Grüne/B90
+
+07:30-07:35 Nachrichten
+
+07:35-07:38 Wirtschaftsgespräch
+
+07:54-07:58 Sport
+
+08:00-08:10 Nachrichten
+
+08:10-08:20 Interview
+Rüstungsdeal und Fed-Entscheidung - Interview mit Peter Beyer, Ex-Transatlantikkoordinator
+
+08:30-08:35 Nachrichten
+
+08:35-08:37 Wirtschaft
+
+08:37-08:41 Kultur und Wissenschaft
+
+08:50-09:00 Presseschau
+Aus deutschen und ausländischen Zeitungen
+
+Berichte, Interviews, Reportagen
+
+Am Mikrofon: Bettina Klein]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1.16"><![CDATA[Zeitgeschehen]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390310" shortId="1390310">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T09:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390311" shortId="1390311">
+      <mediumName xml:lang="de"><![CDATA[Kalenderblatt]]></mediumName>
+      <location>
+        <time time="2026-09-17T09:05:00+02:00" duration="PT5M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Vor 100 Jahren: Jean-Marie Lustiger geboren, Theologe und Erzbischof von Paris]]></shortDescription>
+        <longDescription><![CDATA[Vor 100 Jahren: Jean-Marie Lustiger geboren, Theologe und Erzbischof von Paris]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.5.3"><![CDATA[Geschichte]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390312" shortId="1390312">
+      <mediumName xml:lang="de"><![CDATA[Europa heute]]></mediumName>
+      <location>
+        <time time="2026-09-17T09:10:00+02:00" duration="PT20M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Russland - Inhaltslose Fernsehdebatten vor der Duma-Wahl
+
+Großbritannien - Dorf will Unabhängigkeit vom UK wegen Flüchtlingsunterbringung
+
+Frankreich - Millionen Häuser]]></shortDescription>
+        <longDescription><![CDATA[Russland - Inhaltslose Fernsehdebatten vor der Duma-Wahl
+
+Großbritannien - Dorf will Unabhängigkeit vom UK wegen Flüchtlingsunterbringung
+
+Frankreich - Millionen Häuser durch Klimawandel gefährdet
+
+Am Mikrofon: Johanna Herzing]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.7.2"><![CDATA[Gesellschaft]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1.11"><![CDATA[Regionale Information]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390313" shortId="1390313">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T09:30:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390314" shortId="1390314">
+      <mediumName xml:lang="de"><![CDATA[Tag für Tag]]></mediumName>
+      <location>
+        <time time="2026-09-17T09:35:00+02:00" duration="PT25M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Aus Religion und Gesellschaft
+
+Aus Religion und Gesellschaft
+
+USA: Masernausbruch trifft abgeschottete religiöse Gemeinschaften besonders stark
+Die USA erleben gerade ihren sc[...]]]></shortDescription>
+        <longDescription><![CDATA[Aus Religion und Gesellschaft
+
+USA: Masernausbruch trifft abgeschottete religiöse Gemeinschaften besonders stark
+Die USA erleben gerade ihren schlimmsten Masernausbruch seit über 30 Jahren. In einigen Staaten können Eltern die Impfung aus religiösen Gründen verweigern. Besonders in isoliert lebenden religiösen Gemeinschaften wie den Amisch oder mennonitischen Gruppen gab es heftige Ausbrüche. Dort sind die Impfquoten oft gering. Das hängt mit einem geringen Vertrauen in staatliche Institutionen und verbreiteten Verschwörungserzählungen zusammen. 
+
+Helene Schweitzer-Bresslau: Die inoffizielle Co-Autorin von Albert Schweitzer
+Helene Bresslau-Schweitzer baute gemeinsam mit ihrem Mann Albert Schweitzer das Krankenhaus von Lambarene auf. Sie überarbeitete und übersetzte seine philosophischen Texte -  und verhalf ihm dadurch zu internationaler Bekanntheit.
+
+Am Mikrofon: Luisa Meyer]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.2.1"><![CDATA[Kirche/Religion]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390315" shortId="1390315">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T10:00:00+02:00" duration="PT8M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390316" shortId="1390316">
+      <mediumName xml:lang="de"><![CDATA[Marktplatz]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Marktplatz]]></longName>
+      <location>
+        <time time="2026-09-17T10:08:00+02:00" duration="PT1H22M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription xml:lang="de"><![CDATA[10:30-10:35 Nachrichten
+
+11:00-11:05 Nachrichten
+
+Fernwärme, Nahwärme, Wärmepumpe oder Gas - Mehr Durchblick beim Heizungstausch
+Am Mikrofon: Jule Reimer
+Hörertel.: 00800 4464[...]]]></shortDescription>
+        <longDescription xml:lang="de"><![CDATA[Wer gehofft hatte, die schwarz-rote Bundesregierung würde den Durchblick beim Heizungsaustausch erleichtern, dürfte enttäuscht sein. Das Gebäudeenergiegesetz (GEG) der Ampelregierung ist durch das Gebäudemodernisierungsgesetz (GMG) abgelöst worden. Doch einfacher ist die Entscheidung dadurch nicht geworden, was am besten die alte Öl- oder Gasheizung ersetzt, wenn diese endgültig ihren Geist aufgegeben hat. Der Stopp der bisherigen Förderkonditionen im Juli 2026 - wortwörtlich über Nacht - und neue Förderbedingungen machen Immobilienbesitzern die Auswahl nicht leichter. 
+Was sollten Hauseigentümerinnen im Blick haben, wenn es um den Heizungstausch geht? Wo gibt es Auskunft, ob das eigene Stadtviertel und das eigene Haus für einen Fernwärme-Anschluss infrage kommt? Wie wägen Eigentümer zwischen den kurzfristig niedrigeren Investitionskosten einer Gasheizung und den langfristig als niedriger eingeschätzten laufenden Kosten einer Wärmepumpe ab? Und wie sehen die neuen Förderkonditionen aus? Ihre und unsere Fragen dazu beantworten die Fachleute im Studio, moderiert von Jule Reimer.
+
+10:30-10:35 Nachrichten
+
+11:00-11:05 Nachrichten
+
+Fernwärme, Nahwärme, Wärmepumpe oder Gas - Mehr Du[...]]]></longDescription>
+      </mediaDescription>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390319" shortId="1390319">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T11:30:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390320" shortId="1390320">
+      <mediumName xml:lang="de"><![CDATA[Umwelt und Verbr]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Umwelt und Verbraucher]]></longName>
+      <location>
+        <time time="2026-09-17T11:35:00+02:00" duration="PT25M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1.17"><![CDATA[Service (Verbraucherthemen)]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.3"><![CDATA[Wirtschaft]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390321" shortId="1390321">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T12:00:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390322" shortId="1390322">
+      <mediumName xml:lang="de"><![CDATA[Informationen am]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Informationen am Mittag]]></longName>
+      <location>
+        <time time="2026-09-17T12:10:00+02:00" duration="PT1H20M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription xml:lang="de"><![CDATA[12:30-12:35 Nachrichten
+
+12:45-12:48 Sport
+
+12:50-13:00 Internationale Presseschau
+
+13:00-13:10 Nachrichten
+
+Berichte, Interviews, Musik]]></shortDescription>
+        <longDescription xml:lang="de"><![CDATA[12:30-12:35 Nachrichten
+
+12:45-12:48 Sport
+
+12:50-13:00 Internationale Presseschau
+
+13:00-13:10 Nachrichten
+
+Berichte, Interviews, Musik]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1.16"><![CDATA[Zeitgeschehen]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390327" shortId="1390327">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T13:30:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390328" shortId="1390328">
+      <mediumName xml:lang="de"><![CDATA[Wirtschaft am Mi]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Wirtschaft am Mittag]]></longName>
+      <location>
+        <time time="2026-09-17T13:35:00+02:00" duration="PT25M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription xml:lang="de"><![CDATA[13:56-14:00 Wirtschaftspresseschau]]></shortDescription>
+        <longDescription xml:lang="de"><![CDATA[13:56-14:00 Wirtschaftspresseschau]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.3"><![CDATA[Wirtschaft]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390330" shortId="1390330">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T14:00:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390331" shortId="1390331">
+      <mediumName xml:lang="de"><![CDATA[Deutschland heut]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Deutschland heute]]></longName>
+      <location>
+        <time time="2026-09-17T14:10:00+02:00" duration="PT20M"/>
+      </location>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390332" shortId="1390332">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T14:30:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390333" shortId="1390333">
+      <mediumName xml:lang="de"><![CDATA[Campus & Karrier]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Campus & Karriere]]></longName>
+      <location>
+        <time time="2026-09-17T14:35:00+02:00" duration="PT25M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Das Bildungsmagazin
+
+Das Bildungsmagazin]]></shortDescription>
+        <longDescription><![CDATA[Das Bildungsmagazin]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.6"><![CDATA[Wissenschaft]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:1.3"><![CDATA[Bildung]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390334" shortId="1390334">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T15:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390335" shortId="1390335">
+      <mediumName xml:lang="de"><![CDATA[Corso - Kunst &]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Corso - Kunst & Pop]]></longName>
+      <location>
+        <time time="2026-09-17T15:05:00+02:00" duration="PT25M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.5.4"><![CDATA[Kultur]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:1.3"><![CDATA[Bildung]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390336" shortId="1390336">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T15:30:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390337" shortId="1390337">
+      <mediumName xml:lang="de"><![CDATA[@mediasres]]></mediumName>
+      <location>
+        <time time="2026-09-17T15:35:00+02:00" duration="PT25M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Das Medienmagazin
+
+Das Medienmagazin]]></shortDescription>
+        <longDescription><![CDATA[Das Medienmagazin]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.5.4"><![CDATA[Kultur]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.7.2"><![CDATA[Gesellschaft]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:2.1.2"><![CDATA[Magazin]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390338" shortId="1390338">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T16:00:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390339" shortId="1390339">
+      <mediumName xml:lang="de"><![CDATA[Büchermarkt]]></mediumName>
+      <location>
+        <time time="2026-09-17T16:10:00+02:00" duration="PT20M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Marlen Mairhofer: „Alice“
+(Jung und Jung Verlag)
+Ein Beitrag von Tino Schlench
+
+Edgar Selge: „Juras letzter Winter“
+(Rowohlt Verlag)
+Ein Beitrag von Michael Egger]]></shortDescription>
+        <longDescription><![CDATA[Marlen Mairhofer: „Alice“
+(Jung und Jung Verlag)
+Ein Beitrag von Tino Schlench
+
+Edgar Selge: „Juras letzter Winter“
+(Rowohlt Verlag)
+Ein Beitrag von Michael Eggers
+
+Am Mikrofon: Carsten Hueck]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:2.1.6"><![CDATA[Literatur/Lesung]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390340" shortId="1390340">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T16:30:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390341" shortId="1390341">
+      <mediumName xml:lang="de"><![CDATA[Forschung aktuel]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Forschung aktuell]]></longName>
+      <location>
+        <time time="2026-09-17T16:35:00+02:00" duration="PT25M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Dinosaurier: 
+Tyrannosaurus Rex war Warmblüter
+
+MODULARIS: 
+Neues Forschungsschiff des DLR läuft vom Stapel
+
+Wissenschaftsmeldungen
+
+Sternzeit 17. September]]></shortDescription>
+        <longDescription><![CDATA[Dinosaurier: 
+Tyrannosaurus Rex war Warmblüter
+
+MODULARIS: 
+Neues Forschungsschiff des DLR läuft vom Stapel
+
+Wissenschaftsmeldungen
+
+Sternzeit 17. September 2026:
+Sechzig Jahre Raumpatrouille Orion
+
+Am Mikrofon: Ralf Krauter]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.6"><![CDATA[Wissenschaft]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:1.3"><![CDATA[Bildung]]></genre>
+      <link uri="http://www.deutschlandfunk.de/podcast-forschung-aktuell.677.de.podcast.xml" mimeValue="application/rss+xml"/>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390342" shortId="1390342">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T17:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390343" shortId="1390343">
+      <mediumName xml:lang="de"><![CDATA[Wirtschaft und G]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Wirtschaft und Gesellschaft]]></longName>
+      <location>
+        <time time="2026-09-17T17:05:00+02:00" duration="PT25M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.3"><![CDATA[Wirtschaft]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.7.2"><![CDATA[Gesellschaft]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390344" shortId="1390344">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T17:30:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390345" shortId="1390345">
+      <mediumName xml:lang="de"><![CDATA[Kultur heute]]></mediumName>
+      <location>
+        <time time="2026-09-17T17:35:00+02:00" duration="PT25M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Berichte, Meinungen, Rezensionen
+
+Berichte, Meinungen, Rezensionen]]></shortDescription>
+        <longDescription><![CDATA[Berichte, Meinungen, Rezensionen]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.5.4"><![CDATA[Kultur]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390346" shortId="1390346">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T18:00:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390347" shortId="1390347">
+      <mediumName xml:lang="de"><![CDATA[Informationen am]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Informationen am Abend]]></longName>
+      <location>
+        <time time="2026-09-17T18:10:00+02:00" duration="PT30M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.3"><![CDATA[Wirtschaft]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390348" shortId="1390348">
+      <mediumName xml:lang="de"><![CDATA[Hintergrund]]></mediumName>
+      <location>
+        <time time="2026-09-17T18:40:00+02:00" duration="PT20M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390349" shortId="1390349">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T19:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390350" shortId="1390350">
+      <mediumName xml:lang="de"><![CDATA[Kommentar]]></mediumName>
+      <location>
+        <time time="2026-09-17T19:05:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1.16"><![CDATA[Zeitgeschehen]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390351" shortId="1390351">
+      <mediumName xml:lang="de"><![CDATA[Dlf-Magazin]]></mediumName>
+      <location>
+        <time time="2026-09-17T19:15:00+02:00" duration="PT45M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:2.1.2"><![CDATA[Magazin]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390352" shortId="1390352">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T20:00:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390353" shortId="1390353">
+      <mediumName xml:lang="de"><![CDATA[Systemfragen]]></mediumName>
+      <location>
+        <time time="2026-09-17T20:10:00+02:00" duration="PT20M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Politische Positionen - Ist die Soziologie zu links?
+
+Der neue "Soziologen-Streit" - Worum geht es hier wirklich? 
+ 
+Deutliche Parallelen - Zur Diskussion, ob Journalis]]></shortDescription>
+        <longDescription><![CDATA[In der Soziologie ist ein Streit entbrannt, entfacht von Armin Nassehi und Irmhild Saake von der TU München. Es geht um die Frage, ob politische Einstellungen das Forschungsfeld zu sehr prägen. Anlass ist eine Studie, wonach sozialwissenschaftliche Studien oft eine Ausrichtung nach links haben. Nassehi und Saake kritisieren unter anderem einen aus ihrer Sicht zu großen Fokus auf das Thema Gerechtigkeit. Widerspruch folgte - prompt, inklusive des Vorwurfs, dass  der Aufschlag der beiden dem rechtsextremen Lager nutze. Die "Systemfragen" sortieren - was prallt hier aufeinander, inwiefern wird im Journalismus gerade ähnlich diskutiert - und geht es in der Diskussion am Ende gar nicht um die  Frage "links-rechts", sondern um etwas ganz anderes?
+
+Politische Positionen - Ist die Soziologie zu links?
+
+Der neue "Soziologen-Streit" - Worum geht es hier wirklich? 
+ 
+Deutliche Parallelen - Zur Diskussion, ob Journalismus "zu links" ist 
+
+Von Kathrin Kühn, Lydia Jakobi und Martin Krebbers]]></longDescription>
+      </mediaDescription>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390354" shortId="1390354">
+      <mediumName xml:lang="de"><![CDATA[Mikrokosmos]]></mediumName>
+      <location>
+        <time time="2026-09-17T20:30:00+02:00" duration="PT30M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Rechtsextreme vor Gericht
+Staffel 2: Der Reichsbürger-Prozess
+Das demokratische Gesicht (4/6)
+Von Marie Schwesinger
+Regie: Eva Solloch
+Deutschlandfunk 2026
+Länge:]]></shortDescription>
+        <longDescription><![CDATA[Ihre Gesinnung ist schon früher aufgefallen. Warum konnte dennoch nicht verhindert werden, dass sie ins Richteramt zurückkehrte? Und wie könnte man sich zukünftig besser gegen verfassungsfeindlich gesinnte Staatsbedienstete wehren? Wir sprechen mit einem ehemaligen Kollegen am Landgericht Berlin und schauen uns die Verteidigungsstrategie der Angeklagten genauer an.  
+
+Marie Schwesinger (geb. 1988 in Hamburg) ist freie Theaterregisseurin und Autorin in Frankfurt/Main. Ihr Arbeitsschwerpunkt ist Dokumentar- und Recherchetheater. Seit 2020 ist sie Prozessbeobachterin am Oberlandesgericht Frankfurt und forscht künstlerisch zu Rechtsextremismus, wie in „Sturm auf Berlin“ am Berliner Ensemble.
+
+Rechtsextreme vor Gericht
+Staffel 2: Der Reichsbürger-Prozess
+Das demokratische Gesicht (4/6)
+Von Marie Schwesinger
+Regie: Eva Solloch
+Deutschlandfunk 2026
+Länge: 29'31
+(Folge 5 am 24.09.2026)
+
+Malsack-Winkemann ist die Gesprächigste unter den Angeklagten. Schnell wird klar, dass auch sie der Reichsbürger-Ideologie nahesteht und trotzdem als Staatsdienerin gearbeitet hat.]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:2.2.3"><![CDATA[Reportage]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.5.4"><![CDATA[Kultur]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390355" shortId="1390355">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T21:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390356" shortId="1390356">
+      <mediumName xml:lang="de"><![CDATA[JazzFacts]]></mediumName>
+      <location>
+        <time time="2026-09-17T21:05:00+02:00" duration="PT55M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Vater des Spiritual Jazz?
+John Coltrane zum 100. Geburtstag
+Von Odilo Clausnitzer
+
+Eine Sendung über Wurzeln und Wirkung der spirituellen Qualität in der Musik von John]]></shortDescription>
+        <longDescription><![CDATA[Am 23. September wäre John Coltrane 100 Jahre alt geworden. Er ist der einflussreichste Tenorsaxofonist des modernen Jazz und hat eine hymnische, quasi-religiöse Intensität in den Jazz der 1960er-Jahre getragen. Woher kommt sie? Und wie hat sie die Musik nach ihm beeinflusst? Nicht nur seine musikalischen Neuerungen, auch der charismatische spirituelle Zug besonders seiner späten Musik haben enorme Wirkung entfaltet. Der sogenannte „Spiritual Jazz“ - ein erst Jahrzehnte nach Coltranes Tod geprägter Begriff - wäre ohne ihn undenkbar. Heute gilt „Spiritual Jazz“ als eigenes und vergleichsweise populäres Jazz-Genre. Im Gespräch mit dem Jazz-Historiker und Coltrane-Biografen Lewis Porter geht es in der Sendung auch um die Fragen: Wieviel Coltrane steckt im Spiritual Jazz? Und wieviel Spirit steckt in Coltrane?
+
+Vater des Spiritual Jazz?
+John Coltrane zum 100. Geburtstag
+Von Odilo Clausnitzer
+
+Eine Sendung über Wurzeln und Wirkung der spirituellen Qualität in der Musik von John Coltrane.]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.6.2"><![CDATA[Jazz]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390357" shortId="1390357">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T22:00:00+02:00" duration="PT5M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390358" shortId="1390358">
+      <mediumName xml:lang="de"><![CDATA[Historische Aufn]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Historische Aufnahmen]]></longName>
+      <location>
+        <time time="2026-09-17T22:05:00+02:00" duration="PT45M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription><![CDATA[Wahrheit, gehüllt in den Schleier von Schönheit 
+Über den Dirigenten Bruno Walter 
+Von Holger Noltze]]></shortDescription>
+        <longDescription><![CDATA[„Er beherrschte uns durch Gewaltlosigkeit“, brachte ein Orchestermusiker die Arbeit mit dem Dirigenten Bruno Walter auf den Punkt. In den erhaltenen Probenmitschnitten ist es zu hören, sein freundlich vorgetragener Wunsch nach noch mehr Piano, nach Gesang, nach einem klanglichen „Dolce“, das nie verzuckert klang. Sein Schönheitssinn verstand sich als Wahrheitssuche. Zum 150. Geburtstag erinnern die „Historischen Aufnahmen“ an den Dirigenten, den die frühe Begegnung mit Gustav Mahler zeitlebens prägte, und der in Mozart den „Shakespeare der Oper“ erkannte.
+
+Wahrheit, gehüllt in den Schleier von Schönheit 
+Über den Dirigenten Bruno Walter 
+Von Holger Noltze]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.6.1"><![CDATA[Ernste Musik]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390359" shortId="1390359">
+      <mediumName xml:lang="de"><![CDATA[Sport aktuell]]></mediumName>
+      <location>
+        <time time="2026-09-17T22:50:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.2"><![CDATA[Sport]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390360" shortId="1390360">
+      <mediumName xml:lang="de"><![CDATA[Nachrichten]]></mediumName>
+      <location>
+        <time time="2026-09-17T23:00:00+02:00" duration="PT10M"/>
+      </location>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1"><![CDATA[Nachrichten]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390361" shortId="1390361">
+      <mediumName xml:lang="de"><![CDATA[Das war der Tag]]></mediumName>
+      <longName xml:lang="de"><![CDATA[Das war der Tag]]></longName>
+      <location>
+        <time time="2026-09-17T23:10:00+02:00" duration="PT47M"/>
+      </location>
+      <mediaDescription>
+        <shortDescription xml:lang="de"><![CDATA[23:53-23:56 Presseschau
+
+Journal vor Mitternacht]]></shortDescription>
+        <longDescription xml:lang="de"><![CDATA[23:53-23:56 Presseschau
+
+Journal vor Mitternacht]]></longDescription>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.1"><![CDATA[Politik]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.1.16"><![CDATA[Zeitgeschehen]]></genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2002:3.1.3.3"><![CDATA[Wirtschaft]]></genre>
+    </programme>
+    <programme id="crid://dradio.de/dlf/1390363" shortId="1390363">
+      <mediumName xml:lang="de"><![CDATA[National- und Eu]]></mediumName>
+      <longName xml:lang="de"><![CDATA[National- und Europahymne]]></longName>
+      <location>
+        <time time="2026-09-17T23:57:00+02:00" duration="PT2M"/>
+      </location>
+    </programme>
+  </schedule>
+</epg>

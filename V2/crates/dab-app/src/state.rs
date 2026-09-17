@@ -22,6 +22,10 @@ pub struct EnsembleState {
     pub eid: u16,
     pub name: String,
     pub channel: String,
+    /// Extended Country Code (FIG 0/9), 0 = noch nicht empfangen; mit EId und
+    /// SId bildet er den RadioDNS-Namen (crate::radiodns).
+    #[serde(default)]
+    pub ecc: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -206,6 +210,8 @@ pub struct AppState {
     pub traffic_active: Option<crate::traffic::TrafficEntry>,
     pub traffic_history: Vec<crate::traffic::TrafficEntry>,
     pub traffic_supported: bool,
+    /// Hybrid Radio / RadioDNS (crate::radiodns): Schalter, laufender Abruf, Zaehler.
+    pub radiodns: crate::radiodns::RadioDnsStatus,
 }
 
 pub fn unix_now() -> i64 {
@@ -344,14 +350,21 @@ impl AppState {
                 self.fic_ok = *ok;
                 self.fic_total = *total;
             }
-            Event::EnsembleFound { eid, name, channel } => {
+            Event::EnsembleFound { eid, name, channel, ecc } => {
                 let changed = self.ensemble.as_ref().map(|e| e.eid != *eid).unwrap_or(true);
                 if changed {
                     self.services.clear();
                     self.clear_service();
                 }
-                self.ensemble = Some(EnsembleState { eid: *eid, name: name.clone(), channel: channel.clone() });
+                // ECC behalten, wenn dasselbe Ensemble ohne ECC erneut gemeldet wird.
+                let ecc = if *ecc != 0 { *ecc } else if changed { 0 } else { self.ensemble.as_ref().map(|e| e.ecc).unwrap_or(0) };
+                self.ensemble = Some(EnsembleState { eid: *eid, name: name.clone(), channel: channel.clone(), ecc });
                 self.channel = Some(channel.clone());
+            }
+            Event::EnsembleEcc { ecc } => {
+                if let Some(e) = self.ensemble.as_mut() {
+                    e.ecc = *ecc;
+                }
             }
             Event::ServiceAdded { service } => self.upsert_service(service.clone()),
             Event::EnsembleReconfigured => {
@@ -476,7 +489,7 @@ impl AppState {
                 }
                 if let Some((eid, name)) = &state.ensemble {
                     let channel = state.channel.clone().unwrap_or_default();
-                    self.ensemble = Some(EnsembleState { eid: *eid, name: name.clone(), channel });
+                    self.ensemble = Some(EnsembleState { eid: *eid, name: name.clone(), channel, ecc: state.ensemble_ecc });
                 }
                 for s in &state.services {
                     self.upsert_service(s.clone());
@@ -509,7 +522,7 @@ mod tests {
     #[test]
     fn service_added_replaces_and_sorts() {
         let mut st = AppState::default();
-        st.apply(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() });
+        st.apply(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into(), ecc: 0 });
         st.apply(&Event::ServiceAdded { service: svc(2, "Dlf Kultur") });
         st.apply(&Event::ServiceAdded { service: svc(1, "Dlf") });
         let mut again = svc(2, "Dlf Kultur");

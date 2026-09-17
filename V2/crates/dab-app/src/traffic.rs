@@ -448,7 +448,7 @@ mod tests {
         let mut a = App::with(DataDirs::with_root(&tmp, true), settings, Presets::default());
         a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
         a.state.channel = Some("11D".into());
-        a.state.ensemble = Some(crate::state::EnsembleState { eid: 0x10EC, name: "WDR NRW".into(), channel: "11D".into() });
+        a.state.ensemble = Some(crate::state::EnsembleState { eid: 0x10EC, name: "WDR NRW".into(), channel: "11D".into(), ecc: 0 });
         a.state.services.push(svc(0xD395, "WDR 5", 5));
         a.state.services.push(svc(0xD392, "WDR 2 RHEINLAND", 3));
         a.state.services.push(svc(0x10C4, "ASA DE", 1));

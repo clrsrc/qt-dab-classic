@@ -62,7 +62,10 @@ json noSignal(const std::string& channel);
 json snr(float db);
 json ficQuality(uint16_t ok, uint16_t total);
 json frequencyOffset(int32_t hz);
-json ensembleFound(uint16_t eid, const std::string& name, const std::string& channel);
+json ensembleFound(uint16_t eid, const std::string& name, const std::string& channel, uint8_t ecc = 0);
+// ECC (FIG 0/9) nachgereicht, wenn er erst nach dem Ensemble-Namen bekannt
+// wird (RadioDNS, 17.09.2026).
+json ensembleEcc(uint8_t ecc);
 json serviceAdded(const ServiceInfo& s);
 json ensembleReconfigured();
 json clockTime(int64_t unixUtc, int16_t ltoMinutes);

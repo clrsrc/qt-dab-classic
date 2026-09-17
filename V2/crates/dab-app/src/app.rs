@@ -67,6 +67,8 @@ pub enum AppEvent {
     /// Verkehrs-/Sonderdurchsagen (crate::traffic): laufende, Historie,
     /// Unterstuetzung des laufenden Dienstes - wie `AppState::traffic_*`.
     Traffic { active: Option<crate::traffic::TrafficEntry>, history: Vec<crate::traffic::TrafficEntry>, supported: bool },
+    /// Hybrid Radio / RadioDNS (crate::radiodns): Status geaendert (wie `AppState::radiodns`).
+    RadioDns { status: crate::radiodns::RadioDnsStatus },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,6 +165,8 @@ pub struct App {
     pub music: crate::music::MusicDetector,
     /// Verkehrsfunk-Durchsagen (crate::traffic).
     pub traffic: crate::traffic::TrafficCtl,
+    /// Hybrid Radio / RadioDNS (crate::radiodns): Auftragsplanung.
+    pub radiodns: crate::radiodns::RadioDnsCtl,
     pending: Option<Pending>,
     /// SIds, deren `service_stopped` wir noch erwarten, weil wir sie selbst
     /// durch eine neuere Auswahl ersetzt haben (Fund 15.09.2026: bei
@@ -222,6 +226,7 @@ impl App {
         let mut state = AppState::default();
         state.volume = settings.volume_percent;
         state.agc = settings.agc;
+        state.radiodns.enabled = settings.radiodns_enabled;
         let (logos, epg) = crate::epg::open_caches(&dirs);
         let sched = crate::timer::Scheduler::load(&dirs, settings.record_pre_s as i64, settings.record_post_s as i64);
         let mut app = Self {
@@ -238,6 +243,7 @@ impl App {
             stations_ctl: Default::default(),
             music: Default::default(),
             traffic: Default::default(),
+            radiodns: Default::default(),
             pending: None,
             expected_stops: Default::default(),
             optimistic: None,
@@ -449,6 +455,7 @@ impl App {
         fx.append(self.timeshift_on_event(ev));
         fx.append(self.music_on_event(ev, crate::state::unix_now()));
         fx.append(self.traffic_on_event(ev, crate::state::unix_now()));
+        fx.append(self.radiodns_on_event(ev, now));
         fx.append(self.tick(now));
         fx
     }
@@ -797,6 +804,7 @@ impl App {
         fx.append(self.debug_on_settings(&old));
         fx.append(self.timeshift_on_settings(&old));
         fx.append(self.music_on_settings(&old));
+        fx.append(self.radiodns_on_settings(&old, Instant::now()));
         fx.append(self.save_settings());
         fx
     }
@@ -973,7 +981,7 @@ mod tests {
     }
 
     fn tune(a: &mut App, channel: &str, eid: u16, services: &[(u32, &str)], now: Instant) {
-        a.handle_event(&Event::EnsembleFound { eid, name: "Ens".into(), channel: channel.into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid, name: "Ens".into(), channel: channel.into(), ecc: 0 }, now);
         for (sid, name) in services {
             a.handle_event(&Event::ServiceAdded { service: svc(*sid, name) }, now);
         }
@@ -1316,7 +1324,7 @@ mod tests {
         assert_eq!(a.presets.get(1).unwrap().sid, 0);
         // Aufruf: SId unbekannt -> ueber den Namen aufloesen und nachtragen
         a.preset_recall(1, now).unwrap();
-        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into(), ecc: 0 }, now);
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C0, "WDR 5") }, now);
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }]);
         let p = a.presets.get(1).unwrap();

@@ -49,9 +49,12 @@ json noSignal(const std::string& c) { auto j = ev("no_signal"); j["channel"] = c
 json snr(float db) { auto j = ev("snr"); j["db"] = db; return j; }
 json ficQuality(uint16_t ok, uint16_t total) { auto j = ev("fic_quality"); j["ok"] = ok; j["total"] = total; return j; }
 json frequencyOffset(int32_t hz) { auto j = ev("frequency_offset"); j["hz"] = hz; return j; }
-json ensembleFound(uint16_t eid, const std::string& n, const std::string& c) {
-    auto j = ev("ensemble_found"); j["eid"] = eid; j["name"] = n; j["channel"] = c; return j;
+json ensembleFound(uint16_t eid, const std::string& n, const std::string& c, uint8_t ecc) {
+    // ecc: Extended Country Code aus FIG 0/9 (0 = noch unbekannt), additiv
+    // seit 17.09.2026 fuer RadioDNS (dab-app radiodns.rs).
+    auto j = ev("ensemble_found"); j["eid"] = eid; j["name"] = n; j["channel"] = c; j["ecc"] = ecc; return j;
 }
+json ensembleEcc(uint8_t ecc) { auto j = ev("ensemble_ecc"); j["ecc"] = ecc; return j; }
 json serviceAdded(const ServiceInfo& s) { auto j = ev("service_added"); j["service"] = s.toJson(); return j; }
 json ensembleReconfigured() { return ev("ensemble_reconfigured"); }
 json clockTime(int64_t u, int16_t lto) { auto j = ev("clock_time"); j["unix_utc"] = u; j["lto_minutes"] = lto; return j; }

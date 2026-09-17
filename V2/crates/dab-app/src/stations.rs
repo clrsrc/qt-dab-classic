@@ -441,7 +441,7 @@ mod tests {
         let now = Instant::now();
         let mut a = app("live");
         a.state.channel = Some("5C".into());
-        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into(), ecc: 0 }, now);
         a.handle_event(&Event::ServiceAdded { service: svc(0xD210, "Dlf", true) }, now);
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xD220, "Dlf Kultur", true) }, now + Duration::from_millis(500));
         assert!(a.state.stations.is_empty(), "erst nach der Ruhezeit");
@@ -456,7 +456,7 @@ mod tests {
         a.state.scan.active = true;
         a.handle_event(&scan("11D", Some(0x1E1C), "WDR", vec![svc(0xE1C0, "WDR 5", true), svc(0xE1C1, "1LIVE", true)]), now);
         a.handle_event(&Event::ScanFinished, now);
-        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into(), ecc: 0 }, now);
         let mut live = svc(0xE1C1, "1LIVE", true);
         live.pty = 10;
         a.handle_event(&Event::ServiceAdded { service: live }, now);
@@ -469,7 +469,7 @@ mod tests {
         a.handle_event(&Event::ServiceAdded { service: svc(0xE1C2, "WDR 2", true) }, now);
         assert!(a.tick(now + Duration::from_secs(6)).events.is_empty());
         // Auf 5C ein anderes Ensemble gehoert: 5C ersetzt, 11D bleibt
-        a.handle_event(&Event::EnsembleFound { eid: 0x10FF, name: "Neu".into(), channel: "5C".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x10FF, name: "Neu".into(), channel: "5C".into(), ecc: 0 }, now);
         a.handle_event(&Event::ServiceAdded { service: svc(0x1, "Neuer Dienst", true) }, now);
         a.tick(now + Duration::from_secs(9));
         assert_eq!(names(&a.state.stations), vec!["5C Neuer Dienst", "11D 1LIVE", "11D WDR 2", "11D WDR 5"]);
@@ -489,7 +489,7 @@ mod tests {
         a.handle_event(&scan("11D", Some(0x1E1C), "WDR", vec![svc(0xE1C0, "WDR 5", true)]), now);
         a.handle_event(&Event::ScanFinished, now);
         a.state.channel = Some("5C".into());
-        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into(), ecc: 0 }, now);
         a.handle_event(&Event::ServiceAdded { service: svc(0xD220, "Dlf Kultur", true) }, now);
         // Gleicher Kanal, Dienst bekannt: sofort
         let fx = a.tune_station("5C", 0x10BC, 0xD220, 0, now).unwrap();
@@ -500,7 +500,7 @@ mod tests {
         assert_eq!(fx.commands, vec![Command::SetChannel { channel: "11D".into() }]);
         assert!(matches!(&fx.events[0], AppEvent::PresetStatus { slot: None, status: PresetStatus::Tuning, name, channel } if name == "WDR 5" && channel == "11D"));
         assert!(a.is_pending());
-        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into(), ecc: 0 }, now);
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C1, "1LIVE", true) }, now);
         assert!(fx.commands.is_empty());
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C0, "WDR 5", true) }, now);

@@ -107,6 +107,15 @@ SNR-Verlauf, Zähler), Datei-Wiedergabe, vollständiges Einstellungs-Panel
 (Gerät/Gain je Gerät und Kanal, Audio, EWS, EPG, Aufnahmeordner, Panels,
 Sprache DE/EN), portabler Datenordner `data/`.
 
+Hybrid Radio (17.09.2026, Standard aus): Mit dem Schalter „Internet-Ergänzung
+(RadioDNS)“ in den Einstellungen holt `dab-app::radiodns` für die Audiodienste des
+abgestimmten Ensembles nach, was dem Broadcast-EPG fehlt – Logos und die Sendepläne
+von heute und morgen – per RadioDNS (ETSI TS 103 270: CNAME auf
+`<scids>.<sid>.<eid>.<gcc>.dab.radiodns.org`, SRV `_radiospi`/`_radioepg`) und SPI
+über IP (TS 102 818, `SI.xml` und `<jjjjmmtt>_PI.xml`). Der Kern liefert dafür den ECC
+aus FIG 0/9 (`ensemble_found.ecc`, `ensemble_ecc`). Broadcast hat Vorrang; die Zwischen-
+ergebnisse liegen in `data/radiodns/`.
+
 Ortsabgleich (Geofencing) beim EWS-Alarm: Die Heimatkoordinaten gehen als
 `set_home_location` in den Kern, der die Ortscodes eines Alarms (TS 104 089
 Annex F) damit vergleicht und sein Urteil als `ews_alert.relevant` zurückmeldet.

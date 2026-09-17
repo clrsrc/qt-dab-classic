@@ -895,7 +895,7 @@ mod tests {
 
     fn tune(a: &mut App, channel: &str, eid: u16, services: &[(u32, &str)]) {
         let now = Instant::now();
-        a.handle_event(&Event::EnsembleFound { eid, name: "Ens".into(), channel: channel.into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid, name: "Ens".into(), channel: channel.into(), ecc: 0 }, now);
         for (sid, name) in services {
             a.handle_event(&Event::ServiceAdded { service: svc(*sid, name) }, now);
         }
@@ -1041,7 +1041,7 @@ mod tests {
         assert!(a.sched.timers.get(id).unwrap().fired);
         assert!(a.sched.is_running());
         // Dienst erscheint -> select_service
-        let fx = a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into() }, Instant::now());
+        let fx = a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into(), ecc: 0 }, Instant::now());
         assert!(fx.commands.is_empty());
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C0, "WDR 5") }, Instant::now());
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }]);
@@ -1186,7 +1186,7 @@ mod tests {
         assert!(a.sched.is_running());
         // Aufnahme beginnt waehrend des Kanalwechsels (z. B. Taste R).
         a.state.recording = true;
-        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into() }, Instant::now());
+        a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into(), ecc: 0 }, Instant::now());
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C0, "WDR 5") }, Instant::now());
         assert!(fx.commands.is_empty(), "waehrend einer Aufnahme darf der Timer nicht umschalten: {:?}", fx.commands);
         assert!(fx.events.iter().any(|e| matches!(e, AppEvent::TimerStatus { status: TimerFireStatus::Failed, .. })), "{:?}", fx.events);

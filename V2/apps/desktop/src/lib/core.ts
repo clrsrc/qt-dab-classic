@@ -127,6 +127,21 @@ export interface AppState {
   traffic_active: TrafficEntry | null;
   traffic_history: TrafficEntry[];
   traffic_supported: boolean;
+  /** Hybrid Radio / RadioDNS (dab_app::radiodns): Schalter, laufender Abruf, Zaehler. */
+  radiodns: RadioDnsStatus;
+}
+
+/** Status des RadioDNS-Abrufs (dab_app::radiodns::RadioDnsStatus). */
+export interface RadioDnsStatus {
+  enabled: boolean;
+  busy: boolean;
+  eid: number;
+  services_found: number;
+  services_none: number;
+  logos: number;
+  schedules: number;
+  last_unix: number;
+  error: string | null;
 }
 
 /** MOT-SlideShow-Bild des laufenden Dienstes (Kern-Ereignis mot_slide). */
@@ -276,6 +291,8 @@ export interface Settings {
   audio_device: number | null;
   /** EPG-Paketdienst im Kern mitlaufen lassen (set_epg). */
   epg_enabled: boolean;
+  /** Hybrid Radio: Logos/Sendeplaene per RadioDNS aus dem Internet nachladen (Standard aus). */
+  radiodns_enabled: boolean;
   /** Speichertasten zeigen das Kurzlabel (FIG 1 Zeichen-Flags) statt des vollen Namens. */
   preset_short_labels: boolean;
   autostart: boolean;
@@ -321,6 +338,7 @@ export type AppEvent =
   | { type: "ews_locations"; iid: number; sub_ch: number; location_info: EwsLocationInfo[] }
   | { type: "ews_history"; history: EwsHistoryEntry[] }
   | { type: "traffic"; active: TrafficEntry | null; history: TrafficEntry[]; supported: boolean }
+  | { type: "radiodns"; status: RadioDnsStatus }
   | EpgAppEvent
   | TimerAppEvent
   | DebugAppEvent
@@ -368,6 +386,8 @@ export interface Transport {
   stopScan(): Promise<void>;
   ewsDismiss(): Promise<void>;
   restartCore(): Promise<void>;
+  /** RadioDNS: Merker verwerfen, naechster Abruf sofort (Einstellungen). */
+  radiodnsRefresh(): Promise<void>;
 
   presetRecall(slot: number): Promise<void>;
   /// `service` ohne channel/eid: Dienst des aktuellen Ensembles; mit beiden: Eintrag der Senderliste (lib/stations.ts).
@@ -480,6 +500,10 @@ class TauriTransport implements Transport {
   }
   restartCore() {
     return invoke<void>("restart_core");
+  }
+  /** RadioDNS: Merker verwerfen, naechster Abruf sofort (Einstellungen). */
+  radiodnsRefresh() {
+    return invoke<void>("radiodns_refresh");
   }
   presetRecall(slot: number) {
     return guarded(() => invoke<void>("preset_recall", { slot }));

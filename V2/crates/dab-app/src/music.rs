@@ -423,7 +423,7 @@ mod tests {
         let mut a = App::with(DataDirs::with_root(&tmp, true), settings, Presets::default());
         a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
         a.state.channel = Some("5C".into());
-        a.state.ensemble = Some(crate::state::EnsembleState { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() });
+        a.state.ensemble = Some(crate::state::EnsembleState { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into(), ecc: 0 });
         a.state.services.push(ServiceInfo { sid: 0xD210, scids: 0, name: "Dlf".into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 104, pty: 0, short_name: String::new(), language: 0 });
         a.state.current = Some(crate::state::CurrentService { sid: 0xD210, scids: 0, codec: None, stereo: true });
         a.music.service_since = 1000;

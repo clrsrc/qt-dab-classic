@@ -34,7 +34,7 @@ fn objects_flow_into_cache_presets_and_display() {
     dirs.ensure().unwrap();
     let mut a = App::with(dirs, Settings::default(), Presets::default());
     let now = Instant::now();
-    a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into() }, now);
+    a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "DR Deutschland".into(), channel: "5C".into(), ecc: 0 }, now);
     a.handle_event(&Event::ServiceAdded { service: svc(0xD210, "Dlf") }, now);
     a.handle_event(&Event::ServiceAdded { service: svc(0xD230, "Dlf Nova") }, now);
     a.state.channel = Some("5C".into());

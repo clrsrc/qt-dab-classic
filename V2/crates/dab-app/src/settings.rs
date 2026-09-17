@@ -43,6 +43,10 @@ pub struct Settings {
     pub audio_device: Option<u32>,
     /// EPG/SPI-Paketdienst im Kern automatisch mitlaufen lassen (`set_epg`), Standard an.
     pub epg_enabled: bool,
+    /// Hybrid Radio (crate::radiodns): Logos und Sendeplaene fuer Dienste ohne
+    /// Broadcast-EPG per RadioDNS/SPI ueber IP nachladen. Standard AUS - die
+    /// App spricht dann nie mit dem Internet (17.09.2026).
+    pub radiodns_enabled: bool,
     /// Speichertasten zeigen das Kurzlabel des Senders (FIG 1 Zeichen-Flags,
     /// max. 8 Zeichen) statt des vollen Namens, Standard an (17.09.2026).
     pub preset_short_labels: bool,
@@ -125,6 +129,7 @@ impl Default for Settings {
             music_mp3_kbps: 256,
             audio_device: None,
             epg_enabled: true,
+            radiodns_enabled: false,
             preset_short_labels: true,
             autostart: true,
             last_file: None,
@@ -188,6 +193,7 @@ mod tests {
         assert_eq!(s.record_post_s, 300);
         assert!(!s.music_enabled);
         assert!(!s.music_auto_save);
+        assert!(!s.radiodns_enabled, "kein Internet ohne Zustimmung");
     }
 
     #[test]

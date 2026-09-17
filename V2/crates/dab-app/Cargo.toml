@@ -16,3 +16,7 @@ thiserror = { workspace = true }
 log = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
+# RadioDNS (crate::radiodns): DNS ueber den System-Resolver, HTTP(S) ueber
+# den Windows-Zertifikatspeicher (schannel) - kein rustls/nasm noetig.
+hickory-resolver = { version = "0.24", default-features = false, features = ["system-config", "tokio-runtime"] }
+ureq = { version = "3", default-features = false, features = ["native-tls", "gzip"] }

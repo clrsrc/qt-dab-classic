@@ -335,6 +335,7 @@ private:
     // EPG/SPI-Hintergrunddienst
     std::atomic<bool> epgEnabled_{true};
     std::atomic<int> lto_{0};                // FIG 0/9 LTO (Stunden), fuer den epg-compiler
+    std::atomic<int> ecc_{0};                // FIG 0/9 ECC (0 = unbekannt), fuer RadioDNS; Reset bei Kanalwechsel
 
     // Drosselung latest-wins-Ereignisse
     std::chrono::steady_clock::time_point lastSnr_{}, lastFicQuality_{}, lastFreqOffset_{};

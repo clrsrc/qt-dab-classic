@@ -222,8 +222,9 @@ INHALT
     Einstellungen   Gruppen Geraet/Empfang (Geraet, RTL-SDR-Index, PPM,
                     AGC, manueller Gain, Merker je Geraet/Kanal), Audio
                     (Ausgabegeraet, Lautstaerke), Notfallwarnung (EWS
-                    auswerten, automatisch umschalten, Warnton), EPG,
-                    Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
+                    auswerten, automatisch umschalten, Warnton), EPG
+                    (Broadcast-EPG, Internet-Ergaenzung per RadioDNS -
+                    siehe unten), Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
                     Vor-/Nachlauf, Sleep-Timer), Timeshift (Puffergroesse
                     in Minuten), Allgemein (Sprache, Autostart, Kurzlabel
                     auf den Speichertasten, sichtbare Panels, Datenordner,
@@ -239,6 +240,23 @@ INHALT
                     (FIC, Frame-, RS-, AAC-Fehler, RS-Korrekturen, Frequenz-
                     offset, Gain, SNR) und TII-Senderliste. Nur bei
                     geoeffnetem Panel liefert der Kern Scope-Daten.
+
+  Internet-Ergaenzung per RadioDNS (Einstellungen > EPG, Standard AUS)
+    Viele Sender bieten Logos und Sendeplaene zusaetzlich ueber das
+    Internet an (Hybrid Radio, ETSI TS 103 270 "RadioDNS" und SPI ueber
+    IP, TS 102 818). Eingeschaltet holt DAB Classic fuer die Audiodienste
+    des abgestimmten Ensembles nach, was im Broadcast-EPG fehlt: Logos
+    in den Groessen 32x32, 112x32, 128x128 und 320x240 sowie die Sende-
+    plaene von heute und morgen. Der Broadcast hat immer Vorrang; aus dem
+    Netz kommt nur, was fehlt. Der Abruf laeuft im Hintergrund etwa
+    10 s nach dem Abstimmen, danach hoechstens alle 6 Stunden je
+    Ensemble; "Jetzt abrufen" erzwingt einen neuen Lauf. Die Status-
+    zeile zeigt, wie viele Sender ein Angebot haben und was uebernommen
+    wurde. Solange der Schalter aus ist, spricht das Programm nicht mit
+    dem Internet. Stand 17.09.2026 antworten z. B. Deutschlandradio
+    (Dlf, Dlf Kultur, Dlf Nova), die ARD-Programme (WDR) und Absolut
+    Radio; wer keinen DNS-Eintrag hat, wird 24 h nicht erneut gefragt
+    (dataadiodns\hosts.json).
 
   Gain und AGC (Einstellungen)
     Die SNR-gesteuerte AGC ist Standard. Fuer manuelle Werte AGC
@@ -477,7 +495,12 @@ INHALT
   data\epg\<EId>\        EPG-Sendeplaene je Ensemble und Tag
                          (JJJJMMTT_<SId>_SI.xml), alte Tage werden beim
                          Start entfernt
-  data\logos\<EId>\      Senderlogos aus dem SPI-Dienst (PNG/JPEG)
+  data\logos\<EId>\      Senderlogos aus dem SPI-Dienst (PNG/JPEG), bei
+                         eingeschalteter Internet-Ergaenzung auch aus dem
+                         Netz (gleiches Namensschema <SId>_<Name>_<BxH>)
+  dataadiodns\         Internet-Ergaenzung: hosts.json (DNS-Ergebnisse
+                         je Dienst, 24 h gueltig) und SI.xml je Server;
+                         loeschen erzwingt eine neue Abfrage
   data\tii-files.csv     TII-Protokoll im DX-Modus (Zeit, Kanal, Ensemble,
                          Sender, Staerke, Entfernung, Azimut)
   data\txdata.tii        optional: eigene TII-Datenbank; hat Vorrang vor

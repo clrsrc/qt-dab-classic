@@ -135,6 +135,17 @@ impl LogoCache {
             _ => mime_for_name(&name.to_ascii_lowercase())?,
         };
         let bytes = base64::engine::general_purpose::STANDARD.decode(data_b64.trim()).ok()?;
+        self.store_with_mime(eid, sid, mime, name, &bytes)
+    }
+
+    /// Wie [`store_object`](Self::store_object), aber mit Rohbytes und MIME
+    /// aus der Dateiendung (RadioDNS-Logos, crate::radiodns).
+    pub fn store_bytes(&mut self, eid: u16, sid: u32, name: &str, bytes: &[u8]) -> Option<(u16, u32)> {
+        let mime = mime_for_name(&name.to_ascii_lowercase())?;
+        self.store_with_mime(eid, sid, mime, name, bytes)
+    }
+
+    fn store_with_mime(&mut self, eid: u16, sid: u32, mime: &'static str, name: &str, bytes: &[u8]) -> Option<(u16, u32)> {
         if bytes.is_empty() {
             return None;
         }
@@ -149,7 +160,7 @@ impl LogoCache {
                 return None;
             }
         }
-        let (w, h) = dims_from_name(&clean).or_else(|| png_dims(&bytes)).unwrap_or((0, 0));
+        let (w, h) = dims_from_name(&clean).or_else(|| png_dims(bytes)).unwrap_or((0, 0));
         let sid = if sid != 0 {
             sid
         } else {

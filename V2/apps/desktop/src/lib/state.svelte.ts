@@ -56,6 +56,7 @@ export function emptyState(): AppState {
     traffic_active: null,
     traffic_history: [],
     traffic_supported: false,
+    radiodns: { enabled: false, busy: false, eid: 0, services_found: 0, services_none: 0, logos: 0, schedules: 0, last_unix: 0, error: null },
   };
 }
 
@@ -450,6 +451,10 @@ export function applyAppEvent(ev: AppEvent) {
       s.traffic_active = ev.active;
       s.traffic_history = ev.history;
       s.traffic_supported = ev.supported;
+      break;
+    // Hybrid Radio / RadioDNS (dab_app::radiodns): Status des Abrufs.
+    case "radiodns":
+      s.radiodns = ev.status;
       break;
     // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
     default:

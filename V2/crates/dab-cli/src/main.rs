@@ -532,6 +532,7 @@ fn event_name(ev: &Event) -> &'static str {
         Event::FicQuality { .. } => "fic_quality",
         Event::FrequencyOffset { .. } => "frequency_offset",
         Event::EnsembleFound { .. } => "ensemble_found",
+        Event::EnsembleEcc { .. } => "ensemble_ecc",
         Event::ServiceAdded { .. } => "service_added",
         Event::EnsembleReconfigured => "ensemble_reconfigured",
         Event::ClockTime { .. } => "clock_time",
@@ -576,7 +577,8 @@ fn print_event(t: Duration, ev: &Event) {
     match ev {
         Event::Ready { .. } => {}
         Event::Synced { synced } => println!("{ts}  SYNC {}", if *synced { "ja" } else { "nein" }),
-        Event::EnsembleFound { eid, name, channel } => println!("{ts}  ENSEMBLE {name} ({eid:04X}) auf {channel}"),
+        Event::EnsembleFound { eid, name, channel, ecc } => println!("{ts}  ENSEMBLE {name} ({eid:04X}) auf {channel}{}", if *ecc != 0 { format!(", ECC {ecc:02X}") } else { String::new() }),
+        Event::EnsembleEcc { ecc } => println!("{ts}  ECC {ecc:02X}"),
         Event::ServiceAdded { service } => println!(
             "{ts}  DIENST {:<20} SId {:04X} SubCh {:2} {} kbit/s  kurz={:<8} pty={} sprache={}",
             service.name,

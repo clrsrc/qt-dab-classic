@@ -74,6 +74,8 @@ impl DataDirs {
     pub fn stations_file(&self) -> PathBuf { self.root.join("stations.json") }
     pub fn epg_dir(&self) -> PathBuf { self.root.join("epg") }
     pub fn logos_dir(&self) -> PathBuf { self.root.join("logos") }
+    /// RadioDNS-Zwischenspeicher (crate::radiodns): hosts.json, SI.xml je Server.
+    pub fn radiodns_dir(&self) -> PathBuf { self.root.join("radiodns") }
     pub fn recordings_dir(&self) -> PathBuf { self.root.join("recordings") }
     pub fn music_dir(&self) -> PathBuf { self.root.join("music") }
     pub fn timeshift_dir(&self) -> PathBuf { self.root.join("timeshift") }

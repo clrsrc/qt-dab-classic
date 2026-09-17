@@ -10,6 +10,16 @@
   import SleepTimer from "./SleepTimer.svelte";
   import { debugApi } from "$lib/debug";
   import { CAPACITY_MAX_MIN, CAPACITY_MIN_MIN } from "$lib/timeshift";
+  import { fmtShort } from "$lib/timers";
+
+  /** Statuszeile des RadioDNS-Abrufs (dab_app::radiodns::RadioDnsStatus). */
+  function radiodnsStatus(): string {
+    const r = s.radiodns;
+    if (r.busy) return t("settings.radiodns_busy");
+    if (r.error) return t("settings.radiodns_error", { error: r.error });
+    if (!r.last_unix) return t("settings.radiodns_idle");
+    return t("settings.radiodns_result", { found: r.services_found, none: r.services_none, logos: r.logos, schedules: r.schedules, when: fmtShort(r.last_unix) });
+  }
 
   const run = (p: Promise<unknown>) => p.catch((e) => notify("warn", tError(e)));
   const sel = (e: Event) => (e.target as HTMLSelectElement).value;
@@ -224,6 +234,19 @@
           <input type="checkbox" checked={st.epg_enabled} onchange={(e) => patchSettings({ epg_enabled: chk(e) })} />
           <span class="k">{t("settings.epg_hint")}</span>
         </span>
+        <!-- Hybrid Radio / RadioDNS (dab_app::radiodns), Standard aus -->
+        <span class="lbl">{t("settings.radiodns")}</span>
+        <span class="row">
+          <input type="checkbox" checked={st.radiodns_enabled} onchange={(e) => patchSettings({ radiodns_enabled: chk(e) })} />
+          <span class="k">{t("settings.radiodns_hint")}</span>
+        </span>
+        {#if st.radiodns_enabled}
+          <span class="lbl"></span>
+          <span class="row">
+            <span class="k" class:warn={!!s.radiodns.error}>{radiodnsStatus()}</span>
+            <button class="btn mini" disabled={s.radiodns.busy} onclick={() => api.radiodnsRefresh().catch((e: unknown) => notify("error", tError(e)))}>{t("settings.radiodns_refresh")}</button>
+          </span>
+        {/if}
       </div>
 
       <!-- Aufnahme / Timer / Sleep (lib/timers.ts) -->
@@ -362,6 +385,7 @@
   .ppm { width: 60px; }
   .dir { flex: 1 1 160px; min-width: 120px; }
   .k { color: var(--text-dim); font-size: 9px; }
+  .k.warn { color: var(--red); }
   .k.clkext { color: var(--green); }
   .k.homeok { color: var(--green); }
   .k.homewarn { color: var(--amber); }

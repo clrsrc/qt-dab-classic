@@ -316,7 +316,7 @@ mod tests {
         a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
         a.state.channel = Some("5C".into());
         let now = Instant::now();
-        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "Ens".into(), channel: "5C".into() }, now);
+        a.handle_event(&Event::EnsembleFound { eid: 0x10BC, name: "Ens".into(), channel: "5C".into(), ecc: 0 }, now);
         a.handle_event(
             &Event::ServiceAdded { service: ServiceInfo { sid: 0xD210, scids: 0, name: "Dlf".into(), is_audio: true, is_primary: true, sub_ch: 1, bitrate_kbps: 96, pty: 0, short_name: String::new(), language: 0 } },
             now,

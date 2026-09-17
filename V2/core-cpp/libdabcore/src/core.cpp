@@ -457,8 +457,9 @@ void DabCore::wireCallbacks() {
     cb.ficBer = [](float) {};
     cb.ensembleName = [this](uint16_t eid, const std::string& name) {
         std::string n = trimRight(name);
-        { std::lock_guard<std::mutex> lk(stateM_); state_["ensemble"] = {{"eid", eid}, {"name", n}}; }
-        sink_(events::ensembleFound(eid, n, currentChannel()));
+        const int ecc = ecc_.load();
+        { std::lock_guard<std::mutex> lk(stateM_); state_["ensemble"] = {{"eid", eid}, {"name", n}, {"ecc", ecc}}; }
+        sink_(events::ensembleFound(eid, n, currentChannel(), static_cast<uint8_t>(ecc)));
     };
     cb.addToEnsemble = [this](const std::string& name, uint32_t sid, int subChId, bool primary) {
         (void)subChId;
@@ -503,7 +504,21 @@ void DabCore::wireCallbacks() {
                                    static_cast<uint8_t>(clusterId)));
     };
     cb.nrServices = [](int) {};
-    cb.ltoEcc = [this](int lto, int) { lto_.store(lto); };
+    cb.ltoEcc = [this](int lto, int ecc) {
+        lto_.store(lto);
+        // ECC (FIG 0/9) kommt meist nach dem Ensemble-Namen (FIG 1/0): dann
+        // ensemble_found mit ECC erneut melden, damit dab-app den RadioDNS-
+        // Namen <scids>.<sid>.<eid>.<gcc>.dab.radiodns.org bilden kann.
+        // Eigenes Ereignis statt eines zweiten ensemble_found: darauf
+        // setzen dab-app-Module (Verkehrsfunk, Senderliste) Ensemble-Wechsel-
+        // Logik auf.
+        if (ecc <= 0 || ecc > 255 || ecc_.exchange(ecc) == ecc) return;
+        {
+            std::lock_guard<std::mutex> lk(stateM_);
+            if (state_["ensemble"].is_object()) state_["ensemble"]["ecc"] = ecc;
+        }
+        sink_(events::ensembleEcc(static_cast<uint8_t>(ecc)));
+    };
     cb.freqListChanged = [] {};
     cb.clockTime = [this](uint32_t mjd, int h, int m, int s, int ltoMinutes,
                           int, int, int, int, int) {
@@ -1031,6 +1046,7 @@ void DabCore::emitState() {
     // dab-api CoreState.ensemble ist Option<(u16, String)> -> [eid, name]
     if (state_["ensemble"].is_object())
         st["ensemble"] = json::array({state_["ensemble"]["eid"], state_["ensemble"]["name"]});
+    st["ensemble_ecc"] = ecc_.load();
     st["running"] = running;
     st["tii_enabled"] = params_->tiiEnabled;
     st["tii_threshold"] = params_->tiiThreshold;
@@ -1689,6 +1705,7 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
         state_["ensemble"] = nullptr;
         state_["services"] = json::array();
     }
+    ecc_.store(0);
     autoPending_ = opt_.autoServices;
     autoCandidates_.clear();
     ofdm_->setScanMode(scan);
@@ -2006,6 +2023,7 @@ void DabCore::closeDevice() {
         }
         sink_(events::deviceClosed());
     }
+    ecc_.store(0);
     std::lock_guard<std::mutex> lk(stateM_);
     state_["source"] = nullptr;
     state_["synced"] = false;

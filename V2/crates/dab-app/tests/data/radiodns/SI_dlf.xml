@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<serviceInformation xmlns="http://www.worlddab.org/schemas/spi/31" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.worlddab.org/schemas/spi/31 spi_31.xsd" creationTime="2025-05-05T12:38:00" originator="Deutschlandradio RadioDNS-Service" xml:lang="de">
+  <services>
+    <serviceProvider>
+      <shortName>DRadio</shortName>
+      <mediumName>Deutschlandradio</mediumName>
+      <longName>Deutschlandradio</longName>
+      <link uri="https://www.deutschlandradio.de" mimeValue="text/html" description="DRadio Webpage"/>
+      <link uri="postal:Deutschlandradio/Raderberggürtel 40/  50968 Köln//Germany 1"/>
+      <link uri="tel:+49 0221 345 1831"/>
+      <mediaDescription>
+        <shortDescription>Deutschlandradio</shortDescription>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia type="logo_colour_square" width="32" height="32" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dradio/dradio_32x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia type="logo_colour_rectangle" width="112" height="32" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dradio/dradio_112x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia type="logo_unrestricted" width="128" height="128" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dradio/dradio_128x128.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia type="logo_unrestricted" width="320" height="240" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dradio/dradio_320x240.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia type="logo_unrestricted" width="600" height="600" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dradio/dradio_600x600.png"/>
+      </mediaDescription>
+      <geolocation>
+        <country>de</country>
+      </geolocation>
+    </serviceProvider>
+    <service>
+      <shortName>Dlf</shortName>
+      <mediumName>Dlf</mediumName>
+      <longName>Dlf</longName>
+      <link uri="https://www.deutschlandfunk.de" mimeValue="text/html"/>
+      <link uri="postal:Deutschlandradio/Raderberggürtel 40/  50968 Köln/None/Germany 1"/>
+      <radiodns fqdn="dlf.rdns.deutschlandradio.de" serviceIdentifier="d210"/>
+      <bearer id="dab:de0.10bc.d210.0" cost="20" mimeValue="audio/aac"/>
+      <bearer id="https://st01.sslstream.dlf.de/dlf/01/128/mp3/stream.mp3?aggregator=radiodns" cost="100" offset="2000" mimeValue="audio/mpeg" bitrate="128"/>
+      <bearer id="https://st01.sslstream.dlf.de/dlf/01/mid/aac/stream.aac?aggregator=radiodns" cost="80" offset="2000" mimeValue="audio/aac" bitrate="96"/>
+      <mediaDescription>
+        <shortDescription>Deutschlandfunk. Alles von Relevanz.</shortDescription>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="32" type="logo_colour_square" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlf/Dlf_32x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="112" type="logo_colour_rectangle" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlf/Dlf_112x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="128" width="128" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlf/Dlf_128x128.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="240" width="320" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlf/Dlf_320x240.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="600" width="600" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlf/Dlf_600x600.png"/>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2011:1.2">Information</genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2011:3.6.13">Spoken</genre>
+    </service>
+    <service>
+      <shortName>Dlf Nova</shortName>
+      <mediumName>Dlf Nova</mediumName>
+      <longName>Dlf Nova</longName>
+      <link uri="https://www.deutschlandfunknova.de" mimeValue="text/html"/>
+      <link uri="postal:Deutschlandradio/Raderberggürtel 40/  50968 Köln/None/Germany 1"/>
+      <radiodns fqdn="dlfnova.rdns.deutschlandradio.de" serviceIdentifier="d230"/>
+      <bearer id="dab:de0.10bc.d230.0" cost="20" mimeValue="audio/aac"/>
+      <bearer id="https://st03.sslstream.dlf.de/dlf/03/128/mp3/stream.mp3?aggregator=radiodns" cost="100" offset="2000" mimeValue="audio/mpeg" bitrate="128"/>
+      <bearer id="https://st03.sslstream.dlf.de/dlf/03/mid/aac/stream.aac?aggregator=radiodns" cost="80" offset="2000" mimeValue="audio/aac" bitrate="96"/>
+      <mediaDescription>
+        <shortDescription>Deutschlandfunk Nova: Es ist kompliziert. Dazu guter Pop.</shortDescription>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="32" type="logo_colour_square" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfnova/DlfNova_32x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="112" type="logo_colour_rectangle" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfnova/DlfNova_112x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="128" width="128" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfnova/DlfNova_128x128.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="240" width="320" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfnova/DlfNova_320x240.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="600" width="600" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfnova/DlfNova_600x600.png"/>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2011:3.1.1.16">Current Affairs</genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2011:3.6.4.1">Pop</genre>
+    </service>
+    <service>
+      <shortName>Dlf Kult</shortName>
+      <mediumName>Dlf Kultur</mediumName>
+      <longName>Dlf Kultur</longName>
+      <link uri="https://www.deutschlandfunkkultur.de" mimeValue="text/html"/>
+      <link uri="postal:Deutschlandradio/Raderberggürtel 40/  50968 Köln/None/Germany 1"/>
+      <radiodns fqdn="dlfkultur.rdns.deutschlandradio.de" serviceIdentifier="d220"/>
+      <bearer id="dab:de0.10bc.d220.0" cost="20" mimeValue="audio/aac"/>
+      <bearer id="https://st02.sslstream.dlf.de/dlf/02/128/mp3/stream.mp3?aggregator=radiodns" cost="100" offset="2000" mimeValue="audio/mpeg" bitrate="128"/>
+      <bearer id="https://st02.sslstream.dlf.de/dlf/02/mid/aac/stream.aac?aggregator=radiodns" cost="80" offset="2000" mimeValue="audio/aac" bitrate="96"/>
+      <mediaDescription>
+        <shortDescription>Deutschlandfunk Kultur. Wie groß ist deine Welt?</shortDescription>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="32" type="logo_colour_square" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfkultur/DlfKultur_32x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="112" type="logo_colour_rectangle" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfkultur/DlfKultur_112x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="128" width="128" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfkultur/DlfKultur_128x128.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="240" width="320" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfkultur/DlfKultur_320x240.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="600" width="600" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/dlfkultur/DlfKultur_600x600.png"/>
+      </mediaDescription>
+      <genre href="urn:tva:metadata:cs:ContentCS:2011:1.2">Information</genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2011:3.1.4">Arts and Media</genre>
+      <genre href="urn:tva:metadata:cs:ContentCS:2011:3.6">Other Music</genre>
+    </service>
+    <service>
+      <shortName>DDokDeb</shortName>
+      <mediumName>DRadio DokDeb</mediumName>
+      <longName>DRadio DokDeb</longName>
+      <link uri="https://www.deutschlandradio.de/dokumente-und-debatten.237.de.html" mimeValue="text/html"/>
+      <link uri="postal:Deutschlandradio/Raderberggürtel 40/  50968 Köln/None/Germany 1"/>
+      <radiodns fqdn="ddokdeb.rdns.deutschlandradio.de" serviceIdentifier="d240"/>
+      <bearer id="dab:de0.10bc.d240.0" cost="20" mimeValue="audio/aac"/>
+      <bearer id="https://st04.sslstream.dlf.de/dlf/04/mid/aac/stream.aac?aggregator=radiodns" cost="80" offset="2000" mimeValue="audio/aac" bitrate="96"/>
+      <mediaDescription>
+        <shortDescription>Deutschlandradio Dokumente und Debatten</shortDescription>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="32" type="logo_colour_square" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/ddokdeb/dokdeb_32x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="32" width="112" type="logo_colour_rectangle" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/ddokdeb/dokdeb_112x32.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="128" width="128" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/ddokdeb/dokdeb_128x128.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="240" width="320" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/ddokdeb/dokdeb_320x240.png"/>
+      </mediaDescription>
+      <mediaDescription>
+        <multimedia height="600" width="600" type="logo_unrestricted" url="https://rdns.deutschlandradio.de/radiodns/spi/3.1/logos/ddokdeb/dokdeb_600x600.png"/>
+      </mediaDescription>
+    </service>
+  </services>
+</serviceInformation>
