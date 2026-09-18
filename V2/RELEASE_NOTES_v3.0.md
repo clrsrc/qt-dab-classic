@@ -4,6 +4,18 @@
 Anwendungslogik in Rust, Oberfläche mit Tauri 2 und Svelte 5. Der Empfangspfad
 geht auf Qt-DAB von Jan van Katwijk (Lazy Chair Computing) zurück. Lizenz GPLv3.*
 
+## v3.0.1 – September 2026
+
+- **Antennenspeisung (Bias-T)** – neuer Schalter in den Einstellungen unter
+  Gerät/Empfang: 3,3 V / max. 50 mA am Antennenanschluss des HackRF One für
+  aktive Antennen. Die Speisung wird gespeichert, beim Start angewendet und
+  nach jedem Neustart des Empfangs erneut gesetzt.
+- **AGC bei hohem Eingangspegel** – niedriger SNR auf hoher Gain-Stufe gilt
+  als Hinweis auf zu viel Pegel (aktive Antenne, starker Sender). Die AGC
+  probiert dann zuerst nach unten und lässt nach einem Sync-Verlust die
+  Akquisitions-Ramp abwärts laufen. Schwache Signale auf niedriger Stufe
+  werden wie bisher nach oben geregelt.
+
 ## Highlights
 
 - **Neue Architektur** – Empfangskern `dabcored.exe` (C++17, ohne Qt), Rust-
@@ -48,8 +60,8 @@ geht auf Qt-DAB von Jan van Katwijk (Lazy Chair Computing) zurück. Lizenz GPLv3
 
 | Datei | Inhalt |
 |---|---|
-| `DAB-Classic-v3.0.0-portable-win64.zip` | Vollpaket mit WebView2-Laufzeit (Fixed Version) im Ordner `webview2\`, läuft auf jedem Windows 10/11 x64 |
-| `DAB-Classic-v3.0.0-portable-win64-lite.zip` | Ohne WebView2-Laufzeit, nutzt die vom System (Microsoft Edge) bereitgestellte Evergreen-Laufzeit |
+| `DAB-Classic-v3.0.1-portable-win64.zip` | Vollpaket mit WebView2-Laufzeit (Fixed Version) im Ordner `webview2\`, läuft auf jedem Windows 10/11 x64 |
+| `DAB-Classic-v3.0.1-portable-win64-lite.zip` | Ohne WebView2-Laufzeit, nutzt die vom System (Microsoft Edge) bereitgestellte Evergreen-Laufzeit |
 
 Beide Pakete enthalten `dab-classic.exe`, den Empfangskern `core\` mit
 Bibliotheken, die TII-Senderdatenbank `tii\`, `zadig-2.9.exe` für die

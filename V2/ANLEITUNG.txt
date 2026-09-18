@@ -1,5 +1,5 @@
 ============================================================
-  DAB Classic v3.0 - DAB+-Empfaenger fuer HackRF One und RTL-SDR
+  DAB Classic v3.0.1 - DAB+-Empfaenger fuer HackRF One und RTL-SDR
   Portable-Version fuer Windows 10/11 (64 Bit)
 ============================================================
 
@@ -51,7 +51,7 @@ INHALT
 
 2. PORTABLE-ORDNER ENTPACKEN UND STARTEN
 ----------------------------------------
-  1. ZIP "DAB-Classic-v3.0-portable-win64.zip" an einen beliebigen
+  1. ZIP "DAB-Classic-v3.0.1-portable-win64.zip" an einen beliebigen
      Ort entpacken (Festplatte oder USB-Stick), z. B. D:\DAB-Classic\.
      Der Pfad darf Leerzeichen und Umlaute enthalten.
      Zwei Pakete stehen zur Wahl: das grosse (ca. 330 MB) bringt die

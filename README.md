@@ -1,8 +1,9 @@
 # DAB Classic – DAB+ Empfänger für HackRF One und RTL-SDR
 
-## Aktuell: DAB Classic v3.0 (Ordner `V2/`)
+## Aktuell: DAB Classic v3.0.1 (Ordner `V2/`)
 
-Version 3.0 ist ein Neuaufbau: Qt-freier C++-Empfangskern als eigener Prozess,
+Version 3.0 ist ein Neuaufbau (aktuell 3.0.1 mit schaltbarer
+Antennenspeisung und pegelabhängiger AGC): Qt-freier C++-Empfangskern als eigener Prozess,
 Anwendungslogik in Rust, Oberfläche mit Tauri 2 und Svelte 5. Der Empfangspfad
 geht weiterhin auf Qt-DAB von Jan van Katwijk zurück. Funktionen, Aufbau und
 Build-Schritte: [`V2/README.md`](V2/README.md); Bedienung:
