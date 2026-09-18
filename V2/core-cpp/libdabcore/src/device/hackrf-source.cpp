@@ -37,6 +37,8 @@
 #endif
 
 #include "hackrf-source.h"
+
+#include <algorithm>
 #include "dab-constants.h"
 
 #include <chrono>
@@ -228,20 +230,15 @@ void HackRfSource::setAntennaPower(bool on) {
 
 // we use a static large buffer, rather than trying to allocate
 // a buffer on the stack
-static std::complex<int8_t> buffer[32 * 32768];
+static std::complex<int16_t> buffer[32 * 32768];
 static int callback(hackrf_transfer* transfer) {
     HackRfSource* ctx = static_cast<HackRfSource*>(transfer->rx_ctx);
     int8_t* p = reinterpret_cast<int8_t*>(transfer->buffer);
-    RingBuffer<std::complex<int8_t>>* q = &(ctx->_I_Buffer);
-    int bufferIndex = 0;
+    RingBuffer<std::complex<int16_t>>* q = &(ctx->_I_Buffer);
     int nrSamples = transfer->valid_length / 2;
-
-    for (int i = 0; i + 1 < nrSamples; i += OVERSAMPLE_FACTOR) {
-        int16_t re = (int16_t)p[2 * i]     + (int16_t)p[2 * (i + 1)];
-        int16_t im = (int16_t)p[2 * i + 1] + (int16_t)p[2 * (i + 1) + 1];
-        buffer[bufferIndex] = std::complex<int8_t>((int8_t)(re / 2), (int8_t)(im / 2));
-        bufferIndex++;
-    }
+    if (nrSamples > 2 * 32 * 32768 - 2) nrSamples = 2 * 32 * 32768 - 2;
+    // Halbband-FIR 2:1 statt Boxcar (Nachbarkanal-Alias, siehe halfband-decimator.h)
+    int bufferIndex = ctx->decimator_.process(p, nrSamples, buffer);
     if (ctx->toSkip > 0)
         ctx->toSkip -= bufferIndex;
     else {
@@ -298,11 +295,23 @@ void HackRfSource::stop() {
 int32_t HackRfSource::getSamples(std::complex<float>* V, int32_t size) {
     if (temp_.size() < static_cast<size_t>(size)) temp_.resize(size);
     int amount = _I_Buffer.getDataFromBuffer(temp_.data(), size);
+    constexpr float norm = 1.0f / (128.0f * dabcore::HalfbandDecimator::kOutScale);
     for (int i = 0; i < amount; i++)
-        V[i] = std::complex<float>(real(temp_[i]) / 128.0f, imag(temp_[i]) / 128.0f);
+        V[i] = std::complex<float>(real(temp_[i]) * norm, imag(temp_[i]) * norm);
     if (dumping_.load()) {
         std::lock_guard<std::mutex> lk(dumpM_);
-        if (xmlWriter_) xmlWriter_->add(temp_.data(), amount);
+        if (xmlWriter_) {
+            // Aufnahme bleibt 8 Bit: Skalierung 128 zuruecknehmen, runden, begrenzen
+            if (dump8_.size() < static_cast<size_t>(amount)) dump8_.resize(amount);
+            auto to8 = [](int16_t v) {
+                int r = v >= 0 ? (v + dabcore::HalfbandDecimator::kOutScale / 2) / dabcore::HalfbandDecimator::kOutScale
+                               : -((-v + dabcore::HalfbandDecimator::kOutScale / 2) / dabcore::HalfbandDecimator::kOutScale);
+                return static_cast<int8_t>(std::clamp(r, -127, 127));
+            };
+            for (int i = 0; i < amount; i++)
+                dump8_[i] = std::complex<int8_t>(to8(real(temp_[i])), to8(imag(temp_[i])));
+            xmlWriter_->add(dump8_.data(), amount);
+        }
     }
     return amount;
 }
@@ -328,6 +337,7 @@ bool HackRfSource::waitForSamples(int32_t n, int timeoutMs) {
 
 void HackRfSource::resetBuffer() {
     _I_Buffer.FlushRingBuffer();
+    decimator_.reset();
 }
 
 bool HackRfSource::startDump(const std::string& path, std::string& error) {

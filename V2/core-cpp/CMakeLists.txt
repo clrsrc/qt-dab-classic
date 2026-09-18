@@ -117,6 +117,11 @@ if(DABCORE_BUILD_TESTS)
     add_executable(test_agc tests/test-agc.cpp libdabcore/src/device/agc-controller.cpp)
     target_include_directories(test_agc PRIVATE ${DABCORE_SRC}/device)
     add_test(NAME agc_controller COMMAND test_agc)
+    # Halbband-Dezimator des HackRF-Pfads: Durchlass, Nachbarkanal-Alias,
+    # Stueckelung ueber Callbacks hinweg, Festkomma-Skalierung
+    add_executable(test_halfband tests/test-halfband.cpp libdabcore/src/dsp/halfband-decimator.cpp)
+    target_include_directories(test_halfband PRIVATE ${DABCORE_SRC}/dsp)
+    add_test(NAME halfband_decimator COMMAND test_halfband)
     # Timeshift-Ring als reiner Speicher: Packen/Entpacken der Hardbits,
     # Ueberlauf, Seek/Skip, copyRange fuer den Export, Leeren bei Wechseln
     add_executable(test_timeshift_buffer tests/test-timeshift-buffer.cpp

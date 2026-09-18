@@ -3,6 +3,12 @@
 // LoadLibrary/GetProcAddress mit derselben Funktionstabelle, Widget/
 // QSettings gestrichen (Gain kommt ueber setGain, Persistenz liegt in der
 // App), Warten per Condition-Variable statt usleep-Polling. Unveraendert:
+// 4,096 MS/s, Bandbreite 1,536 MHz (MAX2837: 1,75 MHz),
+// toSkip nach dem Umschalten, AMP-Schalter, ppm-Korrektur ueber die
+// Frequenz. Geaendert (18.09.2026): statt der Boxcar-Mittelung 2:1 im
+// Callback ein Halbband-FIR (HalfbandDecimator, >= 70 dB gegen den
+// Nachbarkanal), Ringpuffer int16 mit 128-facher Skalierung, Normierung
+// /16384; die Aufnahme (.uff) bleibt 8 Bit. Urspruenglich:
 // 4,096 MS/s mit Boxcar-Mittelung 2:1 im Callback, Bandbreite 1,536 MHz,
 // toSkip nach dem Umschalten, Normierung /128, AMP-Schalter, ppm-Korrektur
 // ueber die Frequenz. Die v1-Nachfuehrung adjustGain (SNR < 8: VGA+2,
@@ -35,6 +41,7 @@
 
 #include "isample-source.h"
 #include "ringbuffer.h"
+#include "halfband-decimator.h"
 #include "xml-file-writer.h"
 #include "libhackrf/hackrf.h"
 
@@ -121,7 +128,8 @@ public:
     std::string boardInfo() const { return boardInfo_; }
 
     // vom Callback benutzt
-    RingBuffer<std::complex<int8_t>> _I_Buffer;
+    RingBuffer<std::complex<int16_t>> _I_Buffer;
+    dabcore::HalfbandDecimator decimator_;
     std::atomic<int> toSkip{0};
     void onCallbackData();
 
@@ -149,7 +157,8 @@ private:
     std::mutex dumpM_;
     std::unique_ptr<XmlFileWriter> xmlWriter_;
     std::atomic<bool> dumping_{false};
-    std::vector<std::complex<int8_t>> temp_;
+    std::vector<std::complex<int16_t>> temp_;
+    std::vector<std::complex<int8_t>> dump8_;   // Aufnahme in 8 Bit
 
     pfn_hackrf_init hackrf_init = nullptr;
     pfn_hackrf_open hackrf_open = nullptr;

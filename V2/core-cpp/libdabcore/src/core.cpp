@@ -1654,7 +1654,7 @@ void DabCore::openHackRf(const std::string& serial) {
         return;
     }
     std::string info = "HackRF " + src->boardInfo() + ", libhackrf " + src->libraryVersion() +
-                       ", 4,096 MS/s -> 2,048 MS/s (Mittelung 2:1), Bandbreite 1536 kHz";
+                       ", 4,096 MS/s -> 2,048 MS/s (Halbband-FIR 2:1), Bandbreite 1536 kHz";
     attachDevice(std::move(src), info);
 }
 
