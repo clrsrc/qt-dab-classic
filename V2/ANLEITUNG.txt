@@ -234,6 +234,8 @@ INHALT
                     (Abschnitt 4).
     Scan            Ergebnisse des Band-III-Scans.
     Einstellungen   Gruppen Geraet/Empfang (Geraet, RTL-SDR-Index, PPM,
+                    Antennenspeisung fuer aktive Antennen am HackRF - 3,3 V /
+                    max. 50 mA, nur mit aktiver Antenne einschalten -,
                     AGC, manueller Gain, Merker je Geraet/Kanal), Audio
                     (Ausgabegeraet - siehe unten, Lautstaerke), Notfallwarnung (EWS
                     auswerten, automatisch umschalten, Warnton), EPG

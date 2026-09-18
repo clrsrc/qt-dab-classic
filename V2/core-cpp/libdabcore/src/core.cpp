@@ -159,7 +159,7 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
         {"volume_percent", 70}, {"muted", false}, {"timeshift", nullptr},
         {"recording", false}, {"ews_enabled", true}, {"ews_autoswitch", true},
         {"epg_enabled", options.epg}, {"tpeg_enabled", options.tpeg},
-        {"clock_time", nullptr}, {"ppm", 0},
+        {"clock_time", nullptr}, {"ppm", 0}, {"antenna_power", false},
     };
     epgEnabled_.store(options.epg);
     tpegEnabled_.store(options.tpeg);
@@ -915,6 +915,7 @@ bool DabCore::handle(const json& c) {
     if (type == "set_gain") { setGain(c.value("gain", json::object())); return true; }
     if (type == "set_agc") { setAgc(c.value("enabled", true)); return true; }
     if (type == "set_ppm") { setPpm(c.value("ppm", 0)); return true; }
+    if (type == "set_antenna_power") { setAntennaPower(c.value("enabled", false)); return true; }
     if (type == "start_scan") {
         std::vector<std::string> channels;
         if (c.contains("channels") && c["channels"].is_array())
@@ -1095,6 +1096,7 @@ void DabCore::emitState() {
     st["snr"] = lastSnrDb_.load();
     st["scanning"] = scanning_.load();
     st["ppm"] = ppm_;
+    st["antenna_power"] = antennaPower_;
     sink_(json{{"type", "state_snapshot"}, {"state", st}});
 }
 
@@ -1677,6 +1679,10 @@ void DabCore::attachDevice(std::unique_ptr<ISampleSource> src, const std::string
     fileSource_ = nullptr;
     source_->setErrorCallback([this](const std::string& msg) { onDeviceLost(msg); });
     if (ppm_ != 0) source_->setPpm(ppm_);
+    // Antennenspeisung aus einem set_antenna_power vor open_device (oder aus
+    // einer frueheren Geraetesitzung) uebernehmen; Geraete ohne Speisung
+    // ignorieren das.
+    if (antennaPower_ && source_->hasAntennaPower()) source_->setAntennaPower(true);
     // Gain-Satz aus einem set_gain vor open_device anwenden, sonst die
     // Geraete-Defaults (HackRF: LNA 40 / VGA 24 / AMP aus) uebernehmen.
     if (pendingGain_) {
@@ -1851,6 +1857,19 @@ void DabCore::setPpm(int ppm) {
     { std::lock_guard<std::mutex> lk(stateM_); state_["ppm"] = ppm; }
     if (source_ && !source_->isFileInput()) source_->setPpm(ppm);
     sink_(events::log("info", "ppm-Korrektur " + std::to_string(ppm)));
+}
+
+void DabCore::setAntennaPower(bool on) {
+    antennaPower_ = on;
+    { std::lock_guard<std::mutex> lk(stateM_); state_["antenna_power"] = on; }
+    if (source_ && !source_->isFileInput()) {
+        if (source_->hasAntennaPower()) {
+            source_->setAntennaPower(on);
+            sink_(events::log("info", std::string("Antennenspeisung ") + (on ? "ein" : "aus")));
+        } else if (on) {
+            sink_(events::log("warn", "Antennenspeisung: dieses Geraet hat keine schaltbare Speisung"));
+        }
+    }
 }
 
 // --- Scan -----------------------------------------------------------------------

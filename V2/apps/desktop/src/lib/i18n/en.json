@@ -132,6 +132,8 @@
   "settings.portable": "portable",
   "settings.profile": "user profile",
   "settings.ppm": "PPM correction",
+  "settings.antenna_power": "Antenna power",
+  "settings.antenna_power_hint": "3.3 V / max. 50 mA bias-tee on the antenna port for active antennas – enable only with an active antenna",
   "settings.group_device": "Device / reception",
   "settings.group_audio": "Audio",
   "settings.group_ews": "Emergency warning",

@@ -196,6 +196,9 @@ pub enum Command {
     SetGain { gain: Gain },
     SetAgc { enabled: bool },
     SetPpm { ppm: i32 },
+    /// Antennenspeisung (Bias-T) fuer aktive Antennen; HackRF 3,3 V / 50 mA.
+    /// Geraete ohne Speisung quittieren `enabled: true` mit einer Warnung.
+    SetAntennaPower { enabled: bool },
 
     // Dienste. Im Background-Slot koennen mehrere Dienste gleichzeitig laufen
     // (Entscheidung 24); `sid` waehlt einen davon, `None` = alle im Slot.
@@ -553,6 +556,9 @@ pub struct CoreState {
     pub clock_time: Option<ClockTimeState>,
     #[serde(default)]
     pub ppm: i32,
+    /// Antennenspeisung (Bias-T) an, wie zuletzt per `SetAntennaPower` gewuenscht.
+    #[serde(default)]
+    pub antenna_power: bool,
     #[serde(default)]
     pub scanning: bool,
     /// Alle laufenden Dienste (Primary und alle Background-Dienste).

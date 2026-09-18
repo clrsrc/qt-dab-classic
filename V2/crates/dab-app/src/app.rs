@@ -286,6 +286,9 @@ impl App {
         if s.ppm != 0 {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
         }
+        if s.antenna_power {
+            fx = fx.cmd(Command::SetAntennaPower { enabled: true });
+        }
         if s.audio_device.is_some() {
             fx = fx.cmd(Command::SetAudioDevice { id: s.audio_device.clone() });
         }
@@ -822,6 +825,9 @@ impl App {
         }
         if old.ppm != s.ppm {
             fx = fx.cmd(Command::SetPpm { ppm: s.ppm });
+        }
+        if old.antenna_power != s.antenna_power {
+            fx = fx.cmd(Command::SetAntennaPower { enabled: s.antenna_power });
         }
         if old.audio_device != s.audio_device {
             fx = fx.cmd(Command::SetAudioDevice { id: s.audio_device.clone() });

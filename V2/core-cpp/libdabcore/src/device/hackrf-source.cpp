@@ -120,7 +120,7 @@ bool HackRfSource::open(const std::string& serial, std::string& error) {
     if (rc != HACKRF_SUCCESS) { error = "hackrf_si5351c_write: " + errName(rc); return false; }
 
     applyGain();
-    hackrf_set_antenna_enable(theDevice_, antennaEnable_ ? 1 : 0);
+    hackrf_set_antenna_enable(theDevice_, antennaEnable_.load() ? 1 : 0);
 
     // Seriennummer wie hackrf_info aus der MCU lesen (die USB-String-
     // Deskriptoren der Geraeteliste sind unter Windows bei geoeffnetem
@@ -216,6 +216,16 @@ void HackRfSource::setPpm(int ppm) {
     if (rc != HACKRF_SUCCESS) std::fprintf(stderr, "hackrf ppm: %s\n", errName(rc).c_str());
 }
 
+// Antennenspeisung (Bias-T, 3,3 V / 50 mA). Sofort ans Geraet, wenn es offen
+// ist; restart() setzt den Wunsch nach jedem Stopp erneut, weil die Firmware
+// die Speisung beim Verlassen des RX-Modus selbst abschaltet.
+void HackRfSource::setAntennaPower(bool on) {
+    antennaEnable_.store(on);
+    if (theDevice_ == nullptr) return;
+    int rc = hackrf_set_antenna_enable(theDevice_, on ? 1 : 0);
+    if (rc != HACKRF_SUCCESS) std::fprintf(stderr, "hackrf antenna: %s\n", errName(rc).c_str());
+}
+
 // we use a static large buffer, rather than trying to allocate
 // a buffer on the stack
 static std::complex<int8_t> buffer[32 * 32768];
@@ -257,7 +267,7 @@ bool HackRfSource::restart(int32_t freq, int32_t skipped) {
         std::lock_guard<std::mutex> lk(gainM_);   // Review G7
         applyGain();
     }
-    int rc = hackrf_set_antenna_enable(theDevice_, antennaEnable_ ? 1 : 0);
+    int rc = hackrf_set_antenna_enable(theDevice_, antennaEnable_.load() ? 1 : 0);
     if (rc != HACKRF_SUCCESS) std::fprintf(stderr, "hackrf antenna: %s\n", errName(rc).c_str());
 
     rc = hackrf_set_freq(theDevice_, static_cast<uint64_t>(adjustedFreq));

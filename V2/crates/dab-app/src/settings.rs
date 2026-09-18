@@ -22,6 +22,9 @@ pub struct Settings {
     /// Manuelle Gain-Werte je Geraet und Kanal, wenn AGC aus.
     pub gain_by_channel: BTreeMap<String, BTreeMap<String, Gain>>,
     pub ppm: i32,
+    /// Antennenspeisung (Bias-T) fuer aktive Antennen am HackRF (3,3 V / 50 mA),
+    /// Standard aus - eine passive Antenne darf keine Spannung sehen.
+    pub antenna_power: bool,
     pub timeshift_capacity_s: u32,
     pub ews_enabled: bool,
     pub ews_autoswitch: bool,
@@ -132,6 +135,7 @@ impl Default for Settings {
             agc: true,
             gain_by_channel: BTreeMap::new(),
             ppm: 0,
+            antenna_power: false,
             timeshift_capacity_s: 60 * 60,
             ews_enabled: true,
             ews_autoswitch: true,

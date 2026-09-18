@@ -132,6 +132,8 @@
   "settings.portable": "portabel",
   "settings.profile": "Benutzerprofil",
   "settings.ppm": "PPM-Korrektur",
+  "settings.antenna_power": "Antennenspeisung",
+  "settings.antenna_power_hint": "3,3 V / max. 50 mA am Antennenanschluss für aktive Antennen – nur bei aktiver Antenne einschalten",
   "settings.group_device": "Gerät / Empfang",
   "settings.group_audio": "Audio",
   "settings.group_ews": "Notfallwarnung",

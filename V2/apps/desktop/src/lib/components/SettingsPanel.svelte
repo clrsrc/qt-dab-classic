@@ -172,6 +172,14 @@
           {#if isFile}<span class="k">{t("settings.gain_file_hint")}</span>{/if}
         </span>
 
+        {#if !isFile && !isRtl}
+          <span class="lbl">{t("settings.antenna_power")}</span>
+          <span class="row">
+            <input type="checkbox" checked={st.antenna_power} onchange={(e) => patchSettings({ antenna_power: chk(e) })} />
+            <span class="k">{t("settings.antenna_power_hint")}</span>
+          </span>
+        {/if}
+
         <span class="lbl">{t("settings.agc")}</span>
         <span class="row">
           <input type="checkbox" checked={st.agc} disabled={isFile} onchange={(e) => patchSettings({ agc: chk(e) })} />

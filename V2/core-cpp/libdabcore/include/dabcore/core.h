@@ -123,6 +123,8 @@ private:
     void setGain(const json& gain);
     void setAgc(bool enabled);
     void setPpm(int ppm);
+    // Antennenspeisung (Bias-T) fuer aktive Antennen; nur HackRF setzt sie um.
+    void setAntennaPower(bool on);
     void emitGain();
 
     // Scan
@@ -259,6 +261,7 @@ private:
     // Callback im OFDM-Thread liest (Review G7)
     std::atomic<bool> agc_{true};
     int ppm_ = 0;
+    bool antennaPower_ = false;
     std::optional<DeviceGain> pendingGain_;   // set_gain vor open_device
     // AgcController (device/agc-controller.h) je geoeffnetem Geraet; agcM_
     // schuetzt ihn zwischen OFDM-Thread (no_signal/snr/synced), Kommando-

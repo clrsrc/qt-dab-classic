@@ -39,6 +39,7 @@ export type Command =
   | { type: "set_gain"; gain: Gain }
   | { type: "set_agc"; enabled: boolean }
   | { type: "set_ppm"; ppm: number }
+  | { type: "set_antenna_power"; enabled: boolean }
   | { type: "select_service"; sid: number; scids: number; slot: ServiceSlot }
   | { type: "stop_service"; slot: ServiceSlot }
   | { type: "start_scan"; channels: string[]; mode: "single" | "to_data" | "continuous" }
@@ -385,6 +386,8 @@ export interface Settings {
   agc: boolean;
   gain_by_channel: Record<string, Record<string, Gain>>;
   ppm: number;
+  /** Antennenspeisung (Bias-T) fuer aktive Antennen am HackRF, 3,3 V / 50 mA. */
+  antenna_power: boolean;
   timeshift_capacity_s: number;
   ews_enabled: boolean;
   ews_autoswitch: boolean;

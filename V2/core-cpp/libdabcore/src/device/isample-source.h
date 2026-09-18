@@ -67,6 +67,13 @@ public:
     virtual void setGainStep(int step, bool amp) { (void)step; (void)amp; }
     virtual void setPpm(int ppm) { ppm_ = ppm; }
     virtual int  ppm() const { return ppm_; }
+    // Antennenspeisung (Bias-T) fuer aktive Antennen, HackRF: 3,3 V / max.
+    // 50 mA am Antennenanschluss. Geraete ohne Speisung ignorieren das.
+    // Die HackRF-Firmware schaltet die Speisung beim Stoppen des Streams
+    // selbst ab; die Quelle setzt sie deshalb in restart() jedes Mal neu.
+    virtual bool hasAntennaPower() const { return false; }
+    virtual void setAntennaPower(bool on) { (void)on; }
+    virtual bool antennaPower() const { return false; }
     virtual void resetBuffer() {}
 
     // --- Sample-Dump (.uff, xml-filewriter) -------------------------------

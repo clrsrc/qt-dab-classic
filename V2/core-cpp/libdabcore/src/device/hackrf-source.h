@@ -109,6 +109,9 @@ public:
     int gainTrackStep() const override { return 2; }
     void setGainStep(int step, bool amp) override;
     void setPpm(int ppm) override;
+    bool hasAntennaPower() const override { return true; }
+    void setAntennaPower(bool on) override;
+    bool antennaPower() const override { return antennaEnable_.load(); }
 
     bool startDump(const std::string& path, std::string& error) override;
     void stopDump() override;
@@ -135,7 +138,9 @@ private:
     std::string serialNumber_;
     std::string libraryVersion_;
     std::string boardInfo_;
-    bool antennaEnable_ = false;   // Bias-T bleibt aus (v1-Default)
+    // Bias-T (Antennenspeisung); Standard aus wie v1, per set_antenna_power
+    // vom Kommandothread umschaltbar, in restart() vom OFDM-Thread gelesen.
+    std::atomic<bool> antennaEnable_{false};
 
     std::mutex m_;
     std::condition_variable dataCv_;
