@@ -64,6 +64,12 @@ struct AgcConfig {
     // Schein-Sync: so lange nach synced(true) ohne dekodierte FIBs (ficQuality
     // ok == 0) gilt der Sync als nicht vorhanden -> Ramp-Schritt wie no_signal
     int64_t ficTimeoutMs  = 2500;
+    // Schonfrist: ein Sync-Verlust so kurz nach dekodierten FIBs gilt als
+    // Fading; das erste no_signal aendert dann keine Stufe. Zeitbasiert,
+    // damit ein zwischengeschobener Schein-Sync (Befund 9A im Scan, 18.09.2026:
+    // FIC 44/50, dann Flattern, no_signal -> sofort VGA 48 und weg) die
+    // Schonfrist nicht loescht.
+    int64_t graceAfterGoodMs = 3000;
     // Uebersteuerungsverdacht auf Stufe >= highStep (HackRF: gainDefaultStep
     // = 20 = VGA 40). Tracking: SNR unter lowSnrDb -> erste Probe nach unten,
     // und zwar um acqIncrement (VGA -8) statt trackStep, weil die Kante der
@@ -141,6 +147,7 @@ private:
     bool ofdmSynced_ = false;      // Sync-Zustand des ofdmHandlers
     bool ficOkSeen_ = false;       // seit dem Sync mindestens ein FIB dekodiert
     int64_t ficWait_ = 0;          // Beginn der Wartezeit auf FIBs
+    int64_t lastGoodFicMs_ = -1;   // Zeitpunkt des letzten dekodierten FIB (< 0: keiner)
     bool emaFresh_ = true;         // SNR-EMA seit dem letzten Kanalwechsel noch nicht eingeschwungen
     int  step_ = 0;
     bool amp_ = false;

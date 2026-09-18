@@ -53,6 +53,7 @@ void AgcController::onRetune(int64_t nowMs) {
     ofdmSynced_ = false;
     ficOkSeen_ = false;
     ficWait_ = nowMs;
+    lastGoodFicMs_ = -1;
     emaFresh_ = true;
     ampTried_ = false;
     ampTrial_ = false;
@@ -148,7 +149,7 @@ void AgcController::onSynced(bool synced, int64_t nowMs) {
     if ((mode_ == Mode::Track || mode_ == Mode::Hold) && phase_ == Phase::Probe)
         set(baseStep_, amp_, nowMs);
     mode_ = Mode::Acquire;
-    graceNoSignals_ = ficOkSeen_ ? 1 : 0;
+    graceNoSignals_ = (lastGoodFicMs_ >= 0 && nowMs - lastGoodFicMs_ <= cfg_.graceAfterGoodMs) ? 1 : 0;
     // Sync verloren bei niedrigem SNR auf hoher Stufe: eher zu viel als zu
     // wenig Pegel -> die Ramp laeuft abwaerts
     rampDown_ = overloadSuspect();
@@ -174,6 +175,7 @@ void AgcController::finishAcquisition(int64_t nowMs) {
 void AgcController::onFicQuality(int ok, int64_t nowMs) {
     if (!enabled_ || mode_ == Mode::Off || !ofdmSynced_) return;
     if (ok > 0) {
+        lastGoodFicMs_ = nowMs;
         if (!ficOkSeen_) { ficOkSeen_ = true; lastGood_ = step_; }
         if (!synced_) {
             // als Schein-Sync verworfen, liefert jetzt aber FIBs: echter Sync
@@ -212,7 +214,11 @@ void AgcController::beginMeasure(int64_t nowMs, int64_t settle) {
 }
 
 void AgcController::onSnr(float db, int64_t nowMs) {
-    if (ofdmSynced_) lastSnr_ = db;
+    // Der SNR zaehlt fuer den Uebersteuerungsverdacht nur bei echtem Empfang
+    // (FIBs gesehen). Bei einem flatternden Schein-Sync (Befund 12C/11C,
+    // 18.09.2026) liefert der ofdmHandler 2-6 dB auf Rauschen; damit pendelte
+    // die Ramp endlos zwischen VGA 40 und 32 und kam nie zu VGA 48-62/AMP.
+    if (ofdmSynced_ && ficOkSeen_) lastSnr_ = db;
     if (!enabled_) return;
     if (mode_ == Mode::Hold) {
         if (nowMs < holdUntil_) return;

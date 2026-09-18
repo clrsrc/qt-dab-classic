@@ -361,6 +361,62 @@ static void testFalseSync() {
     std::printf("Schein-Sync: ok\n");
 }
 
+// Flatternder Schein-Sync auf VGA 40 mit Schein-SNR 2-6 dB (Live-Befund 12C/11C
+// mit aktiver Antenne, 18.09.2026): kein Uebersteuerungsverdacht, die Ramp
+// laeuft aufwaerts bis 62/AMP statt zwischen VGA 40 und 32 zu pendeln.
+static void testFalseSyncNoOverload() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    agc.setStart(20, false, 0);
+    agc.onRetune(0);
+    int64_t t = 0;
+    std::vector<int> seen;
+    for (int i = 0; i < 100 && agc.mode() != Mode::Idle; i++) {
+        t += 100; agc.onSynced(true, t);
+        t += 100; agc.onSnr(3.0f, t);           // Schein-SNR auf Rauschen
+        if (i % 3 == 2) agc.onFicQuality(0, t);  // FIC-Meldung ~1/s, nie FIBs
+        t += 100; agc.onSynced(false, t);
+        if (!log.empty() && (seen.empty() || seen.back() != log.back().step)) seen.push_back(log.back().step);
+    }
+    CHECK(!agc.rampDown(), "Schein-Sync: kein Uebersteuerungsverdacht");
+    bool down = false;
+    for (size_t i = 1; i < seen.size(); i++) if (seen[i] < seen[i - 1] && seen[i - 1] != 31) down = true;
+    CHECK(!down, "Schein-Sync: Ramp nie abwaerts");
+    bool amp = false;
+    for (auto& a : log) if (a.amp) amp = true;
+    CHECK(amp, "Schein-Sync: Ramp erreicht den AMP-Versuch");
+    CHECK(agc.mode() == Mode::Idle, "Schein-Sync: Ramp erschoepft, Idle");
+}
+
+// Schonfrist ueberlebt einen Schein-Sync (Befund 9A im Scan, 18.09.2026):
+// echter Empfang, Verlust, kurzer Schein-Sync, no_signal -> keine Stufe;
+// erst das zweite no_signal rampt. Lange nach den letzten FIBs keine Schonfrist.
+static void testGraceSurvivesFalseSync() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    agc.setStart(20, false, 0);
+    agc.onRetune(0);
+    int64_t t = 300;
+    agc.onSynced(true, t);
+    t = 1000; agc.onFicQuality(44, t);
+    t = 1200; agc.onSynced(false, t);
+    t = 1300; agc.onSynced(true, t);           // Schein-Sync dazwischen
+    t = 1400; agc.onSynced(false, t);
+    t = 1900;
+    CHECK(agc.onNoSignal(t) && agc.step() == 20 && log.empty(), "no_signal kurz nach FIBs: Schonfrist trotz Schein-Sync");
+    t += 770;
+    CHECK(agc.onNoSignal(t) && agc.step() == 24, "zweites no_signal: Ramp");
+    // Ohne FIBs seit > graceAfterGoodMs: keine Schonfrist
+    log.clear();
+    agc.setStart(20, false, t);
+    agc.onRetune(t);
+    agc.onSynced(true, t + 300);
+    agc.onFicQuality(44, t + 1000);
+    t += 6000;
+    agc.onSynced(false, t);
+    CHECK(agc.onNoSignal(t + 100) && agc.step() == 24, "Sync-Verlust lange nach FIBs: sofort Ramp");
+}
+
 static void testFreeze() {
     std::vector<Applied> log;
     AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
@@ -447,6 +503,8 @@ int main() {
     testOverloadTrackDown();
     testOverloadRampDown();
     testFalseSync();
+    testFalseSyncNoOverload();
+    testGraceSurvivesFalseSync();
     testFreeze();
     testRetuneUsesLastGood();
     if (failures) { std::printf("%d Fehler\n", failures); return 1; }

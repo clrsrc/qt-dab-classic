@@ -277,7 +277,12 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	         }
 	         sampleCount	= startIndex;
 	         attempts	= 0;		// V3: Fehlversuche nur am Stueck zaehlen
-	         lastSyncProgress = std::chrono::steady_clock::now ();
+//	V3 (Befund 12C/11C, 18.09.2026): ein Sync, der den naechsten Rahmen
+//	nicht ueberlebt (Timesyncer-Dip und Phasenreferenz auf Rauschen, dann
+//	Verlust an der strengeren Schwelle), ist kein Fortschritt; sonst kaeme
+//	bei einem flatternden Schein-Sync nie noSignal und die Ramp liefe nur
+//	ueber den FIC-Timeout (2,5 s je Stufe, im Scan zu langsam). Der
+//	Fortschritt zaehlt daher erst ab dem zweiten Rahmen in Folge (unten).
 	      }
 	      else {	// we are in sync and continue with a next frame
 	         totalFrames ++;
@@ -310,7 +315,8 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	      }
 
 	      goodFrames ++;
-	      lastSyncProgress = std::chrono::steady_clock::now ();
+	      if (frameCount > 0)		// zweiter Rahmen in Folge: echter Sync
+	         lastSyncProgress = std::chrono::steady_clock::now ();
 	      double cLevel	= 0;
 
 //	The size of the ofdm Buffer is large enough to
