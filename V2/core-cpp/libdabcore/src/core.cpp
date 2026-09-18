@@ -1700,6 +1700,7 @@ void DabCore::attachDevice(std::unique_ptr<ISampleSource> src, const std::string
         cfg.acqIncrement = source_->gainAcqIncrement();
         cfg.hasAmp = source_->hasAmp();
         cfg.ampTrialStep = cfg.fallbackStep = source_->gainDefaultStep();
+        cfg.highStep = source_->gainDefaultStep();   // ab hier gilt niedriger SNR als Uebersteuerungsverdacht
         cfg.trackStep = source_->gainTrackStep();
         auto ctl = std::make_unique<AgcController>(cfg, [this](int step, bool amp) {
             source_->setGainStep(step, amp);

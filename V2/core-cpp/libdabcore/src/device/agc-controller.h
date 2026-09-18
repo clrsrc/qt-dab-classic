@@ -31,6 +31,16 @@
 //    sondieren (Hysterese gegen dauernde gain_changed). AMP nur in der
 //    Akquisition; ein Sync-Verlust fuehrt zurueck in die Akquisition, wobei
 //    das erste no_signal (Fading) noch keine Stufe aendert.
+//
+//  Uebersteuerung (Befund 18.09.2026, aktive Antenne aussen vor dem Fenster,
+//  5C bei VGA 40: Sync flattert, SNR < 4 dB, FIC 3 %; bei VGA 20-32 dagegen
+//  16 dB): niedriger SNR (< lowSnrDb) auf hoher Stufe (>= highStep) gilt als
+//  Verdacht auf zu viel Pegel. Dann probiert der Bergsteiger zuerst nach
+//  unten, und nach einem Sync-Verlust in dieser Lage laeuft die Ramp abwaerts
+//  (acqIncrement je no_signal bis Stufe 0, dann lastGood/fallbackStep und
+//  Idle) statt aufwaerts. Ein schwaches Signal auf niedriger Stufe (Befund
+//  11D bei VGA 24) bleibt davon unberuehrt: dort geht die Ramp wie bisher
+//  nach oben.
 #pragma once
 
 #include <cstdint>
@@ -54,6 +64,17 @@ struct AgcConfig {
     // Schein-Sync: so lange nach synced(true) ohne dekodierte FIBs (ficQuality
     // ok == 0) gilt der Sync als nicht vorhanden -> Ramp-Schritt wie no_signal
     int64_t ficTimeoutMs  = 2500;
+    // Uebersteuerungsverdacht auf Stufe >= highStep (HackRF: gainDefaultStep
+    // = 20 = VGA 40). Tracking: SNR unter lowSnrDb -> erste Probe nach unten,
+    // und zwar um acqIncrement (VGA -8) statt trackStep, weil die Kante der
+    // Uebersteuerung steil ist (Befund 5C: VGA 40-48 6 dB, VGA 32 deutlich
+    // besser). Kostet bei einem schwachen Signal nur eine Probe (~3 s).
+    // Sync-Verlust: erst unter overloadSnrDb laeuft die Ramp abwaerts; die
+    // Schwelle liegt unter dem besten 11D-Wert der passiven Antenne (7,2 dB
+    // bei VGA 46), damit ein schwaches Signal wie bisher nach oben rampt.
+    float lowSnrDb      = 8.0f;
+    float overloadSnrDb = 6.0f;
+    int   highStep      = 20;
 };
 
 class AgcController {
@@ -97,6 +118,7 @@ public:
     Mode mode() const { return mode_; }
     bool acquisitionExhausted() const { return mode_ == Mode::Idle; }
     int  lastGoodStep() const { return lastGood_; }   // < 0: noch kein Sync
+    bool rampDown() const { return rampDown_; }        // Ramp laeuft abwaerts (Uebersteuerung)
     const AgcConfig& config() const { return cfg_; }
 
 private:
@@ -108,6 +130,8 @@ private:
     void beginMeasure(int64_t nowMs, int64_t settle);
     void evaluate(float mean, int64_t nowMs);
     void hold(int64_t nowMs);
+    bool overloadSuspect() const;
+    int  probeDirection() const;
 
     AgcConfig cfg_;
     Apply apply_;
@@ -126,12 +150,15 @@ private:
     bool ampTried_ = false;
     bool ampTrial_ = false;        // AMP aktuell durch den eigenen Versuch an
     int  graceNoSignals_ = 0;      // no_signals ohne Stufenaenderung nach Sync-Verlust
+    bool rampDown_ = false;        // Ramp abwaerts (Uebersteuerungsverdacht beim Sync-Verlust)
+    float lastSnr_ = -1.0f;        // letzter SNR-Wert bei Sync (ofdmHandler), < 0: keiner seit Retune
     // Tracking
     Phase phase_ = Phase::MeasureBase;
     int   baseStep_ = 0;
     float baseSnr_ = 0.0f;
     int   dir_ = +1;
     bool  failedUp_ = false, failedDown_ = false;
+    bool  bigDown_ = false;        // erste Abwaertsprobe um acqIncrement (Uebersteuerungsverdacht)
     int64_t measStart_ = 0, settle_ = 0;
     double  sum_ = 0.0;
     int     count_ = 0;

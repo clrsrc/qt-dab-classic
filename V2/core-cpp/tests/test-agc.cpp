@@ -51,6 +51,14 @@ struct Sim {
     void noSignalAfter(int64_t ms) { now += ms; }
 };
 
+// Uebersteuerung (Befund 18.09.2026, 5C mit aktiver Antenne aussen): bis
+// VGA 32 sauber (Maximum 16 dB bei VGA 28), darueber bricht der SNR ein
+// (VGA 40: 4 dB, VGA 48+: 2 dB).
+static double profileOverload(int step) {
+    if (step <= 16) return 16.0 - 0.2 * std::abs(step * 2 - 28) / 2.0;
+    return std::max(2.0, 16.0 - 3.0 * (step - 16));
+}
+
 static double profilePeak46(int step) {
     // Maximum bei VGA 46 (Stufe 23), 0,2 dB je 2 dB VGA
     return 7.2 - 0.2 * std::abs(step * 2 - 46) / 2.0;
@@ -187,6 +195,95 @@ static void testHillClimb() {
     std::printf("Bergsteiger nach Aenderung: VGA %d\n", agc.step() * 2);
 }
 
+// Uebersteuerung: Bergsteiger probiert bei niedrigem SNR auf hoher Stufe
+// zuerst nach unten und findet das Maximum unterhalb der Startstufe.
+static void testOverloadTrackDown() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    Sim sim(agc, log, profileOverload);
+    agc.setStart(20, false, sim.now);        // VGA 40 (Standard)
+    agc.onRetune(sim.now);
+    agc.onSynced(true, sim.now);
+    agc.onFicQuality(50, sim.now);
+    sim.run(4800);                           // firstSettle + average
+    CHECK(!log.empty() && log.back().step == 16, "erste Probe bei 4 dB / VGA 40 geht um VGA 8 nach unten");
+    int64_t start = sim.now;
+    while (sim.now - start < 60000) {
+        sim.run(577);
+        if (agc.mode() == Mode::Hold) break;
+    }
+    CHECK(agc.mode() == Mode::Hold, "Bergsteiger kommt aus der Uebersteuerung ins Halten");
+    CHECK(agc.step() >= 13 && agc.step() <= 15, ("Halten nahe VGA 28, Stufe " + std::to_string(agc.step())).c_str());
+    for (auto& a : log) CHECK(!a.amp, "nie AMP");
+    std::printf("Uebersteuerung/Tracking: Halten bei VGA %d nach %.1f s\n", agc.step() * 2, (sim.now - start) / 1000.0);
+
+    // Gegenprobe: gleicher SNR (4 dB) auf niedriger Stufe ist kein
+    // Uebersteuerungsverdacht -> erste Probe nach oben wie bisher
+    std::vector<Applied> logB;
+    AgcController agcB(hackrfConfig(), [&](int s, bool a) { logB.push_back({s, a}); });
+    Sim simB(agcB, logB, [](int) { return 4.0; });
+    agcB.setStart(12, false, simB.now);
+    agcB.onRetune(simB.now);
+    agcB.onSynced(true, simB.now);
+    agcB.onFicQuality(50, simB.now);
+    simB.run(4800);
+    CHECK(!logB.empty() && logB.back().step == 14, "4 dB auf VGA 24: erste Probe nach oben");
+}
+
+// Uebersteuerung mit flatterndem Sync: nach dem Sync-Verlust laeuft die
+// Ramp abwaerts (VGA 40 -> 32), nicht aufwaerts; der Sync kehrt zurueck und
+// das Tracking konvergiert unterhalb der Startstufe.
+static void testOverloadRampDown() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    Sim sim(agc, log, profileOverload);
+    agc.setStart(20, false, sim.now);
+    agc.onRetune(sim.now);
+    agc.onSynced(true, sim.now);
+    agc.onFicQuality(50, sim.now);
+    sim.run(3000);                           // EMA faellt von 10 auf ~4,5 dB
+    agc.onSynced(false, sim.now);
+    CHECK(agc.mode() == Mode::Acquire, "Sync-Verlust -> Akquisition");
+    CHECK(agc.rampDown(), "niedriger SNR auf VGA 40: Ramp abwaerts");
+    sim.noSignalAfter(770);
+    CHECK(agc.onNoSignal(sim.now) && agc.step() == 20, "erstes no_signal: Schonfrist");
+    sim.noSignalAfter(770);
+    CHECK(agc.onNoSignal(sim.now) && agc.step() == 16, "zweites no_signal: VGA 40 -> 32 (abwaerts)");
+    // Kein Sync bei 32? Weiter abwaerts bis 0, dann Rueckfall auf lastGood und Idle
+    {
+        std::vector<Applied> log3;
+        AgcController agc3(hackrfConfig(), [&](int s, bool a) { log3.push_back({s, a}); });
+        Sim sim3(agc3, log3, profileOverload);
+        agc3.setStart(20, false, sim3.now);
+        agc3.onRetune(sim3.now);
+        agc3.onSynced(true, sim3.now);
+        agc3.onFicQuality(50, sim3.now);
+        sim3.run(3000);
+        agc3.onSynced(false, sim3.now);
+        for (int i = 0; i < 7; i++) { sim3.noSignalAfter(770); agc3.onNoSignal(sim3.now); }
+        CHECK(agc3.mode() == Mode::Idle && agc3.step() == 20 && !agc3.rampDown(), "Ramp abwaerts erschoepft: lastGood, Idle");
+        for (auto& a : log3) CHECK(!a.amp, "abwaerts nie AMP");
+    }
+    // Sync kehrt bei VGA 32 zurueck: Tracking konvergiert auf ~VGA 28
+    agc.onSynced(true, sim.now);
+    agc.onFicQuality(50, sim.now);
+    int64_t start = sim.now;
+    while (sim.now - start < 60000) {
+        sim.run(577);
+        if (agc.mode() == Mode::Hold) break;
+    }
+    CHECK(agc.mode() == Mode::Hold && agc.step() >= 13 && agc.step() <= 15,
+          ("nach Ramp abwaerts: Halten nahe VGA 28, Stufe " + std::to_string(agc.step())).c_str());
+    // Kanalwechsel setzt den Verdacht zurueck: Ramp wieder aufwaerts
+    agc.onRetune(sim.now);
+    CHECK(!agc.rampDown(), "Retune: kein Uebersteuerungsverdacht mehr");
+    int s0 = agc.step();
+    sim.noSignalAfter(770);
+    agc.onNoSignal(sim.now);
+    CHECK(agc.step() == std::min(s0 + 4, 31), "nach Retune: Ramp aufwaerts");
+    std::printf("Uebersteuerung/Ramp abwaerts: ok\n");
+}
+
 static void testHoldReprobeEvery() {
     // Unveraenderter SNR: spaetestens nach holdReprobeEvery Haltephasen eine Probe
     std::vector<Applied> log;
@@ -308,8 +405,10 @@ static void testRetuneUsesLastGood() {
     // Sync-Verlust waehrend einer Probe: Probe wird zurueckgenommen
     {
         agc.onSynced(true, sim.now);
-        sim.run(5000);                       // Basis gemessen, erste Probe (+2) laeuft
-        CHECK(agc.step() == good + 2, "erste Probe nach oben");
+        sim.run(5000);                       // Basis gemessen, erste Probe laeuft
+        // 7,2 dB auf VGA >= 40 gilt als Uebersteuerungsverdacht: erste Probe
+        // um VGA 8 nach unten (kostet bei diesem schwachen Signal eine Probe)
+        CHECK(agc.step() == good - 4, "erste Probe bei 7 dB auf hoher Stufe nach unten");
         agc.onSynced(false, sim.now);
         CHECK(agc.step() == good, "Sync-Verlust in der Probe: zurueck auf die Basis");
         agc.onRetune(sim.now);
@@ -345,6 +444,8 @@ int main() {
     testRampAmpFromUser();
     testHillClimb();
     testHoldReprobeEvery();
+    testOverloadTrackDown();
+    testOverloadRampDown();
     testFalseSync();
     testFreeze();
     testRetuneUsesLastGood();

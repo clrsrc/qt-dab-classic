@@ -30,6 +30,7 @@ void AgcController::setEnabled(bool enabled, int64_t nowMs) {
     ampTried_ = false;
     ampTrial_ = amp_;
     graceNoSignals_ = 0;
+    rampDown_ = false;
     if (synced_) startTracking(nowMs, cfg_.firstSettleMs);
     else mode_ = Mode::Acquire;
 }
@@ -42,6 +43,7 @@ void AgcController::setStart(int step, bool amp, int64_t nowMs) {
     ampTried_ = false;
     ampTrial_ = false;
     graceNoSignals_ = 0;
+    rampDown_ = false;
     if (synced_) { lastGood_ = step_; startTracking(nowMs, cfg_.settleMs); }
     else mode_ = Mode::Acquire;
 }
@@ -55,6 +57,8 @@ void AgcController::onRetune(int64_t nowMs) {
     ampTried_ = false;
     ampTrial_ = false;
     graceNoSignals_ = 0;
+    rampDown_ = false;
+    lastSnr_ = -1.0f;
     if (!enabled_) { explicitStart_ = false; mode_ = Mode::Off; return; }
     mode_ = Mode::Acquire;
     if (explicitStart_) {
@@ -93,6 +97,17 @@ bool AgcController::rampStep(int64_t nowMs) {
         // AMP kam von aussen (set_gain): aus und mit der Ramp weiter
         set(step_, false, nowMs);
         return true;
+    }
+    if (rampDown_) {
+        // Uebersteuerungsverdacht: abwaerts bis Stufe 0, dann Rueckfall
+        if (step_ > 0) {
+            set(std::max(step_ - cfg_.acqIncrement, 0), false, nowMs);
+            return true;
+        }
+        rampDown_ = false;
+        set(lastGood_ >= 0 ? lastGood_ : cfg_.fallbackStep, false, nowMs);
+        mode_ = Mode::Idle;
+        return false;
     }
     if (step_ < cfg_.maxStep) {
         set(std::min(step_ + cfg_.acqIncrement, cfg_.maxStep), false, nowMs);
@@ -134,6 +149,18 @@ void AgcController::onSynced(bool synced, int64_t nowMs) {
         set(baseStep_, amp_, nowMs);
     mode_ = Mode::Acquire;
     graceNoSignals_ = ficOkSeen_ ? 1 : 0;
+    // Sync verloren bei niedrigem SNR auf hoher Stufe: eher zu viel als zu
+    // wenig Pegel -> die Ramp laeuft abwaerts
+    rampDown_ = overloadSuspect();
+}
+
+bool AgcController::overloadSuspect() const {
+    return step_ >= cfg_.highStep && lastSnr_ >= 0.0f && lastSnr_ < cfg_.overloadSnrDb;
+}
+
+// Erste Proberichtung des Bergsteigers: bei Uebersteuerungsverdacht nach unten
+int AgcController::probeDirection() const {
+    return (step_ >= cfg_.highStep && baseSnr_ < cfg_.lowSnrDb) ? -1 : +1;
 }
 
 void AgcController::finishAcquisition(int64_t nowMs) {
@@ -157,9 +184,10 @@ void AgcController::onFicQuality(int ok, int64_t nowMs) {
     }
     if (ficOkSeen_) return;                    // Fading bei echtem Empfang
     if (nowMs - ficWait_ < cfg_.ficTimeoutMs) return;
-    // Schein-Sync: seit ficTimeoutMs keine FIBs -> wie no_signal eine Stufe hoeher
+    // Schein-Sync: seit ficTimeoutMs keine FIBs -> wie no_signal eine Stufe
+    // weiter (bei Uebersteuerungsverdacht abwaerts, sonst hoeher)
     ficWait_ = nowMs;
-    if (synced_) { synced_ = false; mode_ = Mode::Acquire; graceNoSignals_ = 0; }
+    if (synced_) { synced_ = false; mode_ = Mode::Acquire; graceNoSignals_ = 0; rampDown_ = overloadSuspect(); }
     if (mode_ == Mode::Acquire) rampStep(nowMs);
 }
 
@@ -184,6 +212,7 @@ void AgcController::beginMeasure(int64_t nowMs, int64_t settle) {
 }
 
 void AgcController::onSnr(float db, int64_t nowMs) {
+    if (ofdmSynced_) lastSnr_ = db;
     if (!enabled_) return;
     if (mode_ == Mode::Hold) {
         if (nowMs < holdUntil_) return;
@@ -209,15 +238,17 @@ void AgcController::evaluate(float mean, int64_t nowMs) {
             if (!changed && holdCount_ < cfg_.holdReprobeEvery) { hold(nowMs); return; }
             holdCount_ = 0;
             failedUp_ = failedDown_ = false;
-            dir_ = +1;
         } else {
             baseSnr_ = mean;
         }
         baseStep_ = step_;
+        dir_ = probeDirection();
+        bigDown_ = dir_ < 0;
         startProbe(dir_, nowMs);
         return;
     }
     // Probe bewerten
+    bigDown_ = false;
     if (mean >= baseSnr_ + cfg_.improveDb) {
         baseStep_ = step_;
         baseSnr_ = mean;
@@ -237,7 +268,8 @@ void AgcController::evaluate(float mean, int64_t nowMs) {
 void AgcController::startProbe(int dir, int64_t nowMs) {
     for (int i = 0; i < 2; i++) {
         bool& failed = dir > 0 ? failedUp_ : failedDown_;
-        int target = baseStep_ + dir * cfg_.trackStep;
+        int size = (dir < 0 && bigDown_) ? std::max(cfg_.trackStep, cfg_.acqIncrement) : cfg_.trackStep;
+        int target = baseStep_ + dir * size;
         if (!failed && target >= 0 && target <= cfg_.maxStep) {
             dir_ = dir;
             set(target, amp_, nowMs);
