@@ -56,6 +56,7 @@
 	                                    theEstimator (p, &theTable),
 	                                    scopeFft (params. get_T_u (), false) {
 	this	-> p			= p;
+	this	-> theRig		= inputDevice;
 	this	-> theMscSink		= mscSink;
 	this	-> cb			= callbacks;
 	this	-> cpuSupport		= cpuSupport;
@@ -227,7 +228,18 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	      theReader. getSamples (temp, 0, tempSize, 0, true);
 	   }
 
+	   auto lastClipReport = std::chrono::steady_clock::now ();
 	   while (true) {
+//	V3 (Befund 19.09.2026, Balkon Richtung NL): ADC-Uebersteuerung der
+//	Quelle unabhaengig vom Sync melden, damit die AGC-Ramp auf einem
+//	leeren Kanal nicht in den Anschlag eines starken Nachbarn laeuft.
+	      {
+	         auto now = std::chrono::steady_clock::now ();
+	         if (now - lastClipReport >= std::chrono::milliseconds (150)) {
+	            lastClipReport = now;
+	            emitCb (cb -> adcClip, theRig -> adcClipRatio ());
+	         }
+	      }
 	      if (!inSync) {
 	         totalFrames ++;
 	         totalSamples	= 0;

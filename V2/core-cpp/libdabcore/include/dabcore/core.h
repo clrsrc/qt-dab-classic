@@ -275,6 +275,7 @@ private:
     bool scanForcedAgc_ = false;
     DeviceGain preScanGain_;
     std::atomic<float> lastSnrDb_{0.0f};
+    std::atomic<float> adcClip_{0.0f};        // letzter Anteil der ADC-Rohsamples am Anschlag
     std::unique_ptr<ScanController> scan_;
     std::atomic<bool> scanning_{false};
 
@@ -354,7 +355,7 @@ private:
     std::atomic<int> ecc_{0};                // FIG 0/9 ECC (0 = unbekannt), fuer RadioDNS; Reset bei Kanalwechsel
 
     // Drosselung latest-wins-Ereignisse
-    std::chrono::steady_clock::time_point lastSnr_{}, lastFicQuality_{}, lastFreqOffset_{};
+    std::chrono::steady_clock::time_point lastSnr_{}, lastFicQuality_{}, lastFreqOffset_{}, lastAdcClip_{};
     // TII: zuletzt gemeldete Liste (mainId, subId, Staerke auf 0,01 gerundet)
     std::mutex tiiM_;
     std::vector<std::tuple<uint8_t, uint8_t, int>> lastTii_;

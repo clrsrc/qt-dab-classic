@@ -18,6 +18,9 @@ struct ReceiverCallbacks {
     std::function<void(float)>                snr;             // showSnr(float)
     std::function<void(int)>                  clockError;      // showClockError
     std::function<void(int, float)>           corrector;       // showCorrector(coarse, fine)
+    // ADC-Uebersteuerung der Quelle (ISampleSource::adcClipRatio), etwa
+    // alle 150 ms unabhaengig vom Sync-Zustand (Gain-Obergrenze der AGC)
+    std::function<void(float)>                adcClip;
     std::function<void(const std::vector<tiiData>&)> tii;      // showTIIData
     // Scopes (nur aktiv nach set_scopes): Spektrum der Eingangssamples als
     // 2048 Bins (dB-Skala 0..255, fftshift: Bin 0 = -1,024 MHz) und die

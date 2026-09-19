@@ -494,6 +494,170 @@ static void testRetuneUsesLastGood() {
     std::printf("Retune/lastGood/Sync-Verlust: ok\n");
 }
 
+// --- ADC-Obergrenze (Befund 19.09.2026, Balkon Richtung NL) -----------------------
+// 12C ohne Sync, der 1,7 MHz entfernte 12D uebersteuert den 8-Bit-ADC ab
+// etwa VGA 32: die Ramp darf nicht bis VGA 62/AMP laufen und auf VGA 40
+// zurueckfallen, sondern endet unter der Anschlag-Grenze.
+static void testClipCeilingRamp() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    agc.setStart(12, false, 0);          // VGA 24
+    agc.onRetune(0);
+    int64_t t = 770;
+    CHECK(agc.onNoSignal(t) && agc.step() == 16, "Ramp VGA 24 -> 32");
+    agc.onAdcClip(0.11f, t + 100);       // Einschwingzeit: noch Samples von VGA 24
+    CHECK(agc.step() == 16, "Clip-Meldung 100 ms nach der Stufe zaehlt nicht");
+    agc.onAdcClip(0.003f, t + 300);
+    CHECK(agc.step() == 16 && !agc.clipLimited(), "0,3 % ist keine Uebersteuerung");
+    agc.onAdcClip(0.11f, t + 400);
+    CHECK(agc.step() == 14 && agc.clipCeiling() == 14, "11 %: VGA 32 -> 28, Obergrenze VGA 28");
+    agc.onAdcClip(0.11f, t + 500);       // Einschwingzeit nach der Senkung
+    CHECK(agc.step() == 14, "direkt nach der Senkung keine zweite");
+    agc.onAdcClip(0.02f, t + 800);
+    CHECK(agc.step() == 12 && agc.clipCeiling() == 12, "weiter 2 %: VGA 28 -> 24");
+    agc.onAdcClip(0.0f, t + 1200);
+    t += 1540;
+    CHECK(!agc.onNoSignal(t), "no_signal an der Obergrenze: Ramp erschoepft");
+    CHECK(agc.mode() == Mode::Idle && agc.step() == 12 && !agc.amp(), "Idle auf der Obergrenze VGA 24, kein AMP");
+    for (auto& a : log) CHECK(!a.amp, "mit Obergrenze nie AMP");
+    for (auto& a : log) CHECK(a.step <= 16, "nie ueber VGA 32");
+    // Idle: der Pegel steigt weiter -> weiter senken, Idle bleibt
+    agc.onAdcClip(0.05f, t + 300);
+    CHECK(agc.mode() == Mode::Idle && agc.step() == 10 && agc.clipCeiling() == 10, "Idle: weiter senken");
+    t += 770;
+    CHECK(!agc.onNoSignal(t) && agc.step() == 10, "Idle bleibt auf der gesenkten Stufe");
+    // Kanalwechsel: Obergrenze weg, die Ramp darf wieder nach oben
+    agc.onRetune(t);
+    CHECK(!agc.clipLimited(), "Retune loescht die Obergrenze");
+    t += 770;
+    CHECK(agc.onNoSignal(t) && agc.step() == 14, "nach Retune Ramp aufwaerts");
+    // set_gain des Nutzers: Obergrenze weg, neuer Startpunkt
+    agc.onAdcClip(0.2f, t + 300);
+    CHECK(agc.clipCeiling() == 12, "Obergrenze auf dem neuen Kanal");
+    agc.setStart(20, false, t + 600);
+    CHECK(!agc.clipLimited() && agc.step() == 20, "set_gain loescht die Obergrenze");
+    std::printf("ADC-Obergrenze Ramp: ok\n");
+}
+
+// Ramp ohne Uebersteuerung erschoepft (VGA 62, AMP, Rueckfall VGA 40); erst
+// dann kommt der Anschlag (z. B. Antenne umgesteckt): Idle senkt trotzdem.
+static void testClipAfterExhaustedRamp() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    agc.setStart(12, false, 0);
+    agc.onRetune(0);
+    int64_t t = 0;
+    for (int i = 0; i < 20 && agc.mode() != Mode::Idle; i++) { t += 770; agc.onNoSignal(t); }
+    CHECK(agc.mode() == Mode::Idle && agc.step() == 20 && !agc.amp(), "Ramp erschoepft: VGA 40");
+    agc.onAdcClip(0.2f, t + 300);
+    CHECK(agc.mode() == Mode::Idle && agc.step() == 18 && agc.clipCeiling() == 18, "Idle: VGA 40 -> 36");
+    t += 770;
+    CHECK(!agc.onNoSignal(t) && agc.step() == 18, "kein Rueckfall ueber die Obergrenze");
+    std::printf("ADC-Obergrenze nach erschoepfter Ramp: ok\n");
+}
+
+// AMP an (vom Nutzer oder AMP-Versuch) und Anschlag: erst der AMP weg, dann
+// die Stufe; ein laufender AMP-Versuch gilt als gescheitert.
+static void testClipAmpOff() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    agc.setStart(20, true, 0);
+    agc.onRetune(0);
+    CHECK(agc.amp(), "expliziter Start mit AMP");
+    agc.onAdcClip(0.3f, 300);
+    CHECK(!agc.amp() && agc.step() == 20 && !agc.clipLimited(), "Anschlag: zuerst AMP aus, Stufe bleibt");
+    agc.onAdcClip(0.3f, 400);
+    CHECK(agc.step() == 20, "Einschwingzeit nach AMP aus");
+    agc.onAdcClip(0.3f, 600);
+    CHECK(agc.step() == 18 && agc.clipCeiling() == 18, "weiter am Anschlag: VGA 40 -> 36");
+    // AMP-Versuch am Ende der Ramp, der uebersteuert
+    std::vector<Applied> log2;
+    AgcController agc2(hackrfConfig(), [&](int s, bool a) { log2.push_back({s, a}); });
+    agc2.setStart(24, false, 0);
+    agc2.onRetune(0);
+    int64_t t = 0;
+    while (!agc2.amp()) { t += 770; if (!agc2.onNoSignal(t)) break; }
+    CHECK(agc2.amp() && agc2.step() == 20, "AMP-Versuch laeuft");
+    agc2.onAdcClip(0.4f, t + 300);
+    CHECK(!agc2.amp() && agc2.step() == 20 && agc2.mode() == Mode::Idle, "AMP-Versuch uebersteuert: wie erfolglos, Rueckfall VGA 40, Idle");
+    t += 770;
+    CHECK(!agc2.onNoSignal(t) && agc2.mode() == Mode::Idle && !agc2.amp() && agc2.step() == 20, "kein zweiter AMP-Versuch, Ramp bleibt beendet");
+    std::printf("ADC-Obergrenze AMP: ok\n");
+}
+
+// Befund 12C Balkon 19.09.2026: nach der erschoepften Ramp (VGA 40, Idle)
+// startete jeder flatternde Schein-Sync die Ramp neu - endlos 40, 48, 56,
+// 62, AMP-frei, 40 ... (gain_changed im Sekundentakt, Anschlag bei 56/62).
+static void testExhaustedNoReramp() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    agc.setStart(12, false, 0);
+    agc.onRetune(0);
+    int64_t t = 0;
+    for (int i = 0; i < 20 && agc.mode() != Mode::Idle; i++) { t += 770; agc.onNoSignal(t); }
+    CHECK(agc.mode() == Mode::Idle && agc.step() == 20, "Ramp erschoepft: VGA 40");
+    size_t n = log.size();
+    // Schein-Sync: Sync, SNR-Werte, keine FIBs ueber den FIC-Timeout hinaus
+    agc.onSynced(true, t + 100);
+    for (int i = 1; i <= 5; i++) { agc.onSnr(3.0f, t + 100 + i * 600); agc.onFicQuality(0, t + 100 + i * 800); }
+    CHECK(log.size() == n && agc.step() == 20, "Schein-Sync nach erschoepfter Ramp: keine neue Ramp");
+    CHECK(agc.mode() == Mode::Idle, "zurueck in Idle");
+    agc.onSynced(false, t + 5000);
+    t += 5770;
+    CHECK(!agc.onNoSignal(t) && log.size() == n && agc.step() == 20, "no_signal danach: Idle bleibt");
+    // mehrfach flattern: nie eine Aenderung
+    for (int k = 0; k < 5; k++) {
+        agc.onSynced(true, t + 100); agc.onFicQuality(0, t + 3000); agc.onSynced(false, t + 3100); t += 3870; agc.onNoSignal(t);
+    }
+    CHECK(log.size() == n && agc.step() == 20 && agc.mode() == Mode::Idle, "flatternder Schein-Sync: Gain bleibt VGA 40");
+    // echter Empfang (FIBs) hebt die Sperre: Tracking, lastGood
+    agc.onSynced(true, t + 100);
+    agc.onFicQuality(50, t + 900);
+    CHECK(agc.mode() == Mode::Track && agc.lastGoodStep() == 20, "FIBs: Tracking wie gehabt");
+    // Kanalwechsel: Ramp wieder frei
+    agc.onRetune(t + 2000);
+    agc.onSynced(false, t + 2000);
+    CHECK(agc.onNoSignal(t + 2770), "nach Retune laeuft die Ramp wieder");
+    std::printf("Schein-Sync nach erschoepfter Ramp: ok\n");
+}
+
+// Tracking: der Bergsteiger will nach oben (Maximum bei VGA 46), der Anschlag
+// bei VGA 36 setzt die Obergrenze; danach nie mehr darueber.
+static void testClipTracking() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    Sim sim(agc, log, profilePeak46);
+    agc.setStart(16, false, 0);
+    agc.onRetune(0);
+    agc.onSynced(true, 0);
+    while (agc.step() < 18 && sim.now < 60000) sim.run(577);
+    CHECK(agc.step() >= 18, "Bergsteiger steigt ueber VGA 36");
+    sim.now += 300;
+    agc.onAdcClip(0.08f, sim.now);
+    CHECK(agc.step() == agc.clipCeiling() && agc.clipCeiling() <= 16, "Anschlag im Tracking: Stufe gesenkt, Obergrenze gesetzt");
+    CHECK(agc.mode() == Mode::Track, "Tracking laeuft unter der Obergrenze weiter");
+    int ceil = agc.clipCeiling();
+    size_t n = log.size();
+    sim.run(90000);
+    for (size_t i = n; i < log.size(); i++) CHECK(log[i].step <= ceil, "Tracking: nie ueber die Obergrenze");
+    CHECK(agc.step() == ceil, "Bergsteiger haelt an der Obergrenze");
+    CHECK(agc.mode() == Mode::Hold || agc.mode() == Mode::Track, "weiter im Empfang");
+    std::printf("ADC-Obergrenze Tracking: Obergrenze VGA %d\n", ceil * 2);
+}
+
+// AGC aus: der Gain des Nutzers bleibt, auch am Anschlag
+static void testClipOffIgnored() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    agc.setEnabled(false, 0);
+    agc.setStart(31, true, 0);
+    agc.onRetune(0);
+    agc.onAdcClip(0.5f, 500);
+    agc.onAdcClip(0.5f, 1000);
+    CHECK(log.empty() && agc.step() == 31 && agc.amp(), "AGC aus: Anschlag aendert nichts");
+    std::printf("ADC-Obergrenze AGC aus: ok\n");
+}
+
 int main() {
     testRampHackRf();
     testRampRtlSdr();
@@ -507,6 +671,12 @@ int main() {
     testGraceSurvivesFalseSync();
     testFreeze();
     testRetuneUsesLastGood();
+    testClipCeilingRamp();
+    testClipAfterExhaustedRamp();
+    testClipAmpOff();
+    testClipTracking();
+    testClipOffIgnored();
+    testExhaustedNoReramp();
     if (failures) { std::printf("%d Fehler\n", failures); return 1; }
     std::printf("OK\n");
     return 0;

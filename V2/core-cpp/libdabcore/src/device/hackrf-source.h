@@ -132,6 +132,10 @@ public:
     dabcore::HalfbandDecimator decimator_;
     std::atomic<int> toSkip{0};
     void onCallbackData();
+    // Anteil der int8-Komponenten am Anschlag (|v| >= 127), EMA ueber die
+    // USB-Transfers (je ~32 ms bei 4,096 MS/s), vom Callback geschrieben
+    std::atomic<float> clip_{0.0f};
+    float adcClipRatio() const override { return clip_.load(); }
 
 private:
     bool loadHackrfFunctions();

@@ -434,6 +434,32 @@ void DabCore::wireCallbacks() {
         sink_(events::snr(db));
     };
     cb.clockError = [this](int ppm) { (void)ppm; };
+    cb.adcClip = [this](float ratio) {
+        adcClip_.store(ratio);
+        // Gain-Obergrenze der AGC bei ADC-Uebersteuerung (starker Nachbarkanal)
+        int before = -1, after = -1;
+        {
+            std::lock_guard<std::mutex> lk(agcM_);
+            if (agcCtl_) {
+                before = agcCtl_->clipCeiling();
+                agcCtl_->onAdcClip(ratio, agcNowMs());
+                after = agcCtl_->clipCeiling();
+            }
+        }
+        const bool hackrf = source_ && source_->name() == "hackrf";
+        const bool limited = source_ && after >= 0 && after <= source_->gainStepCount() - 1;
+        const int ceilingGain = limited ? (hackrf ? after * 2 : after) : -1;
+        if (after != before) {
+            char buf[160];
+            std::snprintf(buf, sizeof buf, "AGC: ADC-Uebersteuerung %.1f %% -> Gain-Obergrenze %s %d",
+                          ratio * 100.0f, hackrf ? "VGA" : "Stufe", ceilingGain);
+            sink_(events::log("info", buf));
+        }
+        auto now = std::chrono::steady_clock::now();
+        if (now - lastAdcClip_ < 1000ms) return;     // 1 Hz
+        lastAdcClip_ = now;
+        sink_(events::adcClip(ratio, ceilingGain));
+    };
     cb.corrector = [this](int coarse, float fine) {
         auto now = std::chrono::steady_clock::now();
         if (now - lastFreqOffset_ < 100ms) return;

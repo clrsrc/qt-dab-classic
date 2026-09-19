@@ -41,6 +41,20 @@
 //  Idle) statt aufwaerts. Ein schwaches Signal auf niedriger Stufe (Befund
 //  11D bei VGA 24) bleibt davon unberuehrt: dort geht die Ramp wie bisher
 //  nach oben.
+//
+//  ADC-Obergrenze (Befund 19.09.2026, Balkon Richtung NL, aktive Antenne,
+//  AGC an): auf einem Kanal ohne Sync (NPO 12C, ~3 dB ueber dem Rauschen)
+//  lief die Ramp bis VGA 62/AMP und fiel auf VGA 40 zurueck; dabei
+//  uebersteuerte der 1,7 MHz entfernte, starke 12D den 8-Bit-ADC, und das
+//  schwache Signal ging in den Clipping-Produkten unter (die Sync/SNR-
+//  Logik oben greift nur, wenn es einen Sync gab). Die Quelle meldet den
+//  Anteil der Rohsamples am Anschlag (onAdcClip, etwa 7/s). Ueber
+//  clipLimit senkt die Regelung die Stufe um clipStep (AMP zuerst aus) und
+//  merkt sich die neue Stufe als Obergrenze bis zum Kanalwechsel/set_gain:
+//  die Ramp endet dort ohne AMP-Versuch (Idle), Rueckfall und Bergsteiger
+//  bleiben darunter. Meldungen innerhalb von clipSettleMs nach einer
+//  Stufenaenderung enthalten noch Samples der alten Stufe und zaehlen
+//  nicht. Bei AGC aus (Off) bleibt der Gain des Nutzers unangetastet.
 #pragma once
 
 #include <cstdint>
@@ -81,6 +95,12 @@ struct AgcConfig {
     float lowSnrDb      = 8.0f;
     float overloadSnrDb = 6.0f;
     int   highStep      = 20;
+    // ADC-Obergrenze: ab clipLimit (Anteil der Rohsamples am Anschlag) um
+    // clipStep senken (HackRF 2 = VGA -4); clipSettleMs nach jeder
+    // Stufenaenderung keine Bewertung (USB-Transfers von ~32 ms, EMA ~100 ms)
+    float   clipLimit    = 0.005f;
+    int     clipStep     = 2;
+    int64_t clipSettleMs = 250;
 };
 
 class AgcController {
@@ -109,6 +129,9 @@ public:
 
     void onSynced(bool synced, int64_t nowMs);
     void onSnr(float db, int64_t nowMs);
+    // ADC-Uebersteuerung der Quelle (Anteil 0..1 der Rohsamples am Anschlag),
+    // unabhaengig vom Sync etwa 7/s; siehe "ADC-Obergrenze" oben.
+    void onAdcClip(float ratio, int64_t nowMs);
     // FIC-Qualitaet (ok = erfolgreiche FIBs von 50, kommt nur bei Sync etwa
     // 1/s). ok > 0 bestaetigt den Sync (lastGood); Sync ohne FIBs ueber
     // ficTimeoutMs ist ein Schein-Sync bei zu wenig Gain (Befund 11D bei
@@ -125,6 +148,9 @@ public:
     bool acquisitionExhausted() const { return mode_ == Mode::Idle; }
     int  lastGoodStep() const { return lastGood_; }   // < 0: noch kein Sync
     bool rampDown() const { return rampDown_; }        // Ramp laeuft abwaerts (Uebersteuerung)
+    // Obergrenze aus der ADC-Uebersteuerung; > maxStep: keine
+    int  clipCeiling() const { return clipCeil_; }
+    bool clipLimited() const { return clipCeil_ <= cfg_.maxStep; }
     const AgcConfig& config() const { return cfg_; }
 
 private:
@@ -138,6 +164,8 @@ private:
     void hold(int64_t nowMs);
     bool overloadSuspect() const;
     int  probeDirection() const;
+    int  topStep() const;              // maxStep bzw. ADC-Obergrenze
+    int  fallbackStep() const;         // lastGood bzw. fallbackStep, unter der Obergrenze
 
     AgcConfig cfg_;
     Apply apply_;
@@ -158,6 +186,12 @@ private:
     bool ampTrial_ = false;        // AMP aktuell durch den eigenen Versuch an
     int  graceNoSignals_ = 0;      // no_signals ohne Stufenaenderung nach Sync-Verlust
     bool rampDown_ = false;        // Ramp abwaerts (Uebersteuerungsverdacht beim Sync-Verlust)
+    int  clipCeil_ = 1 << 20;      // ADC-Obergrenze (Stufe); > maxStep: keine
+    // Ramp erschoepft (Idle). Ohne je dekodierte FIBs auf dem Kanal startet
+    // ein flatternder Schein-Sync die Ramp danach NICHT neu (Befund 12C
+    // Balkon 19.09.2026: endlos VGA 40 -> 48 -> 56 -> 62 -> 40 ...).
+    bool exhausted_ = false;
+    int64_t lastSetMs_ = -(1 << 30); // letzte Stufenaenderung (clipSettleMs)
     float lastSnr_ = -1.0f;        // letzter SNR-Wert bei Sync (ofdmHandler), < 0: keiner seit Retune
     // Tracking
     Phase phase_ = Phase::MeasureBase;

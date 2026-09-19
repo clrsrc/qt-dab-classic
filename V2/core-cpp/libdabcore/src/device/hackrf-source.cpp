@@ -237,6 +237,17 @@ static int callback(hackrf_transfer* transfer) {
     RingBuffer<std::complex<int16_t>>* q = &(ctx->_I_Buffer);
     int nrSamples = transfer->valid_length / 2;
     if (nrSamples > 2 * 32 * 32768 - 2) nrSamples = 2 * 32 * 32768 - 2;
+    // ADC-Uebersteuerung: Komponenten am Anschlag zaehlen (vor dem Filter,
+    // also ueber die volle Analogbandbreite - ein starker Nachbarkanal
+    // zaehlt mit). EMA 0,5 je Transfer, damit die AGC einen Wert ueber
+    // etwa 100 ms sieht.
+    if (nrSamples > 0) {
+        int clipped = 0;
+        const int n = 2 * nrSamples;
+        for (int i = 0; i < n; i++) clipped += (p[i] >= 127) | (p[i] <= -127);
+        float r = static_cast<float>(clipped) / static_cast<float>(n);
+        ctx->clip_.store(0.5f * ctx->clip_.load() + 0.5f * r);
+    }
     // Halbband-FIR 2:1 statt Boxcar (Nachbarkanal-Alias, siehe halfband-decimator.h)
     int bufferIndex = ctx->decimator_.process(p, nrSamples, buffer);
     if (ctx->toSkip > 0)

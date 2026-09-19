@@ -3,7 +3,7 @@
 namespace dabcore {
 
 bool isLatestWins(const std::string& t) {
-    return t == "snr" || t == "fic_quality" || t == "frequency_offset" || t == "audio_level" ||
+    return t == "snr" || t == "fic_quality" || t == "frequency_offset" || t == "audio_level" || t == "adc_clip" ||
            t == "spectrum" || t == "iq_samples" || t == "timeshift_state" || t == "file_progress" ||
            t == "service_stats";
 }
@@ -47,6 +47,7 @@ json fileEnded() { return ev("file_ended"); }
 json synced(bool s) { auto j = ev("synced"); j["synced"] = s; return j; }
 json noSignal(const std::string& c) { auto j = ev("no_signal"); j["channel"] = c; return j; }
 json snr(float db) { auto j = ev("snr"); j["db"] = db; return j; }
+json adcClip(float ratio, int ceiling) { auto j = ev("adc_clip"); j["ratio"] = ratio; j["ceiling"] = ceiling; return j; }
 json ficQuality(uint16_t ok, uint16_t total) { auto j = ev("fic_quality"); j["ok"] = ok; j["total"] = total; return j; }
 json frequencyOffset(int32_t hz) { auto j = ev("frequency_offset"); j["hz"] = hz; return j; }
 json ensembleFound(uint16_t eid, const std::string& n, const std::string& c, uint8_t ecc) {

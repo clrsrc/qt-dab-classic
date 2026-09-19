@@ -81,6 +81,7 @@ public:
 	IMscSink		*theMscSink;
 	ReceiverCallbacks	*cb;
 	uint8_t			cpuSupport;
+	ISampleSource		*theRig;	// fuer adcClipRatio (Gain-Obergrenze der AGC)
 	sampleReader		theReader;
 	ficHandler		theFicHandler;
 	ofdmDecoder		theOfdmDecoder;

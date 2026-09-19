@@ -70,6 +70,9 @@ json fileEnded();
 json synced(bool synced);
 json noSignal(const std::string& channel);
 json snr(float db);
+// ADC-Uebersteuerung der Quelle: Anteil der Rohsamples am Anschlag (0..1),
+// 1/s; ceiling = Gain-Obergrenze der AGC als VGA/Tuner-Gain (-1: keine)
+json adcClip(float ratio, int ceiling);
 json ficQuality(uint16_t ok, uint16_t total);
 json frequencyOffset(int32_t hz);
 json ensembleFound(uint16_t eid, const std::string& name, const std::string& channel, uint8_t ecc = 0);

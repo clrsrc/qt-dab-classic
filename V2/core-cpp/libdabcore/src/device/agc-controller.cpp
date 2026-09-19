@@ -9,15 +9,25 @@ namespace dabcore {
 AgcController::AgcController(const AgcConfig& cfg, Apply apply)
     : cfg_(cfg), apply_(std::move(apply)) {
     step_ = std::clamp(cfg_.fallbackStep, 0, cfg_.maxStep);
+    clipCeil_ = cfg_.maxStep + 1;
+}
+
+int AgcController::topStep() const {
+    return std::min(cfg_.maxStep, clipCeil_);
+}
+
+int AgcController::fallbackStep() const {
+    return std::min(lastGood_ >= 0 ? lastGood_ : cfg_.fallbackStep, topStep());
 }
 
 void AgcController::set(int step, bool amp, int64_t nowMs) {
-    step = std::clamp(step, 0, cfg_.maxStep);
+    step = std::clamp(step, 0, topStep());
     if (!cfg_.hasAmp) amp = false;
     if (step == step_ && amp == amp_) return;
     step_ = step;
     amp_ = amp;
     measStart_ = nowMs;
+    lastSetMs_ = nowMs;
     ficWait_ = nowMs;              // FIC-Wartezeit ab der neuen Stufe
     if (apply_) apply_(step_, amp_);
 }
@@ -31,6 +41,8 @@ void AgcController::setEnabled(bool enabled, int64_t nowMs) {
     ampTrial_ = amp_;
     graceNoSignals_ = 0;
     rampDown_ = false;
+    exhausted_ = false;
+    clipCeil_ = cfg_.maxStep + 1;
     if (synced_) startTracking(nowMs, cfg_.firstSettleMs);
     else mode_ = Mode::Acquire;
 }
@@ -39,11 +51,14 @@ void AgcController::setStart(int step, bool amp, int64_t nowMs) {
     step_ = std::clamp(step, 0, cfg_.maxStep);
     amp_ = cfg_.hasAmp && amp;
     explicitStart_ = true;
+    clipCeil_ = cfg_.maxStep + 1;  // der Nutzer setzt den Gain: Obergrenze neu ermitteln
+    lastSetMs_ = nowMs;
     if (!enabled_) return;
     ampTried_ = false;
     ampTrial_ = false;
     graceNoSignals_ = 0;
     rampDown_ = false;
+    exhausted_ = false;
     if (synced_) { lastGood_ = step_; startTracking(nowMs, cfg_.settleMs); }
     else mode_ = Mode::Acquire;
 }
@@ -59,7 +74,10 @@ void AgcController::onRetune(int64_t nowMs) {
     ampTrial_ = false;
     graceNoSignals_ = 0;
     rampDown_ = false;
+    exhausted_ = false;
     lastSnr_ = -1.0f;
+    clipCeil_ = cfg_.maxStep + 1;  // Obergrenze gilt je Kanal
+    lastSetMs_ = nowMs;            // Umschalten: Samples des alten Kanals nicht bewerten
     if (!enabled_) { explicitStart_ = false; mode_ = Mode::Off; return; }
     mode_ = Mode::Acquire;
     if (explicitStart_) {
@@ -70,6 +88,49 @@ void AgcController::onRetune(int64_t nowMs) {
     } else {
         set(step_, false, nowMs);
     }
+}
+
+// --- ADC-Obergrenze ---------------------------------------------------------------
+
+void AgcController::onAdcClip(float ratio, int64_t nowMs) {
+    if (!enabled_ || mode_ == Mode::Off) return;
+    if (ratio <= cfg_.clipLimit) return;
+    if (nowMs - lastSetMs_ < cfg_.clipSettleMs) return;   // noch Samples der alten Stufe
+    if (amp_) {
+        // erst der AMP (14 dB) weg. Der AMP-Versuch am Ende der Ramp gilt
+        // damit als erfolglos (Rueckfall, Idle); ein AMP vom Nutzer geht
+        // nur aus, die Regelung laeuft auf der Stufe weiter.
+        ampTried_ = true;
+        const bool trial = ampTrial_;
+        ampTrial_ = false;
+        if (trial && mode_ == Mode::Acquire) {
+            set(std::min(cfg_.fallbackStep, topStep()), false, nowMs);
+            mode_ = Mode::Idle;
+            exhausted_ = true;
+        } else {
+            set(step_, false, nowMs);
+        }
+        return;
+    }
+    int target = std::max(step_ - cfg_.clipStep, 0);
+    clipCeil_ = target;
+    rampDown_ = false;
+    lastSetMs_ = nowMs;
+    if (target == step_) return;           // Stufe 0: nichts mehr zu senken
+    set(target, false, nowMs);
+    if (mode_ == Mode::Track || mode_ == Mode::Hold) {
+        // Bergsteiger: neue Basis unter der Obergrenze messen, nach oben ist zu
+        mode_ = Mode::Track;
+        phase_ = Phase::MeasureBase;
+        baseStep_ = step_;
+        failedUp_ = true;
+        failedDown_ = false;
+        afterHold_ = false;
+        holdCount_ = 0;
+        beginMeasure(nowMs, cfg_.settleMs);
+    }
+    // Acquire: die Ramp endet beim naechsten no_signal an der Obergrenze;
+    // Idle (Ramp erschoepft) bleibt Idle auf der gesenkten Stufe
 }
 
 // --- Akquisition ------------------------------------------------------------------
@@ -91,8 +152,9 @@ bool AgcController::rampStep(int64_t nowMs) {
         if (ampTrial_) {
             // AMP-Versuch erfolglos: zurueck und Ramp beenden
             ampTrial_ = false;
-            set(cfg_.fallbackStep, false, nowMs);
+            set(std::min(cfg_.fallbackStep, topStep()), false, nowMs);
             mode_ = Mode::Idle;
+            exhausted_ = true;
             return false;
         }
         // AMP kam von aussen (set_gain): aus und mit der Ramp weiter
@@ -106,22 +168,26 @@ bool AgcController::rampStep(int64_t nowMs) {
             return true;
         }
         rampDown_ = false;
-        set(lastGood_ >= 0 ? lastGood_ : cfg_.fallbackStep, false, nowMs);
+        set(fallbackStep(), false, nowMs);
         mode_ = Mode::Idle;
+        exhausted_ = true;
         return false;
     }
-    if (step_ < cfg_.maxStep) {
-        set(std::min(step_ + cfg_.acqIncrement, cfg_.maxStep), false, nowMs);
+    const int top = topStep();
+    if (step_ < top) {
+        set(std::min(step_ + cfg_.acqIncrement, top), false, nowMs);
         return true;
     }
-    if (cfg_.hasAmp && !ampTried_) {
+    // AMP (+14 dB) nur ohne ADC-Obergrenze: darueber ist der ADC schon voll
+    if (cfg_.hasAmp && !ampTried_ && !clipLimited()) {
         ampTried_ = true;
         ampTrial_ = true;
         set(cfg_.ampTrialStep, true, nowMs);
         return true;
     }
-    set(cfg_.fallbackStep, false, nowMs);
+    set(std::min(cfg_.fallbackStep, top), false, nowMs);
     mode_ = Mode::Idle;
+    exhausted_ = true;
     return false;
 }
 
@@ -153,6 +219,8 @@ void AgcController::onSynced(bool synced, int64_t nowMs) {
     // Sync verloren bei niedrigem SNR auf hoher Stufe: eher zu viel als zu
     // wenig Pegel -> die Ramp laeuft abwaerts
     rampDown_ = overloadSuspect();
+    // Ramp schon erschoepft und nie FIBs: der Schein-Sync startet sie nicht neu
+    if (exhausted_ && lastGoodFicMs_ < 0) mode_ = Mode::Idle;
 }
 
 bool AgcController::overloadSuspect() const {
@@ -167,7 +235,7 @@ int AgcController::probeDirection() const {
 void AgcController::finishAcquisition(int64_t nowMs) {
     if (!enabled_ || mode_ == Mode::Off) return;
     if (synced_ && ficOkSeen_) return;      // echter Empfang: nichts zu tun
-    set(lastGood_ >= 0 ? lastGood_ : cfg_.fallbackStep, false, nowMs);
+    set(fallbackStep(), false, nowMs);
     ampTrial_ = false;
     mode_ = Mode::Idle;
 }
@@ -176,6 +244,7 @@ void AgcController::onFicQuality(int ok, int64_t nowMs) {
     if (!enabled_ || mode_ == Mode::Off || !ofdmSynced_) return;
     if (ok > 0) {
         lastGoodFicMs_ = nowMs;
+        exhausted_ = false;
         if (!ficOkSeen_) { ficOkSeen_ = true; lastGood_ = step_; }
         if (!synced_) {
             // als Schein-Sync verworfen, liefert jetzt aber FIBs: echter Sync
@@ -189,7 +258,13 @@ void AgcController::onFicQuality(int ok, int64_t nowMs) {
     // Schein-Sync: seit ficTimeoutMs keine FIBs -> wie no_signal eine Stufe
     // weiter (bei Uebersteuerungsverdacht abwaerts, sonst hoeher)
     ficWait_ = nowMs;
-    if (synced_) { synced_ = false; mode_ = Mode::Acquire; graceNoSignals_ = 0; rampDown_ = overloadSuspect(); }
+    if (synced_) {
+        synced_ = false;
+        // nach erschoepfter Ramp ohne je FIBs: Idle statt Neustart der Ramp
+        mode_ = (exhausted_ && lastGoodFicMs_ < 0) ? Mode::Idle : Mode::Acquire;
+        graceNoSignals_ = 0;
+        rampDown_ = overloadSuspect();
+    }
     if (mode_ == Mode::Acquire) rampStep(nowMs);
 }
 
@@ -276,7 +351,7 @@ void AgcController::startProbe(int dir, int64_t nowMs) {
         bool& failed = dir > 0 ? failedUp_ : failedDown_;
         int size = (dir < 0 && bigDown_) ? std::max(cfg_.trackStep, cfg_.acqIncrement) : cfg_.trackStep;
         int target = baseStep_ + dir * size;
-        if (!failed && target >= 0 && target <= cfg_.maxStep) {
+        if (!failed && target >= 0 && target <= topStep()) {
             dir_ = dir;
             set(target, amp_, nowMs);
             phase_ = Phase::Probe;

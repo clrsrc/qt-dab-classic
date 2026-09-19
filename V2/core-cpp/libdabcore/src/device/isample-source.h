@@ -75,6 +75,13 @@ public:
     virtual void setAntennaPower(bool on) { (void)on; }
     virtual bool antennaPower() const { return false; }
     virtual void resetBuffer() {}
+    // Anteil der ADC-Rohsamples am Anschlag (0..1, I- und Q-Komponenten
+    // einzeln gezaehlt) ueber die letzten ~100 ms, gemessen VOR jeder
+    // Filterung, also ueber die ganze Analogbandbreite des Geraets. Die
+    // AGC begrenzt damit den Gain, wenn ein starker Nachbarkanal den ADC
+    // uebersteuert (device/agc-controller.h, HackRF 8 Bit). Quellen ohne
+    // Rohzugriff melden 0.
+    virtual float adcClipRatio() const { return 0.0f; }
 
     // --- Sample-Dump (.uff, xml-filewriter) -------------------------------
     virtual bool startDump(const std::string& path, std::string& error) { (void)path; error = "Dump von dieser Quelle nicht moeglich"; return false; }
