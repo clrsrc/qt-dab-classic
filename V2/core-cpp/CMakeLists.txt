@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(dabcore VERSION 3.0.1 LANGUAGES C CXX)
+project(dabcore VERSION 3.0.2 LANGUAGES C CXX)
 
 # DAB Classic – Empfangskern (Qt-frei).
 # Build: MSYS2 UCRT64 (GCC, Ninja), siehe ../tools/build-core.ps1

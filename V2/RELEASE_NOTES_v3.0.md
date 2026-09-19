@@ -4,6 +4,33 @@
 Anwendungslogik in Rust, Oberfläche mit Tauri 2 und Svelte 5. Der Empfangspfad
 geht auf Qt-DAB von Jan van Katwijk (Lazy Chair Computing) zurück. Lizenz GPLv3.*
 
+## v3.0.2 – September 2026
+
+- **Umschalten auf Stationsspeicher und Senderliste** – die Dienstauswahl
+  wird im Empfangskern vorgemerkt und startet, sobald der Dienst in der FIC
+  vollständig ist; der Kanalwechsel schickt die Auswahl sofort mit, der Ton
+  beginnt damit häufig noch vor dem Sendernamen. Eine frühe Kein-Signal-
+  Meldung beendet den Aufruf nicht mehr, es gilt allein die Wartezeit von
+  8 s. Der gewählte Sender erscheint sofort in der Anzeige; verspätete
+  Stop-Meldungen eines abgelösten Dienstes beeinflussen die Anzeige nicht
+  mehr. Kann eine Auswahl nicht ausgeführt werden (Aufnahme, Scan), meldet
+  die App das als „nicht gefunden".
+- **AGC mit Übersteuerungsgrenze** – der Kern misst den Anteil der
+  Rohsamples am Anschlag des ADC. Regelt ein starker Nachbarkanal den
+  8-Bit-Wandler in die Begrenzung, senkt die AGC den Gain und merkt sich die
+  Stufe bis zum nächsten Kanalwechsel als Obergrenze; der Verstärker (AMP)
+  wird darüber nicht mehr versucht. Nach einer erschöpften Gain-Ramp startet
+  ein Schein-Sync die Ramp nicht erneut. Neues Ereignis `adc_clip` im
+  Protokoll (Anteil und Obergrenze, 1 Hz).
+- **Halbband-FIR im HackRF-Pfad** – die 2:1-Dezimierung von 4,096 auf
+  2,048 MS/s nutzt jetzt ein Halbband-FIR mit 47 Koeffizienten (Sperrbereich
+  ab 1,25 MHz mit mehr als 70 dB) statt der Mittelung; der Nachbarkanal im
+  Abstand von 1,712 MHz faltet sich nicht mehr in den Nutzkanal. Schwache
+  Ensembles neben starken werden dadurch sichtbar.
+- **Sync-Erkennung** – die AGC bewertet den SNR erst nach dekodierten FIBs;
+  der Sync-Fortschritt zählt ab dem zweiten Rahmen in Folge, ein flatternder
+  Sync auf Rauschen hält die Gain-Regelung nicht mehr an.
+
 ## v3.0.1 – September 2026
 
 - **Antennenspeisung (Bias-T)** – neuer Schalter in den Einstellungen unter
@@ -60,8 +87,8 @@ geht auf Qt-DAB von Jan van Katwijk (Lazy Chair Computing) zurück. Lizenz GPLv3
 
 | Datei | Inhalt |
 |---|---|
-| `DAB-Classic-v3.0.1-portable-win64.zip` | Vollpaket mit WebView2-Laufzeit (Fixed Version) im Ordner `webview2\`, läuft auf jedem Windows 10/11 x64 |
-| `DAB-Classic-v3.0.1-portable-win64-lite.zip` | Ohne WebView2-Laufzeit, nutzt die vom System (Microsoft Edge) bereitgestellte Evergreen-Laufzeit |
+| `DAB-Classic-v3.0.2-portable-win64.zip` | Vollpaket mit WebView2-Laufzeit (Fixed Version) im Ordner `webview2\`, läuft auf jedem Windows 10/11 x64 |
+| `DAB-Classic-v3.0.2-portable-win64-lite.zip` | Ohne WebView2-Laufzeit, nutzt die vom System (Microsoft Edge) bereitgestellte Evergreen-Laufzeit |
 
 Beide Pakete enthalten `dab-classic.exe`, den Empfangskern `core\` mit
 Bibliotheken, die TII-Senderdatenbank `tii\`, `zadig-2.9.exe` für die
