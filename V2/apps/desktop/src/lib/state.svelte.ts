@@ -394,6 +394,22 @@ export function applyAppEvent(ev: AppEvent) {
         s.pending = null;
       }
       break;
+    case "current_changed":
+      // Wahrheit der App-Schicht (app.rs select_service/optimistic_resolve):
+      // Name sofort nach der Auswahl, nicht erst mit dem ersten Audioblock;
+      // Ruecknahme, wenn der Kern den Dienst nicht startet.
+      if (ev.current) {
+        const same = s.current && s.current.sid === ev.current.sid && s.current.scids === ev.current.scids;
+        if (!same) {
+          resetTimeshift();
+          clearService();
+        }
+        s.current = { ...ev.current, codec: s.current && same ? s.current.codec : ev.current.codec };
+      } else if (s.current) {
+        resetTimeshift();
+        clearService();
+      }
+      break;
     case "presets_changed":
       ui.presets = ev.presets;
       break;

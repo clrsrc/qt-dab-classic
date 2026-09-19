@@ -479,6 +479,7 @@ void DabCore::wireCallbacks() {
             std::lock_guard<std::mutex> lk(agcM_);
             if (agcCtl_) agcCtl_->onFicQuality(ok, agcNowMs());
         }
+        retryPendingSelect();   // Fallback 1/s, falls kein Label mehr kommt
         auto now = std::chrono::steady_clock::now();
         if (now - lastFicQuality_ < 1000ms) return;   // 1 Hz
         lastFicQuality_ = now;
@@ -495,6 +496,7 @@ void DabCore::wireCallbacks() {
     cb.addToEnsemble = [this](const std::string& name, uint32_t sid, int subChId, bool primary) {
         (void)subChId;
         emitService(name, sid, subChId, primary);
+        retryPendingSelect();
     };
     cb.programType = [this](int sid, int pty) {
         // Dienst erneut melden, jetzt mit Programmtyp (siehe protocol.md)
@@ -1225,21 +1227,67 @@ void DabCore::wireBackend(RunningService* rs) {
     }
 }
 
+// FIC-Index eines Dienstes, wenn er jetzt startbar ist (Komponente bekannt
+// UND audioData/packetData vollstaendig), sonst -1.
+int DabCore::startableIndex(uint32_t sid, uint8_t scids) {
+    auto& fic = ofdm_->fic();
+    int index = fic.getServiceComp_SCIds(sid, scids);
+    if (index < 0) index = fic.getServiceComp(sid, 0);
+    if (index < 0) return -1;
+    if (fic.serviceType(index) == 0) {
+        audiodata ad;
+        fic.audioData(index, ad);
+        if (!ad.defined) return -1;
+    } else {
+        packetdata pd;
+        fic.packetData(index, pd);
+        if (!pd.defined) return -1;
+    }
+    return index;
+}
+
+// Aus den FIC-Callbacks (OFDM-Thread): ist der vorgemerkte Dienst jetzt
+// startbar, geht die Auswahl als Aktion an den Aktionsthread. try_lock,
+// weil der Kommandothread serviceM_ waehrend tuneChannel haelt.
+void DabCore::retryPendingSelect() {
+    std::unique_lock<std::mutex> lk(serviceM_, std::try_to_lock);
+    if (!lk.owns_lock() || !pendingSelect_ || retuning_ || closing_ || !ofdm_) return;
+    if (startableIndex(pendingSelect_->sid, pendingSelect_->scids) < 0) return;
+    Action a;
+    a.kind = Action::Select;
+    a.sid = pendingSelect_->sid;
+    a.scids = pendingSelect_->scids;
+    a.slot = pendingSelect_->slot;
+    a.autoData = pendingSelect_->autoData;
+    pendingSelect_.reset();   // scheitert selectService doch, merkt es den Dienst erneut vor
+    lk.unlock();
+    enqueueAction(a);
+}
+
 void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot, AutoData autoData) {
     std::lock_guard<std::mutex> lk(serviceM_);
     if (closing_ || !ofdm_) {
         sink_(events::log("warn", "select_service ohne geoeffnete Quelle"));
         return;
     }
+    if (slot == Slot::Primary) pendingSelect_.reset();   // neue Auswahl ersetzt die Vormerkung
     if (retuning_) {   // Review M2: ofdm_->start() wuerde das Backend gleich loeschen
-        sink_(events::log("warn", "select_service waehrend des Kanalwechsels verworfen: SId " + std::to_string(sid)));
+        if (slot == Slot::Primary) {
+            pendingSelect_ = PendingSelect{sid, scids, slot, autoData};
+            sink_(events::log("info", "Dienst vorgemerkt (Kanalwechsel laeuft): SId " + std::to_string(sid)));
+        } else {
+            sink_(events::log("warn", "select_service waehrend des Kanalwechsels verworfen: SId " + std::to_string(sid)));
+        }
         return;
     }
-    auto& fic = ofdm_->fic();
-    int index = fic.getServiceComp_SCIds(sid, scids);
-    if (index < 0) index = fic.getServiceComp(sid, 0);
+    int index = startableIndex(sid, scids);
     if (index < 0) {
-        sink_(events::log("warn", "Dienst nicht in der FIC: SId " + std::to_string(sid)));
+        if (slot == Slot::Primary) {
+            pendingSelect_ = PendingSelect{sid, scids, slot, autoData};
+            sink_(events::log("info", "Dienst vorgemerkt (noch nicht in der FIC): SId " + std::to_string(sid)));
+        } else {
+            sink_(events::log("warn", "Dienst nicht in der FIC: SId " + std::to_string(sid)));
+        }
         return;
     }
     // Laeuft der Dienst im Slot schon?
@@ -1404,6 +1452,8 @@ void DabCore::stopOneLocked(RunningService* rs) {
 
 void DabCore::stopService(Slot slot, int64_t sid) {
     std::lock_guard<std::mutex> lk(serviceM_);
+    if (slot == Slot::Primary && (sid < 0 || (pendingSelect_ && pendingSelect_->sid == static_cast<uint32_t>(sid))))
+        pendingSelect_.reset();
     std::vector<RunningService*> victims;
     for (auto& rs : services_)
         if (rs->slot == slot && (sid < 0 || rs->sid == static_cast<uint32_t>(sid))) victims.push_back(rs.get());
@@ -1764,6 +1814,7 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
     {
         std::lock_guard<std::mutex> lk(serviceM_);
         retuning_ = true;
+        pendingSelect_.reset();   // Vormerkung gilt je Kanal
         stopAllServicesLocked();
     }
     struct RetuneGuard {

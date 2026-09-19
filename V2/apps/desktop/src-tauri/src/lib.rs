@@ -364,8 +364,12 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
                     if !ev.is_latest_wins() {
                         trace_json("<-", &ev);
                     }
+                    let mut swallowed = false;
                     let mut fx = match lock_app(&shared) {
                         Ok(mut a) => {
+                            // vom Kern verdraengter Dienst: sein verspaetetes
+                            // service_stopped geht auch nicht roh ans Frontend
+                            swallowed = a.is_expected_stop(&ev);
                             let mut fx = a.handle_event(&ev, now);
                             if matches!(ev, Event::Ready { .. }) {
                                 fx.append(a.startup(now));
@@ -389,7 +393,7 @@ fn spawn_core(handle: &AppHandle, reason: &str) -> anyhow::Result<()> {
                     } else {
                         true
                     };
-                    if forward {
+                    if forward && !swallowed {
                         if let Err(e) = app.emit(CORE_EVENT, &ev) {
                             log::warn!("emit: {e}");
                         }

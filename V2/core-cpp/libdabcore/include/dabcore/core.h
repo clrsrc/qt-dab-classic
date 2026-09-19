@@ -299,6 +299,20 @@ private:
     // ofdm_->start(), das per resetChannel alle Backends loescht) darf kein
     // Dienst angelegt werden - sonst zeigt RunningService::backend ins Leere.
     bool retuning_ = false;
+    // Vormerkung (Befund 19.09.2026, Favoriten-Zapping): ein select_service
+    // fuer den Primary-Slot, das der Kern noch nicht ausfuehren kann (Kanal-
+    // wechsel laeuft, Dienst noch nicht oder unvollstaendig in der FIC), wird
+    // gemerkt und gestartet, sobald die FIC ihn vollstaendig hat
+    // (retryPendingSelect aus den FIC-Callbacks -> Aktionsthread). Die App
+    // kann select_service damit direkt nach set_channel schicken; der Dienst
+    // startet dann meist vor dem Label (FIG 1/1), auf das die App sonst
+    // wartet. Verworfen bei set_channel, stop_service (Primary) und jeder
+    // neuen Primary-Auswahl. Alter Dienst wird erst gestoppt, wenn der neue
+    // startbar ist (keine Stille bei unvollstaendiger FIC).
+    struct PendingSelect { uint32_t sid; uint8_t scids; Slot slot; AutoData autoData; };
+    std::optional<PendingSelect> pendingSelect_;   // unter serviceM_
+    int  startableIndex(uint32_t sid, uint8_t scids);   // FIC-Index, wenn startbar, sonst -1
+    void retryPendingSelect();
     std::string lastClockSource_;   // zuletzt gemeldeter Referenztakt (Log nur bei Aenderung)
     std::vector<std::unique_ptr<RunningService>> services_;
 

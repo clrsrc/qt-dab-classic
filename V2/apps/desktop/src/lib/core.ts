@@ -457,6 +457,7 @@ export type AppEvent =
   | { type: "settings_changed"; settings: Settings }
   | { type: "core_restarted"; reason: string; attempt: number }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string }
+  | { type: "current_changed"; current: { sid: number; scids: number; codec: Codec | null; stereo: boolean } | null }
   | { type: "ews_locations"; iid: number; sub_ch: number; location_info: EwsLocationInfo[] }
   | { type: "ews_history"; history: EwsHistoryEntry[] }
   | { type: "traffic"; active: TrafficEntry | null; history: TrafficEntry[]; supported: boolean }

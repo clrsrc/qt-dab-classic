@@ -38,6 +38,12 @@ pub enum AppEvent {
     SettingsChanged { settings: Settings },
     CoreRestarted { reason: String, attempt: u32 },
     Notice { level: NoticeLevel, text: String },
+    /// Anzeige des laufenden Dienstes aus Sicht der App (optimistisch bei
+    /// `select_service`, Ruecknahme nach SELECT_TIMEOUT); das Frontend
+    /// spiegelt sonst nur `service_started`/`service_stopped` des Kerns und
+    /// zeigte zwischen Stop und erstem Audioblock "kein Dienst" (Befund
+    /// 19.09.2026, Favoriten-Zapping).
+    CurrentChanged { current: Option<crate::state::CurrentService> },
     /// EPG/Logos (crate::epg, crate::logos): neue Sendeplan-Datei, neues Logo,
     /// Logo + Now/Next des aktuellen Dienstes geaendert.
     EpgUpdated { eid: u16, sid: u32, day: u32 },
@@ -209,6 +215,8 @@ struct Optimistic {
 /// (Abbruch VOR `stopOneLocked`); `Some(false)`: der alte Dienst ist bereits
 /// gestoppt, der neue kommt nicht.
 fn select_failed_by_log(text: &str) -> Option<bool> {
+    // "Dienst nicht in der FIC" kommt fuer den Primary-Slot nicht mehr: der
+    // Kern merkt die Auswahl vor (core.cpp pendingSelect_) und startet spaeter.
     if text.starts_with("Dienst nicht in der FIC") || text.starts_with("Dienstwechsel blockiert") {
         Some(true)
     } else if text.starts_with("Audiodienst noch nicht vollstaendig")
@@ -427,23 +435,42 @@ impl App {
                     }
                 }
             }
-            Event::NoSignal { channel } => {
-                if let Some(p) = self.pending.clone() {
-                    if p.channel.eq_ignore_ascii_case(channel) && !self.state.is_file_source() {
-                        fx.append(self.pending_failed(p));
-                    }
-                }
-            }
-            Event::ServiceStarted { slot: ServiceSlot::Primary, .. } => {
+            // `no_signal` bricht den Preset-Aufruf NICHT mehr ab (Befund
+            // 19.09.2026, Zapping am Balkon: der Kern meldet no_signal alle
+            // ~770 ms ohne Sync-Fortschritt, also auch waehrend die AGC nach
+            // dem Kanalwechsel noch nachregelt; in 4 von 6 Faellen kam das
+            // Ensemble 0,3-2 s NACH dem ersten no_signal). Es gilt nur noch
+            // PRESET_TIMEOUT (tick).
+            Event::ServiceStarted { slot: ServiceSlot::Primary, sid, scids, .. } => {
                 // Der Kern hat den Dienst wirklich gestartet: die optimistische
                 // Anzeige ist bestaetigt (bzw. durch die echte ersetzt).
                 self.optimistic = None;
                 self.remember_last();
+                // Vormerkung im Kern: der Dienst kann vor seinem Label starten
+                // (kein `service_added` bisher) - dann ist der Aufruf hiermit
+                // erledigt, nicht erst mit dem Label oder gar dem Timeout.
+                if let Some(p) = self.pending.clone() {
+                    if p.sid != 0 && p.sid == *sid {
+                        let s = self.state.service(*sid, *scids).cloned().unwrap_or_else(|| ServiceInfo {
+                            sid: *sid,
+                            scids: *scids,
+                            name: p.name.clone(),
+                            is_audio: true,
+                            is_primary: true,
+                            sub_ch: 0,
+                            bitrate_kbps: 0,
+                            pty: 0,
+                            short_name: String::new(),
+                            language: 0,
+                        });
+                        fx.append(self.pending_found(p, s));
+                    }
+                }
             }
             Event::Log { level: dab_api::LogLevel::Warn | dab_api::LogLevel::Error, text } => {
                 if self.optimistic.is_some() {
                     if let Some(old_still_plays) = select_failed_by_log(text) {
-                        self.optimistic_resolve(old_still_plays, text);
+                        fx.append(self.optimistic_resolve(old_still_plays, text));
                     }
                 }
             }
@@ -494,7 +521,7 @@ impl App {
         if let Some(o) = self.optimistic.clone() {
             if now >= o.deadline {
                 let old_still_plays = o.prev.as_ref().map(|p| self.expected_stops.iter().any(|(s, _)| *s == p.sid)).unwrap_or(false);
-                self.optimistic_resolve(old_still_plays, "kein service_started innerhalb der Wartezeit");
+                fx.append(self.optimistic_resolve(old_still_plays, "kein service_started innerhalb der Wartezeit"));
             }
         }
         // Verfallene Vormerkungen (der Kern stoppt synchron; was so lange
@@ -533,7 +560,13 @@ impl App {
         // faelschlich "Selected" trotz ausgebliebener Umschaltung.
         let fx_select = match self.select_service(s.sid, s.scids) {
             Ok(fx) => fx,
-            Err(e) => return Effects::default().ev(AppEvent::Notice { level: NoticeLevel::Warn, text: e.to_string() }),
+            // Ehrlich abschliessen: sonst bleibt im Frontend `s.pending`
+            // ("Suche ...") stehen, weil kein PresetStatus mehr kommt.
+            Err(e) => {
+                return Effects::default()
+                    .ev(AppEvent::Notice { level: NoticeLevel::Warn, text: e.to_string() })
+                    .ev(AppEvent::PresetStatus { slot: p.slot, status: PresetStatus::NotFound, name: p.name, channel: p.channel });
+            }
         };
         let mut fx = fx_select;
         // Favoriten-Import: SId/EId nachtragen, Namen aktualisieren.
@@ -560,6 +593,18 @@ impl App {
         self.pending = None;
         self.state.pending = None;
         Effects::default().ev(AppEvent::PresetStatus { slot: p.slot, status: PresetStatus::NotFound, name: p.name, channel: p.channel })
+    }
+
+    /// Ein `service_stopped`, das `handle_event` verschlucken wird (vom
+    /// Kern verdraengter Dienst, siehe `expected_stops`): die Tauri-Bruecke
+    /// reicht es dann auch nicht roh ans Frontend weiter, sonst loescht der
+    /// verspaetete Stop dort die Anzeige des laengst wieder laufenden
+    /// Dienstes (Befund 19.09.2026: A -> B -> A innerhalb von 10 s).
+    pub fn is_expected_stop(&self, ev: &Event) -> bool {
+        match ev {
+            Event::ServiceStopped { slot: ServiceSlot::Primary, sid } => self.expected_stops.iter().any(|(s, _)| s == sid),
+            _ => false,
+        }
     }
 
     pub fn is_pending(&self) -> bool {
@@ -703,15 +748,15 @@ impl App {
         // raeumt `tick` (SELECT_TIMEOUT) bzw. die Log-Warnung des Kerns auf.
         self.state.current = Some(crate::state::CurrentService { sid, scids, codec: None, stereo: false });
         self.optimistic = Some(Optimistic { sid, scids, prev, deadline: now + SELECT_TIMEOUT });
-        Ok(Effects::default().cmd(cmd))
+        Ok(Effects::default().cmd(cmd).ev(AppEvent::CurrentChanged { current: self.state.current.clone() }))
     }
 
     /// Optimistische Anzeige aufloesen, wenn der Kern den Dienst nicht
     /// gestartet hat (Befund 4). `old_still_plays`: der alte Dienst wurde nie
     /// gestoppt -> Anzeige zurueck auf ihn (nur, wenn er selbst bestaetigt
     /// lief, sonst "kein Dienst"); andernfalls "kein Dienst".
-    fn optimistic_resolve(&mut self, old_still_plays: bool, why: &str) {
-        let Some(o) = self.optimistic.take() else { return };
+    fn optimistic_resolve(&mut self, old_still_plays: bool, why: &str) -> Effects {
+        let Some(o) = self.optimistic.take() else { return Effects::default() };
         let still_optimistic = self
             .state
             .current
@@ -719,7 +764,7 @@ impl App {
             .map(|c| c.sid == o.sid && c.scids == o.scids && c.codec.is_none())
             .unwrap_or(false);
         if !still_optimistic {
-            return;
+            return Effects::default();
         }
         // Die Vormerkung des alten Dienstes ist erledigt - entweder kam sein
         // Stop laengst, oder er kommt nie (der Kern hat ihn nicht gestoppt).
@@ -738,6 +783,7 @@ impl App {
                 self.state.clear_service();
             }
         }
+        Effects::default().ev(AppEvent::CurrentChanged { current: self.state.current.clone() })
     }
 
     /// Naechster/vorheriger hoerbarer Dienst der Liste (mit Umbruch).
@@ -888,6 +934,14 @@ impl App {
             // Gleicher Kanal, Dienst (noch) nicht in der Liste: nur warten.
         } else {
             fx.append(self.set_channel(&channel));
+            if sid != 0 {
+                // Vormerkung im Kern (core.cpp pendingSelect_): die Auswahl
+                // geht sofort mit; der Kern startet den Dienst, sobald die FIC
+                // ihn vollstaendig hat - meist vor dem Label, auf das
+                // `pending` (service_added) sonst wartet. Bestaetigung kommt
+                // als service_started (handle_event) oder service_added.
+                fx = fx.cmd(Command::SelectService { sid, scids, slot: ServiceSlot::Primary });
+            }
         }
         self.pending = Some(Pending { slot, channel: channel.clone(), sid, scids, name: name.clone(), deadline: now + PRESET_TIMEOUT });
         self.state.pending = Some(PendingState { slot, channel: channel.clone(), name: name.clone() });
@@ -1041,7 +1095,11 @@ mod tests {
         a.presets.set(0, preset("5C", 0xD220, "Dlf Kultur"));
         let fx = a.preset_recall(0, now).unwrap();
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xD220, scids: 0, slot: ServiceSlot::Primary }]);
-        assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::Selected, .. }));
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { status: PresetStatus::Selected, .. })));
+        assert!(
+            fx.events.iter().any(|e| matches!(e, AppEvent::CurrentChanged { current: Some(c) } if c.sid == 0xD220)),
+            "optimistische Anzeige geht ans Frontend"
+        );
         assert!(!a.is_pending());
         // Bugfixes.txt #5/#7 galt bisher nur select_service()/step_service();
         // pending_found() (Preset-/Senderlisten-Aufruf) baute das Kommando
@@ -1202,8 +1260,14 @@ mod tests {
         tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf")], now);
         a.presets.set(1, preset("11D", 0xE1C0, "WDR 5"));
         let fx = a.preset_recall(1, now).unwrap();
-        // AGC an (Standard): kein Gain vorgeben, nur Kanalwechsel, Status "tuning"
-        assert_eq!(fx.commands, vec![Command::SetChannel { channel: "11D".into() }]);
+        // AGC an (Standard): kein Gain vorgeben; Kanalwechsel + Vormerkung im Kern, Status "tuning"
+        assert_eq!(
+            fx.commands,
+            vec![
+                Command::SetChannel { channel: "11D".into() },
+                Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }
+            ]
+        );
         assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::Tuning, slot: Some(1), .. }));
         assert!(a.is_pending());
         assert!(a.state.services.is_empty(), "Senderliste beim Kanalwechsel geleert");
@@ -1213,7 +1277,7 @@ mod tests {
         // Gesuchter Dienst: select_service
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C0, "WDR 5") }, now + Duration::from_secs(2));
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }]);
-        assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::Selected, slot: Some(1), .. }));
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { status: PresetStatus::Selected, slot: Some(1), .. })));
         assert!(!a.is_pending());
     }
 
@@ -1257,13 +1321,42 @@ mod tests {
     }
 
     #[test]
-    fn recall_no_signal_fails_fast() {
+    fn recall_no_signal_keeps_waiting() {
+        // Befund 19.09.2026: das erste no_signal kommt oft, waehrend die AGC
+        // nach dem Kanalwechsel noch nachregelt; das Ensemble folgt 0,3-2 s spaeter.
+        let now = Instant::now();
+        let mut a = app();
+        a.presets.set(0, preset("11D", 0xE1C0, "WDR 5"));
+        let fx = a.preset_recall(0, now).unwrap();
+        assert!(
+            fx.commands.iter().any(|c| matches!(c, Command::SelectService { sid: 0xE1C0, .. })),
+            "select_service geht sofort mit set_channel raus (Vormerkung im Kern)"
+        );
+        let fx = a.handle_event(&Event::NoSignal { channel: "11D".into() }, now + Duration::from_secs(1));
+        assert!(!fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { .. })), "no_signal bricht nicht ab");
+        assert!(a.is_pending());
+        let fx = a.tick(now + PRESET_TIMEOUT + Duration::from_millis(1));
+        assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::NotFound, .. }), "nur der Timeout beendet");
+    }
+
+    #[test]
+    fn recall_resolved_by_service_started_before_label() {
+        // Kern-Vormerkung: service_started kann vor service_added (Label) kommen.
         let now = Instant::now();
         let mut a = app();
         a.presets.set(0, preset("11D", 0xE1C0, "WDR 5"));
         a.preset_recall(0, now).unwrap();
-        let fx = a.handle_event(&Event::NoSignal { channel: "11D".into() }, now + Duration::from_secs(1));
-        assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::NotFound, .. }));
+        let ev = Event::ServiceStarted {
+            slot: ServiceSlot::Primary,
+            sid: 0xE1C0,
+            scids: 0,
+            codec: dab_api::Codec::HeAac { sbr: true, ps: false, sample_rate: 48000 },
+            stereo: true,
+        };
+        let fx = a.handle_event(&ev, now + Duration::from_secs(2));
+        assert!(!a.is_pending(), "service_started des gesuchten Dienstes schliesst den Aufruf ab");
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { status: PresetStatus::Selected, .. })));
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xE1C0));
     }
 
     #[test]

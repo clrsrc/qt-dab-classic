@@ -494,10 +494,16 @@ mod tests {
         // Gleicher Kanal, Dienst bekannt: sofort
         let fx = a.tune_station("5C", 0x10BC, 0xD220, 0, now).unwrap();
         assert_eq!(fx.commands, vec![Command::SelectService { sid: 0xD220, scids: 0, slot: ServiceSlot::Primary }]);
-        assert!(matches!(fx.events[0], AppEvent::PresetStatus { slot: None, status: PresetStatus::Selected, .. }));
-        // Anderer Kanal: Kanalwechsel (AGC an: kein Gain vorgeben), warten, dann select_service
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { slot: None, status: PresetStatus::Selected, .. })));
+        // Anderer Kanal: Kanalwechsel (AGC an: kein Gain vorgeben) + Vormerkung im Kern, warten
         let fx = a.tune_station("11D", 0x1E1C, 0xE1C0, 0, now).unwrap();
-        assert_eq!(fx.commands, vec![Command::SetChannel { channel: "11D".into() }]);
+        assert_eq!(
+            fx.commands,
+            vec![
+                Command::SetChannel { channel: "11D".into() },
+                Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }
+            ]
+        );
         assert!(matches!(&fx.events[0], AppEvent::PresetStatus { slot: None, status: PresetStatus::Tuning, name, channel } if name == "WDR 5" && channel == "11D"));
         assert!(a.is_pending());
         a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into(), ecc: 0 }, now);
