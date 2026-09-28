@@ -305,6 +305,10 @@ pub enum Event {
     Synced { synced: bool },
     NoSignal { channel: String },
     Snr { db: f32 },
+    /// Anteil der ADC-Rohsamples am Anschlag (HackRF int8 |v| >= 127) und die
+    /// daraus abgeleitete Gain-Obergrenze der AGC (VGA, -1 = keine); 1 Hz,
+    /// additiv seit 19.09.2026 (AGC-Uebersteuerungsschutz).
+    AdcClip { ratio: f32, ceiling: i16 },
     FicQuality { ok: u16, total: u16 },
     FrequencyOffset { hz: i32 },
     /// `ecc`: Extended Country Code aus FIG 0/9 (0 = noch unbekannt),
@@ -573,6 +577,7 @@ impl Event {
         matches!(
             self,
             Event::Snr { .. }
+                | Event::AdcClip { .. }
                 | Event::FicQuality { .. }
                 | Event::FrequencyOffset { .. }
                 | Event::AudioLevel { .. }

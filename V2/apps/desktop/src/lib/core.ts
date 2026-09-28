@@ -453,6 +453,7 @@ export type PresetStatus = "tuning" | "selected" | "not_found";
 
 export type AppEvent =
   | { type: "preset_status"; slot: number | null; status: PresetStatus; name: string; channel: string }
+  | { type: "channel_changed"; channel: string }
   | { type: "presets_changed"; presets: Presets }
   | { type: "settings_changed"; settings: Settings }
   | { type: "core_restarted"; reason: string; attempt: number }

@@ -313,6 +313,7 @@ fn resource_core_path(app: &AppHandle) -> Option<std::path::PathBuf> {
 fn latest_key(ev: &Event) -> &'static str {
     match ev {
         Event::Snr { .. } => "snr",
+        Event::AdcClip { .. } => "adc_clip",
         Event::FicQuality { .. } => "fic",
         Event::FrequencyOffset { .. } => "foff",
         Event::AudioLevel { .. } => "level",

@@ -504,7 +504,7 @@ mod tests {
                 Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }
             ]
         );
-        assert!(matches!(&fx.events[0], AppEvent::PresetStatus { slot: None, status: PresetStatus::Tuning, name, channel } if name == "WDR 5" && channel == "11D"));
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { slot: None, status: PresetStatus::Tuning, name, channel } if name == "WDR 5" && channel == "11D")));
         assert!(a.is_pending());
         a.handle_event(&Event::EnsembleFound { eid: 0x1E1C, name: "WDR".into(), channel: "11D".into(), ecc: 0 }, now);
         let fx = a.handle_event(&Event::ServiceAdded { service: svc(0xE1C1, "1LIVE", true) }, now);

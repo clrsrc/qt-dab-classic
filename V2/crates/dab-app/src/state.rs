@@ -356,10 +356,19 @@ impl AppState {
                 self.fic_total = *total;
             }
             Event::EnsembleFound { eid, name, channel, ecc } => {
-                let changed = self.ensemble.as_ref().map(|e| e.eid != *eid).unwrap_or(true);
+                // Nur ein ECHTER Ensemble-Wechsel auf demselben Kanal (bekanntes
+                // Ensemble, andere EId) leert die Dienstliste. Nach einem
+                // Kanalwechsel ist `ensemble` None (clear_reception) - dann
+                // bleibt alles stehen: der Kern startet den vorgemerkten Dienst
+                // und meldet die Dienste (FIG 1/1) oft VOR dem Ensemble-Label
+                // (FIG 1/0); ein Loeschen hier warf den laufenden Dienst aus der
+                // Anzeige ("hoerbar, aber nicht angezeigt") und die Dienstliste
+                // weg (Aufruf im selben Ensemble fand den Dienst nicht mehr) -
+                // Zapping-Messung 28.09.2026: 11 von 30 Umschaltungen. Der
+                // laufende Dienst endet ohnehin nur per service_stopped.
+                let changed = self.ensemble.as_ref().map(|e| e.eid != *eid).unwrap_or(false);
                 if changed {
                     self.services.clear();
-                    self.clear_service();
                 }
                 // ECC behalten, wenn dasselbe Ensemble ohne ECC erneut gemeldet wird.
                 let ecc = if *ecc != 0 { *ecc } else if changed { 0 } else { self.ensemble.as_ref().map(|e| e.ecc).unwrap_or(0) };
@@ -537,6 +546,27 @@ mod tests {
         assert_eq!(st.services[0].name, "Dlf");
         assert_eq!(st.services[1].pty, 7);
         assert_eq!(st.channel.as_deref(), Some("5C"));
+    }
+
+    /// Zapping-Messung 28.09.2026: service_started und die Dienstlabels
+    /// kommen nach dem Kanalwechsel vor dem Ensemble-Label - ensemble_found
+    /// darf weder den laufenden Dienst noch die Liste loeschen.
+    #[test]
+    fn ensemble_found_after_channel_change_keeps_current_and_services() {
+        let mut st = AppState::default();
+        st.apply(&Event::EnsembleFound { eid: 0x10EC, name: "WDR".into(), channel: "11D".into(), ecc: 0 });
+        st.apply(&Event::ServiceAdded { service: svc(1, "WDR 5") });
+        st.clear_reception();   // set_channel
+        st.apply(&Event::ServiceAdded { service: svc(2, "80s80s") });
+        st.apply(&Event::ServiceStarted { slot: ServiceSlot::Primary, sid: 2, scids: 0, codec: Codec::HeAac { sbr: true, ps: false, sample_rate: 48000 }, stereo: true });
+        st.apply(&Event::EnsembleFound { eid: 0x11F7, name: "Antenne DE".into(), channel: "9B".into(), ecc: 0 });
+        assert_eq!(st.current.as_ref().map(|c| c.sid), Some(2), "laufender Dienst bleibt");
+        assert_eq!(st.services.len(), 1, "Dienstliste bleibt");
+        // Echter Ensemble-Wechsel auf demselben Kanal: Liste neu, Dienst bleibt
+        // (der Kern meldet service_stopped, wenn er ihn beendet).
+        st.apply(&Event::EnsembleFound { eid: 0x1234, name: "Anderes".into(), channel: "9B".into(), ecc: 0 });
+        assert!(st.services.is_empty());
+        assert_eq!(st.current.as_ref().map(|c| c.sid), Some(2));
     }
 
     #[test]

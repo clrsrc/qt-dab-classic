@@ -14,6 +14,9 @@ use std::time::{Duration, Instant};
 
 /// Wartezeit auf `service_added(sid)` nach einem Kanalwechsel (Analyse 5.1).
 pub const PRESET_TIMEOUT: Duration = Duration::from_secs(8);
+/// So lange nach einem Preset-Timeout gilt ein `service_started` des
+/// gesuchten Dienstes noch als (verspaeteter) Erfolg des Aufrufs.
+pub const LATE_SUCCESS_WINDOW: Duration = Duration::from_secs(60);
 /// Wartezeit auf `service_started` nach `select_service`: solange zeigt
 /// `state.current` den neuen Dienst optimistisch an; danach wird die Anzeige
 /// zurueckgesetzt (Review 16.09.2026, Befund 4). Der Kern meldet einen
@@ -34,6 +37,11 @@ pub const DEFAULT_HACKRF_GAIN: Gain = Gain { lna: 40, vga: 40, amp: false };
 pub enum AppEvent {
     /// Fortschritt eines Preset-Aufrufs bzw. der Start-Wiederherstellung.
     PresetStatus { slot: Option<usize>, status: PresetStatus, name: String, channel: String },
+    /// Kanalwechsel aus `set_channel`: das Frontend leert damit Ensemble und
+    /// Dienstliste (nicht den laufenden Dienst - den beendet der Kern per
+    /// service_stopped). Vorher leitete es das aus `ensemble_found` ab, was
+    /// den bereits gestarteten Dienst mitloeschte (Zapping 28.09.2026).
+    ChannelChanged { channel: String },
     PresetsChanged { presets: Presets },
     SettingsChanged { settings: Settings },
     CoreRestarted { reason: String, attempt: u32 },
@@ -180,6 +188,12 @@ pub struct App {
     /// TPEG-Verkehrsmeldungen (crate::tpeg).
     pub tpeg: crate::tpeg::TpegCtl,
     pending: Option<Pending>,
+    /// Aufruf, der per [`PRESET_TIMEOUT`] als "nicht gefunden" gemeldet
+    /// wurde: der Kern haelt die Vormerkung trotzdem und startet den Dienst
+    /// bei langsamer Synchronisation spaeter noch - dann wird die Meldung
+    /// mit `Selected` korrigiert (Zapping-Messung 28.09.2026: Sync nach
+    /// Kanalwechsel dauert 0,5-4 s, selten laenger).
+    late: Option<(Pending, Instant)>,
     /// SIds, deren `service_stopped` wir noch erwarten, weil wir sie selbst
     /// durch eine neuere Auswahl ersetzt haben (Fund 15.09.2026: bei
     /// schnellem Umschalten - z. B. mehrfach hintereinander Favoriten
@@ -260,6 +274,7 @@ impl App {
             radiodns: Default::default(),
             tpeg: Default::default(),
             pending: None,
+            late: None,
             expected_stops: Default::default(),
             optimistic: None,
         };
@@ -449,6 +464,14 @@ impl App {
                 // Vormerkung im Kern: der Dienst kann vor seinem Label starten
                 // (kein `service_added` bisher) - dann ist der Aufruf hiermit
                 // erledigt, nicht erst mit dem Label oder gar dem Timeout.
+                // Nach dem Timeout doch noch gestartet: Meldung korrigieren.
+                if let Some((p, at)) = self.late.clone() {
+                    if p.sid == *sid && now.saturating_duration_since(at) < LATE_SUCCESS_WINDOW {
+                        self.late = None;
+                        let name = self.state.service(*sid, *scids).map(|s| s.name.trim().to_string()).unwrap_or(p.name.clone());
+                        fx = fx.ev(AppEvent::PresetStatus { slot: p.slot, status: PresetStatus::Selected, name, channel: p.channel });
+                    }
+                }
                 if let Some(p) = self.pending.clone() {
                     if p.sid != 0 && p.sid == *sid {
                         let s = self.state.service(*sid, *scids).cloned().unwrap_or_else(|| ServiceInfo {
@@ -592,6 +615,9 @@ impl App {
     fn pending_failed(&mut self, p: Pending) -> Effects {
         self.pending = None;
         self.state.pending = None;
+        if p.sid != 0 {
+            self.late = Some((p.clone(), Instant::now()));
+        }
         Effects::default().ev(AppEvent::PresetStatus { slot: p.slot, status: PresetStatus::NotFound, name: p.name, channel: p.channel })
     }
 
@@ -701,7 +727,7 @@ impl App {
                 log::warn!("settings.json: {e}");
             }
         }
-        fx.cmd(Command::SetChannel { channel })
+        fx.cmd(Command::SetChannel { channel: channel.clone() }).ev(AppEvent::ChannelChanged { channel })
     }
 
     fn gain_for_channel(&self, channel: &str) -> Option<Gain> {
@@ -931,7 +957,14 @@ impl App {
             if self.state.is_file_source() {
                 return Ok(fx.ev(AppEvent::PresetStatus { slot, status: PresetStatus::NotFound, name, channel }));
             }
-            // Gleicher Kanal, Dienst (noch) nicht in der Liste: nur warten.
+            // Gleicher Kanal, Dienst (noch) nicht in der Liste: die Auswahl
+            // trotzdem sofort an den Kern (er merkt sie vor und startet, sobald
+            // die FIC den Dienst hat - seine FIC ist vollstaendiger als unsere
+            // Liste, z. B. direkt nach dem Kanalwechsel). Nur ein importierter
+            // Favorit ohne SId muss auf sein Label warten.
+            if sid != 0 {
+                fx = fx.cmd(Command::SelectService { sid, scids, slot: ServiceSlot::Primary });
+            }
         } else {
             fx.append(self.set_channel(&channel));
             if sid != 0 {
@@ -1252,6 +1285,31 @@ mod tests {
         assert_eq!(a.state.current.as_ref().map(|c| (c.sid, c.scids)), Some((0xD220, 1)));
     }
 
+    /// Zapping-Messung 28.09.2026 (#19): gleicher Kanal, Dienst noch nicht in
+    /// der Liste - die Auswahl geht trotzdem sofort an den Kern (Vormerkung),
+    /// statt nur auf ein Label zu warten, das nicht mehr kommt.
+    #[test]
+    fn recall_same_channel_unknown_service_selects_in_core() {
+        let mut a = app();
+        let now = Instant::now();
+        a.state.device = Some(crate::state::DeviceState { kind: "hackrf".into(), ..Default::default() });
+        a.set_channel("9B");
+        a.handle_event(&Event::EnsembleFound { eid: 0x11F7, name: "Antenne DE".into(), channel: "9B".into(), ecc: 0 }, now);
+        a.presets.slots[6] = Some(Preset { channel: "9B".into(), eid: 0x11F7, sid: 0x12E9, scids: 0, name: "90s90s".into(), short_name: String::new(), logo_path: None, logo_data_url: None, stored_at: 0 });
+        let fx = a.preset_recall(6, now).unwrap();
+        assert!(fx.commands.contains(&Command::SelectService { sid: 0x12E9, scids: 0, slot: ServiceSlot::Primary }));
+        assert!(!fx.commands.iter().any(|c| matches!(c, Command::SetChannel { .. })), "kein Kanalwechsel");
+        assert!(a.is_pending());
+        // Der Kern startet ihn vor dem Label: service_started schliesst ab.
+        let fx = a.handle_event(
+            &Event::ServiceStarted { slot: ServiceSlot::Primary, sid: 0x12E9, scids: 0, codec: Codec::HeAac { sbr: true, ps: false, sample_rate: 48000 }, stereo: true },
+            now + Duration::from_millis(600),
+        );
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { status: PresetStatus::Selected, slot: Some(6), .. })));
+        assert!(!a.is_pending());
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0x12E9));
+    }
+
     #[test]
     fn recall_other_channel_waits_for_service_added() {
         let now = Instant::now();
@@ -1268,7 +1326,8 @@ mod tests {
                 Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Primary }
             ]
         );
-        assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::Tuning, slot: Some(1), .. }));
+        assert!(matches!(fx.events[0], AppEvent::ChannelChanged { .. }), "Kanalwechsel zuerst ans Frontend");
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { status: PresetStatus::Tuning, slot: Some(1), .. })));
         assert!(a.is_pending());
         assert!(a.state.services.is_empty(), "Senderliste beim Kanalwechsel geleert");
         // Fremder Dienst: nichts
@@ -1318,6 +1377,30 @@ mod tests {
         assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::NotFound, slot: Some(2), .. }));
         assert!(!a.is_pending());
         assert!(a.presets.is_occupied(2), "Preset bleibt erhalten");
+    }
+
+    /// Timeout gemeldet, der Kern startet den vorgemerkten Dienst aber doch
+    /// noch (langsamer Sync): die Meldung wird zu "Selected" korrigiert.
+    #[test]
+    fn recall_late_start_after_timeout_reports_selected() {
+        let mut a = app();
+        let now = Instant::now();
+        a.presets.slots[1] = Some(Preset { channel: "9A".into(), eid: 0x10FA, sid: 0xDC92, scids: 0, name: "WDR 2".into(), short_name: String::new(), logo_path: None, logo_data_url: None, stored_at: 0 });
+        a.preset_recall(1, now).unwrap();
+        let fx = a.tick(now + PRESET_TIMEOUT + Duration::from_millis(1));
+        assert!(matches!(fx.events[0], AppEvent::PresetStatus { status: PresetStatus::NotFound, slot: Some(1), .. }));
+        let fx = a.handle_event(
+            &Event::ServiceStarted { slot: ServiceSlot::Primary, sid: 0xDC92, scids: 0, codec: Codec::HeAac { sbr: true, ps: false, sample_rate: 48000 }, stereo: true },
+            now + PRESET_TIMEOUT + Duration::from_secs(3),
+        );
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { status: PresetStatus::Selected, slot: Some(1), .. })), "{:?}", fx.events);
+        assert_eq!(a.state.current.as_ref().map(|c| c.sid), Some(0xDC92));
+        // Nur einmal.
+        let fx = a.handle_event(
+            &Event::ServiceStarted { slot: ServiceSlot::Primary, sid: 0xDC92, scids: 0, codec: Codec::HeAac { sbr: true, ps: false, sample_rate: 48000 }, stereo: true },
+            now + PRESET_TIMEOUT + Duration::from_secs(4),
+        );
+        assert!(!fx.events.iter().any(|e| matches!(e, AppEvent::PresetStatus { .. })));
     }
 
     #[test]

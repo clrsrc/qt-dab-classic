@@ -20,6 +20,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+mod zap;
+
 #[derive(Parser, Debug)]
 #[command(name = "dab-cli", version, about = "DAB Classic Headless-Treiber")]
 struct Cli {
@@ -100,6 +102,37 @@ enum Sub {
         #[arg(long, default_value_t = 10.0)]
         seconds: f64,
     },
+    /// Favoriten-Zapping mit der echten App-Zustandsmaschine (dab-app) am Geraet
+    Zap {
+        /// Datenordner mit settings.json/presets.json (wird beschrieben: Kopie verwenden)
+        #[arg(long)]
+        data: PathBuf,
+        #[arg(long, default_value_t = 30)]
+        count: u32,
+        #[arg(long, default_value_t = 2.0)]
+        min_s: f64,
+        #[arg(long, default_value_t = 10.0)]
+        max_s: f64,
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Startphase in Sekunden (Geraet oeffnen, letzter Kanal/Dienst)
+        #[arg(long, default_value_t = 12.0)]
+        settle_s: f64,
+        #[arg(long)]
+        events: Option<PathBuf>,
+        /// Nur Favoriten im selben Kanal (wenn moeglich)
+        #[arg(long)]
+        same_only: bool,
+        /// Nur Favoriten in einem anderen Kanal
+        #[arg(long)]
+        cross_only: bool,
+        /// Intervall erst ab dem Audiostart zaehlen (echte Umschaltzeit, verlorene Umschaltungen)
+        #[arg(long)]
+        wait_audio: bool,
+        /// Mit --wait-audio: nach so vielen Sekunden ohne Audio gilt die Umschaltung als verloren
+        #[arg(long, default_value_t = 15.0)]
+        lost_s: f64,
+    },
 }
 
 fn main() -> Result<()> {
@@ -147,6 +180,10 @@ fn main() -> Result<()> {
         ),
         Sub::Scan { device, gain, events } => run_scan(&backend, device_source(&device)?, gain.as_deref().map(parse_gain).transpose()?, events),
         Sub::Spike { seconds } => run_spike(&backend, seconds),
+        Sub::Zap { data, count, min_s, max_s, seed, settle_s, events, same_only, cross_only, wait_audio, lost_s } => zap::run(
+            &backend,
+            zap::ZapOptions { data, count, min_s, max_s, seed, settle_s, events, same_only, cross_only, wait_audio, lost_s },
+        ),
     };
 
     backend.shutdown();
@@ -529,6 +566,7 @@ fn event_name(ev: &Event) -> &'static str {
         Event::Synced { .. } => "synced",
         Event::NoSignal { .. } => "no_signal",
         Event::Snr { .. } => "snr",
+        Event::AdcClip { .. } => "adc_clip",
         Event::FicQuality { .. } => "fic_quality",
         Event::FrequencyOffset { .. } => "frequency_offset",
         Event::EnsembleFound { .. } => "ensemble_found",

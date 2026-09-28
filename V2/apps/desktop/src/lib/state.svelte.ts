@@ -241,9 +241,14 @@ export function applyCoreEvent(ev: CoreEvent) {
       s.fic_total = e.total;
       break;
     case "ensemble_found": {
-      if (!s.ensemble || s.ensemble.eid !== e.eid) {
+      // Nur ein echter Ensemble-Wechsel auf demselben Kanal leert die Liste;
+      // nach einem Kanalwechsel (channel_changed, s.ensemble = null) bleibt
+      // alles stehen. Den laufenden Dienst loescht nie das Ensemble-Label,
+      // sondern nur service_stopped/current_changed: der Kern startet den
+      // vorgemerkten Dienst und meldet die Dienste oft VOR dem Ensemble-Label
+      // (Zapping-Messung 28.09.2026: "hoerbar, aber nicht angezeigt").
+      if (s.ensemble && s.ensemble.eid !== e.eid) {
         s.services = [];
-        clearService();
       }
       s.ensemble = { eid: e.eid, name: e.name, channel: e.channel };
       s.channel = e.channel;
@@ -386,6 +391,18 @@ export function applyCoreEvent(ev: CoreEvent) {
 
 export function applyAppEvent(ev: AppEvent) {
   switch (ev.type) {
+    // Kanalwechsel der App-Schicht (app.rs set_channel): Empfangsfelder und
+    // Liste leeren, der laufende Dienst endet per service_stopped des Kerns.
+    case "channel_changed":
+      s.channel = ev.channel;
+      s.synced = false;
+      ui.noSignal = false;
+      s.snr = 0;
+      s.fic_ok = 0;
+      s.fic_total = 0;
+      s.ensemble = null;
+      s.services = [];
+      break;
     case "preset_status":
       ui.presetStatus = { ...ev, at: Date.now() };
       if (ev.status === "tuning") {
