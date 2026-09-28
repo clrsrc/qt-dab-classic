@@ -298,6 +298,7 @@ void	ficHandler::restart	() {
 	index		= 0;
 	ficno		= 0;
 	ficBlocks	= 0;
+	successRatio	= 0;	// V3: FIB-Bilanz des alten Kanals nicht mitnehmen (ofdmHandler correctionNeeded, AGC)
 
 	ficErrors	= 0;
 	ficBits		= 0;

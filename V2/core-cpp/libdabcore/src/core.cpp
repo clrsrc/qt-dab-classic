@@ -253,7 +253,12 @@ void DabCore::runActions() {
             if (a.generation != actionGeneration_) continue;
         }
         switch (a.kind) {
-        case Action::Select:      selectService(a.sid, a.scids, a.slot, a.autoData); break;
+        case Action::Select:
+            // Vormerkung, die von einer neueren Auswahl per Kommando ueberholt
+            // wurde: verwerfen (sonst verdraengt sie den gerade gewaehlten Dienst).
+            if (a.fromPending && a.selectGen != selectGen_.load()) break;
+            selectService(a.sid, a.scids, a.slot, a.autoData);
+            break;
         case Action::Ews:         handleEwsAutoswitch(a.phase, a.subChId, a.isTest, a.relevant); break;
         case Action::Reconfigure: reconcileServices(); break;
         }
@@ -956,6 +961,7 @@ bool DabCore::handle(const json& c) {
     if (type == "stop_iq_dump") { stopIqDump(); return true; }
     if (type == "select_service") {
         if (scanning_.load()) { sink_(events::log("warn", "select_service waehrend des Scans abgelehnt")); return true; }
+        if (slotFromJson(c) == Slot::Primary) ++selectGen_;   // ueberholt eingereihte Vormerk-Aktionen
         selectService(c.value("sid", 0u), static_cast<uint8_t>(c.value("scids", 0)), slotFromJson(c));
         return true;
     }
@@ -1255,6 +1261,8 @@ void DabCore::retryPendingSelect() {
     if (startableIndex(pendingSelect_->sid, pendingSelect_->scids) < 0) return;
     Action a;
     a.kind = Action::Select;
+    a.fromPending = true;
+    a.selectGen = selectGen_.load();
     a.sid = pendingSelect_->sid;
     a.scids = pendingSelect_->scids;
     a.slot = pendingSelect_->slot;
@@ -1824,7 +1832,8 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
     const bool trace = std::getenv("DABCORE_TRACE") != nullptr;
     auto t0 = std::chrono::steady_clock::now();
     ofdm_->stop();
-    source_->stop();
+    // Die Quelle laeuft weiter (ISampleSource::retune unten): kein USB-
+    // Neustart, Antennenspeisung bleibt an.
     {
         std::lock_guard<std::mutex> lk(stateM_);
         state_["channel"] = channel;
@@ -1840,10 +1849,11 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
     // OFDM-Thread steht, deshalb hier gefahrlos unter agcM_).
     {
         std::lock_guard<std::mutex> lk(agcM_);
-        if (agcCtl_) agcCtl_->onRetune(agcNowMs());
+        if (agcCtl_) agcCtl_->onRetune(agcNowMs(), channel);
     }
-    // v1 radio.cpp startChannel: restartReader (freq, SAMPLERATE / 10)
-    if (!source_->restart(freq, SAMPLERATE / 10)) {
+    // v1 radio.cpp startChannel: restartReader (freq, SAMPLERATE / 10);
+    // V3: retune haelt den Stream (HackRF), sonst stop + restart
+    if (!source_->retune(freq, SAMPLERATE / 10)) {
         sink_(events::deviceError("Kanal " + channel + " (" + std::to_string(freq / 1000) + " kHz) nicht einstellbar"));
         return false;
     }

@@ -93,6 +93,7 @@ public:
     bool open(const std::string& serial, std::string& error);
 
     bool restart(int32_t frequencyHz, int32_t samplesToSkip = 0) override;
+    bool retune(int32_t frequencyHz, int32_t samplesToSkip = 0) override;
     void stop() override;
     int32_t getSamples(std::complex<float>* buffer, int32_t n) override;
     int32_t samples() override;
@@ -131,6 +132,9 @@ public:
     RingBuffer<std::complex<int16_t>> _I_Buffer;
     dabcore::HalfbandDecimator decimator_;
     std::atomic<int> toSkip{0};
+    // Callback (USB-Thread) gegen retune() (Kommandothread): Puffer leeren
+    // und toSkip setzen nur, wenn gerade kein Transfer eingetragen wird.
+    std::mutex cbM_;
     void onCallbackData();
     // Anteil der int8-Komponenten am Anschlag (|v| >= 127), EMA ueber die
     // USB-Transfers (je ~32 ms bei 4,096 MS/s), vom Callback geschrieben

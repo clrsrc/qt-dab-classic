@@ -59,11 +59,22 @@ void AgcController::setStart(int step, bool amp, int64_t nowMs) {
     graceNoSignals_ = 0;
     rampDown_ = false;
     exhausted_ = false;
-    if (synced_) { lastGood_ = step_; startTracking(nowMs, cfg_.settleMs); }
+    if (synced_) { noteGood(step_); startTracking(nowMs, cfg_.settleMs); }
     else mode_ = Mode::Acquire;
 }
 
-void AgcController::onRetune(int64_t nowMs) {
+void AgcController::noteGood(int step) {
+    lastGood_ = step;
+    if (!channel_.empty()) goodByChannel_[channel_] = step;
+}
+
+int AgcController::rememberedStep(const std::string& channel) const {
+    auto it = goodByChannel_.find(channel);
+    return it == goodByChannel_.end() ? -1 : it->second;
+}
+
+void AgcController::onRetune(int64_t nowMs, const std::string& channel) {
+    channel_ = channel;
     synced_ = false;
     ofdmSynced_ = false;
     ficOkSeen_ = false;
@@ -80,9 +91,17 @@ void AgcController::onRetune(int64_t nowMs) {
     lastSetMs_ = nowMs;            // Umschalten: Samples des alten Kanals nicht bewerten
     if (!enabled_) { explicitStart_ = false; mode_ = Mode::Off; return; }
     mode_ = Mode::Acquire;
+    const int remembered = rememberedStep(channel);
     if (explicitStart_) {
         explicitStart_ = false;
         // der Geraete-Gain ist der gewuenschte Startpunkt; nichts anwenden
+    } else if (remembered >= 0) {
+        set(remembered, false, nowMs);
+        // Gemerkter, auf diesem Kanal bewaehrter Gain: dem Sync erst ~1,5 s
+        // Zeit lassen (das erste no_signal kommt nach 770 ms), statt sofort
+        // +8 dB zu geben - das fuehrte bei starkem Pegel in die ADC-
+        // Obergrenze und beendete die Ramp am falschen Punkt (Idle).
+        graceNoSignals_ = 1;
     } else if (lastGood_ >= 0) {
         set(lastGood_, false, nowMs);
     } else {
@@ -245,7 +264,8 @@ void AgcController::onFicQuality(int ok, int64_t nowMs) {
     if (ok > 0) {
         lastGoodFicMs_ = nowMs;
         exhausted_ = false;
-        if (!ficOkSeen_) { ficOkSeen_ = true; lastGood_ = step_; }
+        if (!ficOkSeen_) { ficOkSeen_ = true; noteGood(step_); }
+        else if ((mode_ == Mode::Track || mode_ == Mode::Hold) && phase_ != Phase::Probe) noteGood(step_);   // Merker folgt dem Tracking
         if (!synced_) {
             // als Schein-Sync verworfen, liefert jetzt aber FIBs: echter Sync
             synced_ = true;
@@ -253,8 +273,14 @@ void AgcController::onFicQuality(int ok, int64_t nowMs) {
         }
         return;
     }
-    if (ficOkSeen_) return;                    // Fading bei echtem Empfang
-    if (nowMs - ficWait_ < cfg_.ficTimeoutMs) return;
+    bool dead = false;
+    if (ficOkSeen_) {
+        // Fading bei echtem Empfang - bis ficDeadMs; danach gilt die FIC als tot
+        if (lastGoodFicMs_ < 0 || nowMs - lastGoodFicMs_ < cfg_.ficDeadMs) return;
+        ficOkSeen_ = false;
+        dead = true;
+    }
+    if (!dead && nowMs - ficWait_ < cfg_.ficTimeoutMs) return;
     // Schein-Sync: seit ficTimeoutMs keine FIBs -> wie no_signal eine Stufe
     // weiter (bei Uebersteuerungsverdacht abwaerts, sonst hoeher)
     ficWait_ = nowMs;
@@ -333,7 +359,7 @@ void AgcController::evaluate(float mean, int64_t nowMs) {
     if (mean >= baseSnr_ + cfg_.improveDb) {
         baseStep_ = step_;
         baseSnr_ = mean;
-        lastGood_ = step_;
+        noteGood(step_);
         failedUp_ = failedDown_ = false;
         startProbe(dir_, nowMs);
         return;

@@ -314,12 +314,12 @@ static void testFalseSync() {
     // Wartezeit zaehlt ab dem Kanalwechsel (t = 0), nicht ab dem (flatternden) Sync
     int64_t t = 300;
     agc.onSynced(true, t);
-    for (t = 800; t <= 2400; t += 800) agc.onFicQuality(0, t);          // 0,8 / 1,6 / 2,4 s: noch nichts
+    for (t = 500; t <= 1400; t += 450) agc.onFicQuality(0, t);          // 0,5 / 0,95 / 1,4 s: noch nichts
     CHECK(log.empty() && agc.mode() == Mode::Track, "vor Ablauf des FIC-Timeouts keine Aenderung");
-    t = 3200; agc.onFicQuality(0, t);                                    // 3,2 s
-    CHECK(log.size() == 1 && agc.step() == 16, "Schein-Sync: nach 2,5 s ohne FIBs eine Stufe hoeher");
+    t = 1600; agc.onFicQuality(0, t);                                    // 1,6 s
+    CHECK(log.size() == 1 && agc.step() == 16, "Schein-Sync: nach 1,5 s ohne FIBs eine Stufe hoeher");
     CHECK(agc.mode() == Mode::Acquire && agc.lastGoodStep() < 0, "Schein-Sync zaehlt nicht als Erfolg");
-    for (int i = 0; i < 4; i++) { t += 800; agc.onFicQuality(0, t); }
+    for (int i = 0; i < 4; i++) { t += 400; agc.onFicQuality(0, t); }
     CHECK(log.size() == 2 && agc.step() == 20, "weiter ohne FIBs: naechste Stufe");
     // ein no_signal dazwischen (OFDM verliert den Schein-Sync) laeuft normal weiter
     agc.onSynced(false, t);
@@ -329,9 +329,10 @@ static void testFalseSync() {
     t += 800;
     agc.onFicQuality(50, t);
     CHECK(agc.mode() == Mode::Track && agc.lastGoodStep() == 24, "FIBs: echter Sync, Tracking, lastGood");
-    // Fading bei echtem Empfang (FIC 0 nach vorherigem ok) loest keinen Ramp-Schritt aus
+    // Fading bei echtem Empfang (FIC 0 nach vorherigem ok) loest bis ficDeadMs
+    // (4 s) keinen Ramp-Schritt aus (laenger: testFicDeadReacquires)
     size_t n = log.size();
-    for (int i = 0; i < 6; i++) { t += 800; agc.onFicQuality(0, t); }
+    for (int i = 0; i < 4; i++) { t += 800; agc.onFicQuality(0, t); }
     CHECK(log.size() == n && agc.mode() == Mode::Track, "FIC-Einbruch nach echtem Empfang: kein Ramp-Schritt");
 
     // Flatternder Schein-Sync (Live-Befund 11D/VGA 24: S/L/S/L, kaum no_signal):
@@ -658,8 +659,65 @@ static void testClipOffIgnored() {
     std::printf("ADC-Obergrenze AGC aus: ok\n");
 }
 
+// Gain-Merker je Kanal (Zapping-Messung 28.09.2026): nach 5C (FIBs bei
+// Stufe 10 = VGA 20) und 11D (FIBs erst bei Stufe 22 = VGA 44) startet
+// jeder Kanalwechsel bei der Stufe, die auf DEM Kanal zuletzt gut war;
+// ein unbekannter Kanal startet bei lastGood.
+static void testRetuneUsesChannelMemory() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    int64_t t = 0;
+    agc.setStart(10, false, t);
+    agc.onRetune(t, "5C");
+    agc.onSynced(true, t += 300);
+    agc.onFicQuality(48, t += 500);              // 5C gut bei Stufe 10
+    CHECK(agc.rememberedStep("5C") == 10, "5C gemerkt");
+    agc.onRetune(t += 1000, "11D");
+    CHECK(agc.step() == 10, "unbekannter Kanal startet bei lastGood (10)");
+    agc.onSynced(true, t += 300);                // Schein-Sync ohne FIBs
+    for (int i = 0; i < 3; i++) { agc.onFicQuality(0, t += 1600); }   // je ficTimeoutMs eine Stufe
+    CHECK(agc.step() == 22, "Schein-Sync-Ramp 10 -> 14 -> 18 -> 22");
+    agc.onFicQuality(40, t += 500);              // 11D gut bei Stufe 22
+    CHECK(agc.rememberedStep("11D") == 22, "11D gemerkt");
+    agc.onRetune(t += 1000, "5C");
+    CHECK(agc.step() == 10, "5C startet wieder bei 10, nicht bei 22");
+    CHECK(agc.onNoSignal(t += 800) && agc.step() == 10, "gemerkter Gain: erstes no_signal ist Schonfrist");
+    CHECK(agc.onNoSignal(t += 770) && agc.step() == 14, "zweites no_signal: Ramp");
+    agc.onRetune(t += 1000, "11D");
+    CHECK(agc.step() == 22, "11D startet bei 22");
+    agc.onRetune(t += 1000, "9B");
+    CHECK(agc.step() == 22, "unbekannter Kanal: lastGood (zuletzt 11D = 22)");
+    // set_gain loescht den Vorrang: expliziter Start gewinnt einmal
+    agc.setStart(16, false, t);
+    agc.onRetune(t += 100, "5C");
+    CHECK(agc.step() == 16, "expliziter Start vor dem Merker");
+    std::printf("Retune mit Kanal-Merker: ok\n");
+}
+
+// Tote FIC nach echtem Empfang (Zapping-Messung 28.09.2026, 11D): Sync
+// bleibt, FIC 0/50 ueber Sekunden, kein SNR -> nach ficDeadMs zurueck in
+// die Akquisition und eine Ramp-Stufe weiter (statt ewig im Tracking).
+static void testFicDeadReacquires() {
+    std::vector<Applied> log;
+    AgcController agc(hackrfConfig(), [&](int s, bool a) { log.push_back({s, a}); });
+    int64_t t = 0;
+    agc.setStart(10, false, t);
+    agc.onRetune(t, "11D");
+    agc.onSynced(true, t += 160);
+    agc.onFicQuality(33, t += 300);
+    CHECK(agc.mode() == Mode::Track && agc.lastGoodStep() == 10, "echter Empfang: Tracking");
+    for (int i = 0; i < 3; i++) agc.onFicQuality(0, t += 1200);     // 3,6 s ohne FIBs: noch Fading
+    CHECK(log.empty() && agc.mode() == Mode::Track, "bis ficDeadMs keine Aenderung");
+    agc.onFicQuality(0, t += 1200);                                 // 4,8 s: FIC tot
+    CHECK(agc.mode() == Mode::Acquire && log.size() == 1 && agc.step() == 14, "FIC tot: Akquisition, eine Stufe hoeher");
+    agc.onFicQuality(40, t += 700);                                 // wieder FIBs
+    CHECK(agc.mode() == Mode::Track && agc.lastGoodStep() == 14, "wieder Empfang: Tracking, lastGood");
+    std::printf("Tote FIC: ok\n");
+}
+
 int main() {
     testRampHackRf();
+    testFicDeadReacquires();
     testRampRtlSdr();
     testRampAmpFromUser();
     testHillClimb();
@@ -671,6 +729,7 @@ int main() {
     testGraceSurvivesFalseSync();
     testFreeze();
     testRetuneUsesLastGood();
+    testRetuneUsesChannelMemory();
     testClipCeilingRamp();
     testClipAfterExhaustedRamp();
     testClipAmpOff();

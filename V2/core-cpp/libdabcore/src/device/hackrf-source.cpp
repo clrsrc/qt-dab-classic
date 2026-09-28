@@ -44,6 +44,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <thread>
 
 #ifdef _WIN32
 #define LOADLIB(name)        reinterpret_cast<void*>(LoadLibraryA(name))
@@ -249,6 +250,7 @@ static int callback(hackrf_transfer* transfer) {
         ctx->clip_.store(0.5f * ctx->clip_.load() + 0.5f * r);
     }
     // Halbband-FIR 2:1 statt Boxcar (Nachbarkanal-Alias, siehe halfband-decimator.h)
+    std::lock_guard<std::mutex> lk(ctx->cbM_);
     int bufferIndex = ctx->decimator_.process(p, nrSamples, buffer);
     if (ctx->toSkip > 0)
         ctx->toSkip -= bufferIndex;
@@ -293,6 +295,35 @@ bool HackRfSource::restart(int32_t freq, int32_t skipped) {
         if (hackrf_get_clkin_status(theDevice_, &st) == HACKRF_SUCCESS) clockSource_ = st ? "extern" : "intern";
     }
     return running_.load();
+}
+
+// Kanalwechsel ohne hackrf_stop_rx/start_rx (Zapping-Messung 28.09.2026):
+// der USB-Stream und die Antennenspeisung bleiben, nur der LO wird
+// umgestellt. Der Callback verwirft ab sofort `skipped` Samples (Einschwingen
+// des Tuners, Reste des alten Kanals); der Puffer wird geleert, nachdem ein
+// laufender Transfer (~32 ms) sicher im Verwerfen angekommen ist. Der OFDM-
+// Thread steht waehrenddessen (tuneChannel), also liest niemand mit.
+bool HackRfSource::retune(int32_t freq, int32_t skipped) {
+    if (!running_.load() || theDevice_ == nullptr) return restart(freq, skipped);
+    lastFrequency_ = freq;
+    {
+        // libhackrf haelt 4 Transfers zu je ~32 ms in der USB-Pipeline: was
+        // vor dem LO-Wechsel erfasst wurde, kommt bis ~130 ms danach noch an.
+        // Deshalb mindestens 250 ms verwerfen (mehr als der Tuner-Einschwing-
+        // Skip von 100 ms beim Neustart).
+        std::lock_guard<std::mutex> lk(cbM_);
+        toSkip.store(std::max(skipped, SAMPLERATE / 4));
+        _I_Buffer.FlushRingBuffer();
+        clip_.store(0.0f);
+    }
+    int64_t adjustedFreq = freq + static_cast<int64_t>(ppm_) * (freq / 1000000);
+    int rc = hackrf_set_freq(theDevice_, static_cast<uint64_t>(adjustedFreq));
+    if (rc != HACKRF_SUCCESS) {
+        std::fprintf(stderr, "hackrf_set_freq im Betrieb: %s - Neustart des Streams\n", errName(rc).c_str());
+        stop();
+        return restart(freq, skipped);
+    }
+    return true;
 }
 
 void HackRfSource::stop() {

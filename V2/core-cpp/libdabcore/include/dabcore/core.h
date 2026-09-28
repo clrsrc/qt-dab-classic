@@ -311,6 +311,10 @@ private:
     // startbar ist (keine Stille bei unvollstaendiger FIC).
     struct PendingSelect { uint32_t sid; uint8_t scids; Slot slot; AutoData autoData; };
     std::optional<PendingSelect> pendingSelect_;   // unter serviceM_
+    // Jede Primary-Auswahl per Kommando zaehlt hoch; eine noch nicht
+    // ausgefuehrte Aktion der Vormerkung mit aelterem Stand ist ueberholt
+    // (sonst wuerde sie den gerade per Klick gestarteten Dienst verdraengen).
+    std::atomic<uint64_t> selectGen_{0};
     int  startableIndex(uint32_t sid, uint8_t scids);   // FIC-Index, wenn startbar, sonst -1
     void retryPendingSelect();
     std::string lastClockSource_;   // zuletzt gemeldeter Referenztakt (Log nur bei Aenderung)
@@ -321,6 +325,8 @@ private:
         enum Kind { Select, Ews, Reconfigure };
         Kind kind = Select;
         uint64_t generation = 0;      // Kanalwechsel/close_device verwerfen aeltere
+        bool fromPending = false;     // Select aus retryPendingSelect (Vormerkung)
+        uint64_t selectGen = 0;       // ... gilt nur, solange keine neuere Auswahl kam
         uint32_t sid = 0;             // Select
         uint8_t scids = 0;
         Slot slot = Slot::Primary;

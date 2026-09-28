@@ -23,6 +23,11 @@ public:
     // Einschwingen des Tuners; radio.cpp: SAMPLERATE / 10).
     virtual bool restart(int32_t frequencyHz, int32_t samplesToSkip = 0) = 0;
     virtual void stop() = 0;
+    // Kanalwechsel bei laufender Lieferung: nur die Frequenz umstellen, der
+    // Stream laeuft weiter (HackRF: kein USB-Neustart, die Antennenspeisung
+    // bleibt an). Standard: stop() + restart(). Der Verbraucher (OFDM-
+    // Thread) muss dabei stehen, der Puffer wird geleert.
+    virtual bool retune(int32_t frequencyHz, int32_t samplesToSkip = 0) { stop(); return restart(frequencyHz, samplesToSkip); }
 
     // Holt bis zu n Samples (normiert auf etwa -1..1); Rueckgabe: Anzahl.
     virtual int32_t getSamples(std::complex<float>* buffer, int32_t n) = 0;

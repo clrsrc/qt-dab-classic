@@ -211,12 +211,33 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 //	gemeldetes noSignal); ohne Fortschritt ueber ~8 Rahmen (770 ms)
 //	wird noSignal auch dann gemeldet, wenn der Timesyncer Dips findet.
 	auto lastSyncProgress = std::chrono::steady_clock::now ();
+//	V3 (Zapping-Messung 28.09.2026, 11D): der Korrelator haelt einen Sync,
+//	die FIC dekodiert aber ueber 14 s nichts mehr (0/50) - weder Sync-
+//	Verlust noch noSignal, die AGC wartet auf SNR-Werte, die im TII-Zweig
+//	unten ohne CIF-Zaehler nie kommen. Ein Sync ohne dekodierte FIBs ueber
+//	ficDeadMs gilt deshalb als verloren: Grob-/Feinoffset zurueck, neue
+//	Zeitsynchronisation (die klappt nach der Messung in 0,5-2 s).
+	const auto ficDeadMs = std::chrono::milliseconds (2500);
+	auto lastFicOk = std::chrono::steady_clock::now ();
+//	V3 (Zapping-Messung 28.09.2026): bei jedem noSignal auch Grob- und
+//	Feinoffset zuruecksetzen. Der Grobschaetzer lief in den Fehlfaellen auf
+//	+-46..49 kHz (echt etwa -1 kHz) und blieb dort minutenlang: der
+//	Timesyncer fand den Nullsymbol-Dip weiter (Sync-Flattern jeden Rahmen),
+//	die Phasenreferenz fiel an der strengen Schwelle durch, Block 0 wurde
+//	kaum verarbeitet - und nur dort setzt die 35-kHz-Klemme zurueck. Nach
+//	dem Reset war der Sync in allen Faellen binnen 0,5 s da.
+	auto resetOffsets = [&] () {
+	   coarseOffset		= 0;
+	   fineOffset		= 0;
+	   correctionNeeded	= true;
+	};
 	auto noSyncProgress = [&] () {
 	   auto now = std::chrono::steady_clock::now ();
 	   if (now - lastSyncProgress >= std::chrono::milliseconds (770)) {
 	      emitCb (cb -> noSignal);
 	      attempts = 0;
 	      lastSyncProgress = now;
+	      resetOffsets ();
 	   }
 	};
 //
@@ -251,6 +272,7 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	            case TIMESYNC_ESTABLISHED:
 	               inSync	= true;
 	               setSynced (true);
+	               lastFicOk = std::chrono::steady_clock::now ();
 	               break;			// yes, we are ready
 
 	            case NO_DIP_FOUND:
@@ -258,6 +280,7 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	                  emitCb (cb -> noSignal);
 	                  attempts = 0;
 	                  lastSyncProgress = std::chrono::steady_clock::now ();
+	                  resetOffsets ();
 	               }
 	               continue;
 
@@ -297,6 +320,25 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 //	Fortschritt zaehlt daher erst ab dem zweiten Rahmen in Folge (unten).
 	      }
 	      else {	// we are in sync and continue with a next frame
+	         {
+	            auto now = std::chrono::steady_clock::now ();
+	            if (theFicHandler. getFICQuality () > 0)
+	               lastFicOk = now;
+	            else
+	            if (now - lastFicOk >= ficDeadMs) {
+	               emitCb (cb -> log, "info",
+	                       std::string ("Sync ohne dekodierte FIBs seit 2,5 s: Synchronisation neu"));
+	               inSync		= false;
+	               setSynced (false);
+	               coarseOffset	= 0;
+	               fineOffset	= 0;
+	               correctionNeeded	= true;
+	               attempts		= 0;
+	               lastFicOk	= now;
+	               lastSyncProgress	= now;
+	               continue;
+	            }
+	         }
 	         totalFrames ++;
 	         frameCount ++;
 	         totalSamples	+= sampleCount;
@@ -356,7 +398,16 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 
 //	Here we look only at the block_0 when we need a coarse
 //	frequency synchronization.
-	      correctionNeeded = !theFicHandler. syncReached ();
+//	V3 (Zapping-Messung 28.09.2026, Kernbefund): syncReached() ist ein
+//	Latch des FIB-Decoders (Ensemble einmal gesehen), der beim Kanalwechsel
+//	nicht faellt. Danach lief die Grobfrequenzschaetzung nie mehr, der
+//	Offset blieb nach jedem Retune bei 0 statt etwa -1 kHz (ein Traeger),
+//	und die FIC dekodierte erst, wenn die Feinregelung den Offset zufaellig
+//	ueber die Halbtraeger-Grenze zog (2-4 s) - oder gar nicht (SNR 12 dB,
+//	FIC 0/50 ueber 15 s). Die Schaetzung ist noetig, solange die FIC nicht
+//	lebt: Latch UND laufende FIB-Bilanz.
+	      correctionNeeded = !(theFicHandler. syncReached () &&
+	                           theFicHandler. getFICQuality () > 0);
 	      if (correctionNeeded && (tryCounter == 0)) {
 	         int correction	=
 	            myFreqSyncer. estimateCarrierOffset (ofdmBuffer);
@@ -366,6 +417,10 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	            else {
 	               coarseOffset	+=  correction * carrierDiff;
 	               tryCounter	= 5;
+//	V3: eine Schaetzung jenseits der Klemme ist keine (HackRF: wenige kHz
+//	Fehler), sofort verwerfen statt sie einen Rahmen lang anzuwenden
+	               if (abs (coarseOffset) > Khz (35))
+	                  coarseOffset = 0;
 	            }
 	         }
 	      }
@@ -445,7 +500,9 @@ bool	syncedReported	= false;	// setSynced nur bei Aenderung melden
 	      if (p -> dabMode == 1) {
 	         int16_t CIF_hi, CIF_lo;
 	         theFicHandler. getCIFcount (CIF_hi, CIF_lo);
-	         if ((CIF_lo & 0x07) >= 4) {
+//	V3: ohne dekodierte FIBs steht der CIF-Zaehler; dann immer den SNR
+//	rechnen (die AGC braucht ihn), TII erst wieder mit laufender FIC.
+	         if (theFicHandler. getFICQuality () > 0 && (CIF_lo & 0x07) >= 4) {
 	            if (p -> tiiEnabled) {
 	               theTIIDetector. addBuffer (ofdmBuffer);
 	               if (++tiiCounter >= tiiDelay) {

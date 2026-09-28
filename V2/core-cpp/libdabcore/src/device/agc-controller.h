@@ -59,6 +59,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
+#include <string>
 
 namespace dabcore {
 
@@ -77,7 +79,16 @@ struct AgcConfig {
     int  holdReprobeEvery = 4;    // spaetestens jede n-te Haltephase neu sondieren
     // Schein-Sync: so lange nach synced(true) ohne dekodierte FIBs (ficQuality
     // ok == 0) gilt der Sync als nicht vorhanden -> Ramp-Schritt wie no_signal
-    int64_t ficTimeoutMs  = 2500;
+    // (1500 ms: bei echtem Sync liefert der FIB-Decoder die erste Bilanz
+    // nach ~50 FIBs = 0,4-0,8 s; Zapping-Messung 28.09.2026: mit 2500 ms
+    // dauerte die Ramp von VGA 20 auf 44 fuer 11D ueber 15 s)
+    int64_t ficTimeoutMs  = 1500;
+    // Tote FIC nach echtem Empfang: so lange ohne dekodierte FIBs (ok == 0)
+    // trotz Sync gilt der Empfang als verloren -> zurueck in die Akquisition
+    // (Zapping-Messung 28.09.2026, 11D: 14 s Sync mit FIC 0/50, kein SNR,
+    // die Regelung wartete im Tracking). Der ofdmHandler loest den Sync
+    // schon nach 2,5 s selbst; hier die Absicherung.
+    int64_t ficDeadMs     = 4000;
     // Schonfrist: ein Sync-Verlust so kurz nach dekodierten FIBs gilt als
     // Fading; das erste no_signal aendert dann keine Stufe. Zeitbasiert,
     // damit ein zwischengeschobener Schein-Sync (Befund 9A im Scan, 18.09.2026:
@@ -119,8 +130,14 @@ public:
     void setStart(int step, bool amp, int64_t nowMs);
 
     // Kanalwechsel: Ramp neu. Start = expliziter Startpunkt (setStart), sonst
-    // die zuletzt erfolgreiche Stufe, sonst die aktuelle; AMP aus.
-    void onRetune(int64_t nowMs);
+    // die auf DIESEM Kanal zuletzt erfolgreiche Stufe (Gain-Merker je Kanal,
+    // Zapping-Messung 28.09.2026: 11D braucht VGA ~44, 5C nur ~20 - der
+    // Start beim Wert des vorigen Kanals kostete bis zu 15 s Ramp), sonst
+    // die zuletzt erfolgreiche Stufe ueberhaupt, sonst die aktuelle; AMP aus.
+    // `channel` leer: kein Merker (Tests, Dateien).
+    void onRetune(int64_t nowMs, const std::string& channel = std::string());
+    // Gemerkte Stufe eines Kanals (< 0: keine)
+    int rememberedStep(const std::string& channel) const;
 
     // Rueckgabe true: eine neue Stufe wurde gesetzt (oder Schonfrist) und
     // ist zu bewerten – weiter warten. false: nichts mehr zu probieren
@@ -180,6 +197,9 @@ private:
     int  step_ = 0;
     bool amp_ = false;
     int  lastGood_ = -1;
+    void noteGood(int step);       // lastGood_ und Merker des aktuellen Kanals
+    std::string channel_;          // aktueller Kanal (onRetune)
+    std::map<std::string, int> goodByChannel_;   // zuletzt erfolgreiche Stufe je Kanal
     bool explicitStart_ = false;
     // Akquisition
     bool ampTried_ = false;
