@@ -3,7 +3,7 @@
 namespace dabcore {
 
 bool isLatestWins(const std::string& t) {
-    return t == "snr" || t == "fic_quality" || t == "frequency_offset" || t == "audio_level" || t == "adc_clip" ||
+    return t == "snr" || t == "fic_quality" || t == "frequency_offset" || t == "audio_level" || t == "adc_clip" || t == "audio_spectrum" ||
            t == "spectrum" || t == "iq_samples" || t == "timeshift_state" || t == "file_progress" ||
            t == "service_stats";
 }
@@ -105,6 +105,7 @@ json announcement(uint32_t sid, uint16_t kind, uint8_t subCh, bool active, uint8
 
 json audioFormat(uint32_t rate, uint8_t ch) { auto j = ev("audio_format"); j["rate"] = rate; j["channels"] = ch; return j; }
 json audioLevel(float l, float r) { auto j = ev("audio_level"); j["left"] = l; j["right"] = r; return j; }
+json audioSpectrum(const std::vector<uint8_t>& bands) { auto j = ev("audio_spectrum"); j["bands_b64"] = base64Encode(bands); return j; }
 json audioUnderrun(uint32_t m) { auto j = ev("audio_underrun"); j["missed"] = m; return j; }
 json audioDevices(const std::vector<AudioDeviceInfo>& devices, const std::string& current) {
     auto j = ev("audio_devices");

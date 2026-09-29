@@ -111,6 +111,10 @@ json tdcGroup(uint32_t sid, uint8_t groupType, const std::vector<uint8_t>& data)
 
 json audioFormat(uint32_t rate, uint8_t channels);
 json audioLevel(float left, float right);
+// Grafik-Equalizer-Anzeige (set_audio_spectrum, 28.09.2026): 48 Baender
+// 40 Hz..16 kHz (logarithmisch, Hann-FFT 1024 auf dem PCM des Hoerdienstes),
+// je Band u8 = 0,5 dB ab -90 dBFS (0 = -90 dB, 180 = 0 dB), ~20 Hz, latest-wins.
+json audioSpectrum(const std::vector<uint8_t>& bands);
 json audioUnderrun(uint32_t missed);
 json audioDevices(const std::vector<AudioDeviceInfo>& devices, const std::string& current);
 

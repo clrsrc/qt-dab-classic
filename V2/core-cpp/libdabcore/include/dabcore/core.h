@@ -25,6 +25,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -59,7 +60,7 @@ struct CoreOptions {
     // Headless: Dienste automatisch waehlen, sobald sie in der FIC auftauchen
     // (Name-Teilstring oder 0xSID). Erster Eintrag = Primary, weitere = Background.
     std::vector<std::string> autoServices;
-    bool autoAllAudio = false;  // alle Audiodienste als Background (Spike 3)
+    bool autoAllAudio = false;  // alle Audiodienste als Background (Spike 3) = Vordecodierung ab Start (set_predecode)
     std::string autoWav;        // WAV-Dump des Primary-Dienstes ab Start
     // Verweilzeit je Kanal im Scan (v1 switchDelay, Default 6 s)
     int scanDwellMs = 6000;
@@ -72,8 +73,9 @@ struct CoreOptions {
     bool tpeg = true;
 };
 
-// Vom Kern selbst gestarteter Datendienst (SPI/EPG bzw. TPEG, Punkt 3)
-enum class AutoData { None, Epg, Tpeg };
+// Vom Kern selbst gestarteter Dienst: Datendienst (SPI/EPG bzw. TPEG,
+// Punkt 3) oder vordecodierter Audiodienst (set_predecode, 28.09.2026)
+enum class AutoData { None, Epg, Tpeg, Predecode };
 
 struct RunningService;
 
@@ -166,6 +168,17 @@ private:
     void setTpeg(bool enabled);
     // gemeinsamer Kern von setEpg/setTpeg
     void setAutoData(AutoData kind, bool enabled);
+    // Vordecodierung (set_predecode): jeden Audiodienst des Ensembles als
+    // Background mitlaufen lassen, damit ein Dienstwechsel im Ensemble nur
+    // die Ausgabe umhaengt (promoteLocked) statt ein Backend neu zu starten.
+    void maybePredecode(const ServiceInfo& s);
+    void setPredecode(bool enabled);
+    // Background-Audiodienst zum Primary machen: Ausgabe und Timeshift-Ring
+    // wandern, das Backend laeuft weiter (serviceM_ gehalten).
+    void promoteLocked(RunningService* target);
+    // Bisherigen Primary abloesen: bei Vordecodierung bleibt er Background,
+    // sonst wird er beendet. Rueckgabe: ob der Audio-Sink lief.
+    bool retirePrimaryLocked(RunningService* p);
     uint16_t currentEid() const;
     // SId eines Ensemble-Dienstes aus dem Objektnamen (4/8 Hex-Zeichen vor '_'), sonst 0
     uint32_t sidFromLogoName(const std::string& name) const;
@@ -240,6 +253,7 @@ private:
     std::atomic<bool> spikeRunning_{false};
     // set_scopes: Spektrum und Konstellation getrennt, gemeinsame Rate 1..10 Hz
     std::atomic<bool> spectrumOn_{false};
+    std::atomic<bool> audioSpectrumOn_{false};   // set_audio_spectrum (Equalizer-Anzeige), gelesen von der AudioPipeline
     std::atomic<bool> iqOn_{false};
     std::atomic<int> scopeRateHz_{5};
     std::thread spikeThread_;
@@ -371,6 +385,12 @@ private:
     // EPG/SPI-Hintergrunddienst
     std::atomic<bool> epgEnabled_{true};
     std::atomic<bool> tpegEnabled_{true};   // TPEG-Hintergrunddienst (Punkt 3)
+    // Vordecodierung aller Audiodienste (set_predecode; Start aus --all-audio)
+    std::atomic<bool> predecode_{false};
+    // SIds, deren Vordecodierung fehlschlug (MP2, Subkanal ausserhalb des
+    // CIF): nicht bei jeder FIC-Wiederholung erneut versuchen. Unter
+    // serviceM_, je Kanal.
+    std::set<uint32_t> predecodeSkip_;
     std::atomic<int> lto_{0};                // FIG 0/9 LTO (Stunden), fuer den epg-compiler
     std::atomic<int> ecc_{0};                // FIG 0/9 ECC (0 = unbekannt), fuer RadioDNS; Reset bei Kanalwechsel
 

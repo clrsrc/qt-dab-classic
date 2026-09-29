@@ -70,9 +70,12 @@ std::string toHex(uint32_t v) {
 
 // Ein laufender Dienst: Backend (eigener Thread im mscHandler), seine
 // Callbacks (muessen das Backend ueberleben) und bei Audiodiensten die
-// AudioPipeline. Primary hat den Audio-Sink, Background keinen.
+// AudioPipeline. Primary hat den Audio-Sink, Background keinen. Der Slot
+// kann sich im Betrieb aendern (Vordecodierung: promoteLocked/
+// retirePrimaryLocked haengen nur die Ausgabe um); die Backend-Callbacks
+// lesen ihn deshalb bei jedem Ereignis (atomic), statt ihn einzufangen.
 struct RunningService {
-    Slot slot = Slot::Primary;
+    std::atomic<Slot> slot{Slot::Primary};
     uint32_t sid = 0;
     uint8_t scids = 0;
     uint8_t subCh = 0;
@@ -82,7 +85,7 @@ struct RunningService {
     std::unique_ptr<AudioPipeline> audio;
     std::unique_ptr<descriptorType> descriptor;   // audiodata / packetdata
     Backend* backend = nullptr;                    // gehoert dem mscHandler
-    bool started = false;
+    std::atomic<bool> started{false};              // service_started gemeldet (Backend- und Aktionsthread)
     // Letzter Anzeigezustand fuer state_snapshot (geschrieben im Backend-
     // bzw. Audio-Thread, gelesen im Kommandothread -> padM).
     std::mutex padM;
@@ -159,10 +162,12 @@ DabCore::DabCore(EventSink sink, CoreOptions options)
         {"volume_percent", 70}, {"muted", false}, {"timeshift", nullptr},
         {"recording", false}, {"ews_enabled", true}, {"ews_autoswitch", true},
         {"epg_enabled", options.epg}, {"tpeg_enabled", options.tpeg},
+        {"predecode_enabled", options.autoAllAudio}, {"audio_spectrum", false},
         {"clock_time", nullptr}, {"ppm", 0}, {"antenna_power", false},
     };
     epgEnabled_.store(options.epg);
     tpegEnabled_.store(options.tpeg);
+    predecode_.store(options.autoAllAudio);
 #ifdef __ARCH_X86__
     __builtin_cpu_init();
     int has_avx2 = __builtin_cpu_supports("avx2") != 0 ? AVX_SUPPORT : 0;
@@ -672,6 +677,7 @@ void DabCore::emitService(const std::string& rawName, uint32_t sid, int subChId,
     sink_(events::serviceAdded(s));
     maybeAutoSelect(s, replaced);
     if (!s.isAudio) { maybeStartEpg(s); maybeStartTpeg(s); }
+    else maybePredecode(s);
 }
 
 // v1 radio.cpp addToEnsemble: ein Paketdienst mit Appl-Type 7 (SPI, FIG 0/13)
@@ -738,6 +744,50 @@ void DabCore::setAutoData(AutoData kind, bool enabled) {
     for (auto& si : data) {
         if (kind == AutoData::Epg) maybeStartEpg(si); else maybeStartTpeg(si);
     }
+}
+
+// Vordecodierung (28.09.2026): jeder Audiodienst des Ensembles laeuft als
+// Background mit (Backend + Pipeline ohne Ausgabe, ~2 % eines Kerns je
+// Dienst). Ein select_service primary auf einen solchen Dienst haengt dann
+// nur die Ausgabe um (promoteLocked) - kein Backend-Neustart, kein Warten
+// auf den ersten Superframe. Wie maybeStartEpg aus dem FIC-Callback; die
+// FIC wiederholt die Labels, deshalb kommt ein noch nicht startbarer Dienst
+// von selbst wieder an die Reihe (serviceRuns filtert die laufenden).
+void DabCore::maybePredecode(const ServiceInfo& s) {
+    if (!predecode_.load() || scanning_.load() || !ofdm_ || !s.isAudio) return;
+    if (msc_->serviceRuns(s.sid, s.subCh)) return;
+    Action a;
+    a.kind = Action::Select;
+    a.sid = s.sid; a.scids = s.scids; a.slot = Slot::Background; a.autoData = AutoData::Predecode;
+    enqueueAction(a);
+}
+
+void DabCore::setPredecode(bool enabled) {
+    predecode_.store(enabled);
+    { std::lock_guard<std::mutex> lk(stateM_); state_["predecode_enabled"] = enabled; }
+    if (!enabled) {
+        // nur die vom Kern vordecodierten Hintergrunddienste beenden; ein
+        // befoerderter (jetzt Primary) laeuft weiter
+        std::lock_guard<std::mutex> lk(serviceM_);
+        std::vector<RunningService*> victims;
+        for (auto& rs : services_)
+            if (rs->autoData == AutoData::Predecode && rs->slot == Slot::Background) victims.push_back(rs.get());
+        for (auto* v : victims) stopOneLocked(v);
+        updateServiceState();
+        return;
+    }
+    std::vector<ServiceInfo> audio;
+    {
+        std::lock_guard<std::mutex> lk(stateM_);
+        for (auto& e : state_["services"]) {
+            if (!e.value("is_audio", false)) continue;
+            ServiceInfo si;
+            si.sid = e.value("sid", 0u); si.scids = e.value("scids", 0); si.name = e.value("name", "");
+            si.isAudio = true; si.subCh = e.value("sub_ch", 0);
+            audio.push_back(si);
+        }
+    }
+    for (auto& si : audio) maybePredecode(si);
 }
 
 uint16_t DabCore::currentEid() const {
@@ -913,10 +963,7 @@ void DabCore::maybeAutoSelect(const ServiceInfo& s, bool seenBefore) {
             select(cand.sid, cand.scids, slotFor(wanted));
         }
     }
-    if (opt_.autoAllAudio && s.isAudio) {
-        if (msc_->serviceRuns(s.sid, s.subCh)) return;
-        select(s.sid, s.scids, Slot::Background);
-    }
+    // --all-audio: laeuft ueber die Vordecodierung (predecode_ startet damit)
 }
 
 bool DabCore::handle(const json& c) {
@@ -1012,6 +1059,14 @@ bool DabCore::handle(const json& c) {
     if (type == "stop_frame_dump") { stopFrameDump(); return true; }
     if (type == "set_epg") { setEpg(c.value("enabled", true)); return true; }
     if (type == "set_tpeg") { setTpeg(c.value("enabled", true)); return true; }
+    if (type == "set_predecode") { setPredecode(c.value("enabled", true)); return true; }
+    if (type == "set_audio_spectrum") {
+        const bool on = c.value("enabled", false);
+        audioSpectrumOn_.store(on);
+        std::lock_guard<std::mutex> lk(stateM_);
+        state_["audio_spectrum"] = on;
+        return true;
+    }
     if (type == "set_ews") {
         const bool enabled = c.value("enabled", true);
         const bool autoswitch = c.value("autoswitch", true);
@@ -1159,41 +1214,43 @@ void DabCore::updateServiceState() {
 // Callbacks des Backends an Ereignisse binden (laufen im Backend-Thread).
 void DabCore::wireBackend(RunningService* rs) {
     auto& cb = *rs->cb;
-    const Slot slot = rs->slot;
+    // Kein eingefangener Slot: er wechselt bei Befoerderung/Abloesung
+    // (Vordecodierung), die Ereignisse tragen den jeweils aktuellen.
     const uint32_t sid = rs->sid;
     const uint8_t scids = rs->scids;
     cb.log = [this](const char* level, const std::string& t) { sink_(events::log(level, t)); };
-    cb.stats = [this, slot, sid](int fe, int rse, int aac, int rsc) {
+    cb.stats = [this, sid, rs](int fe, int rse, int aac, int rsc) {
+        const Slot slot = rs->slot.load();
         sink_(events::serviceStats(slot, sid, static_cast<uint16_t>(std::min(fe, 65535)),
                                    static_cast<uint16_t>(std::min(rse, 65535)),
                                    static_cast<uint16_t>(std::min(aac, 65535)),
                                    static_cast<uint16_t>(std::min(rsc, 65535))));
     };
     // dls nur bei Aenderung (v1: dl-cache in der GUI); DL+ kommt je Kommando
-    cb.dls = [this, slot, sid, rs](const std::string& t) {
+    cb.dls = [this, sid, rs](const std::string& t) {
         {
             std::lock_guard<std::mutex> pl(rs->padM);
             if (t == rs->lastDls) return;
             rs->lastDls = t;
         }
-        sink_(events::dls(slot, sid, t));
+        sink_(events::dls(rs->slot.load(), sid, t));
     };
-    cb.dlPlus = [this, slot, sid, rs](bool it, bool ir, const std::vector<std::pair<uint8_t, std::string>>& tags) {
-        json ev = events::dlPlus(slot, sid, it, ir, tags);
+    cb.dlPlus = [this, sid, rs](bool it, bool ir, const std::vector<std::pair<uint8_t, std::string>>& tags) {
+        json ev = events::dlPlus(rs->slot.load(), sid, it, ir, tags);
         {
             std::lock_guard<std::mutex> pl(rs->padM);
             rs->lastDlPlus = {{"item_toggle", ev["item_toggle"]}, {"item_running", ev["item_running"]}, {"tags", ev["tags"]}};
         }
         sink_(std::move(ev));
     };
-    cb.motObject = [this, slot, rs](const std::vector<uint8_t>& data, const std::string& name,
-                                    int contentType, bool dirElement, uint32_t objSid) {
+    cb.motObject = [this, rs](const std::vector<uint8_t>& data, const std::string& name,
+                              int contentType, bool dirElement, uint32_t objSid) {
         (void)dirElement;
         // X-PAD-Slides eines Audiodienstes -> mot_slide; alles aus
         // Paketdiensten (SPI: Logos, EPG) -> onMotObject.
         if (rs->isAudio) {
             if (((contentType >> 8) & 0x3F) == MOTBaseTypeImage) {
-                json ev = events::motSlide(slot, rs->sid, motMimeType(contentType), name, data);
+                json ev = events::motSlide(rs->slot.load(), rs->sid, motMimeType(contentType), name, data);
                 {
                     std::lock_guard<std::mutex> pl(rs->padM);
                     rs->lastSlide = {{"mime", ev["mime"]}, {"name", ev["name"]}, {"data_b64", ev["data_b64"]}};
@@ -1212,23 +1269,27 @@ void DabCore::wireBackend(RunningService* rs) {
         cb.pcm = [rs](const complex16* pcm, int n, int rate, bool ps, bool sbr, bool stereo) {
             if (rs->audio) rs->audio->push(pcm, n, rate, ps, sbr, stereo);
         };
-        cb.aacFrame = [this, slot](const uint8_t* loas, int len) {
-            if (slot != Slot::Primary) return;
+        cb.aacFrame = [this, rs](const uint8_t* loas, int len) {
+            if (rs->slot.load() != Slot::Primary) return;
             std::lock_guard<std::mutex> lk(frameDumpM_);
             if (frameDump_) std::fwrite(loas, 1, static_cast<size_t>(len), frameDump_);
         };
-        rs->audio->setFormatHandler([this, rs, slot, sid, scids](int rate, bool ps, bool sbr, bool stereo, bool first) {
+        rs->audio->setFormatHandler([this, rs, sid, scids](int rate, bool ps, bool sbr, bool stereo, bool first) {
+            const Slot slot = rs->slot.load();
             json ev = events::serviceStarted(slot, sid, scids, true, sbr, ps, static_cast<uint32_t>(rate), stereo);
             {
                 std::lock_guard<std::mutex> pl(rs->padM);
                 rs->codec = ev["codec"];
                 rs->stereo = stereo;
             }
-            if (first) {
+            // first: erster PCM-Block dieses Backends. !started: der Dienst
+            // wurde befoerdert, bevor ein Block kam (promoteLocked konnte
+            // service_started noch nicht melden).
+            if (first || !rs->started) {
                 rs->started = true;
                 sink_(std::move(ev));
             }
-            sink_(events::audioFormat(static_cast<uint32_t>(rate), 2));
+            if (slot == Slot::Primary) sink_(events::audioFormat(static_cast<uint32_t>(rate), 2));
         });
     }
 }
@@ -1293,7 +1354,7 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot, AutoData aut
         if (slot == Slot::Primary) {
             pendingSelect_ = PendingSelect{sid, scids, slot, autoData};
             sink_(events::log("info", "Dienst vorgemerkt (noch nicht in der FIC): SId " + std::to_string(sid)));
-        } else {
+        } else if (autoData != AutoData::Predecode) {   // Vordecodierung: die FIC-Wiederholung bringt ihn wieder
             sink_(events::log("warn", "Dienst nicht in der FIC: SId " + std::to_string(sid)));
         }
         return;
@@ -1302,17 +1363,80 @@ void DabCore::selectService(uint32_t sid, uint8_t scids, Slot slot, AutoData aut
     if (auto* ex = findLocked(slot, sid)) {
         if (ex->scids == scids) return;
     }
+    if (slot == Slot::Background) {
+        // Laeuft schon als Primary (gleiches Backend): kein zweites anlegen
+        if (auto* p = findLocked(Slot::Primary, sid)) {
+            if (p->scids == scids) return;
+        }
+        if (autoData == AutoData::Predecode && predecodeSkip_.count(sid)) return;
+    }
     if (slot == Slot::Primary) {
-        if (auto* p = findLocked(Slot::Primary, -1)) {
-            // Regel wie v1 localSelect_SS: kein Umschalten bei laufender Aufnahme
-            if (p->audio && p->audio->recording()) {
-                sink_(events::log("warn", "Dienstwechsel blockiert: Aufnahme laeuft"));
+        auto* p = findLocked(Slot::Primary, -1);
+        // Regel wie v1 localSelect_SS: kein Umschalten bei laufender Aufnahme
+        if (p && p->audio && p->audio->recording()) {
+            sink_(events::log("warn", "Dienstwechsel blockiert: Aufnahme laeuft"));
+            return;
+        }
+        // Vordecodiert? Dann nur die Ausgabe umhaengen (kein Backend-Neustart)
+        if (auto* bg = findLocked(Slot::Background, sid)) {
+            if (bg->isAudio && bg->scids == scids && bg->backend && bg->audio) {
+                promoteLocked(bg);
                 return;
             }
-            stopOneLocked(p);
         }
+        if (p) retirePrimaryLocked(p);
     }
-    startServiceLocked(index, sid, scids, slot, autoData);
+    if (!startServiceLocked(index, sid, scids, slot, autoData) && autoData == AutoData::Predecode)
+        predecodeSkip_.insert(sid);
+}
+
+bool DabCore::retirePrimaryLocked(RunningService* p) {
+    if (!predecode_.load() || !p->isAudio || !p->audio) {
+        stopOneLocked(p);
+        return false;
+    }
+    // Vordecodierung: der Dienst bleibt als Background dekodiert (Timeshift
+    // geloest, Ausgabe abgegeben). Der Sink laeuft weiter - sein Puffer wird
+    // sofort geleert, damit vom alten Dienst nichts nachklingt; die
+    // Nachfolge-Pipeline fuehrt ihn fort.
+    detachTimeshiftLocked(p);
+    const bool running = p->audio->detachSink();
+    if (running && audioSink_) { audioSink_->flush(); audioSink_->takeMissed(); }
+    p->slot = Slot::Background;
+    p->audio->setSlot(Slot::Background);
+    if (p->autoData == AutoData::None) p->autoData = AutoData::Predecode;
+    sink_(events::serviceStopped(Slot::Primary, p->sid));
+    json codec; bool stereo;
+    { std::lock_guard<std::mutex> pl(p->padM); codec = p->codec; stereo = p->stereo; }
+    if (!codec.is_null())
+        sink_(events::serviceStarted(Slot::Background, p->sid, p->scids, true, codec.value("sbr", false),
+                                     codec.value("ps", false), codec.value("sample_rate", 48000u), stereo));
+    return running;
+}
+
+void DabCore::promoteLocked(RunningService* target) {
+    bool sinkRunning = false;
+    if (auto* old = findLocked(Slot::Primary, -1)) sinkRunning = retirePrimaryLocked(old);
+    sink_(events::serviceStopped(Slot::Background, target->sid));
+    target->slot = Slot::Primary;
+    target->audio->setSlot(Slot::Primary);
+    target->audio->attachSink(audioSink_.get(), sinkRunning);
+    // Timeshift: der Ring beginnt mit dem Dienst neu (Entscheidung 4)
+    attachTimeshiftLocked(target);
+    json codec; bool stereo;
+    { std::lock_guard<std::mutex> pl(target->padM); codec = target->codec; stereo = target->stereo; }
+    if (!codec.is_null()) {
+        target->started = true;
+        const uint32_t rate = codec.value("sample_rate", 48000u);
+        sink_(events::serviceStarted(Slot::Primary, target->sid, target->scids, true, codec.value("sbr", false),
+                                     codec.value("ps", false), rate, stereo));
+        sink_(events::audioFormat(rate, 2));
+    } else {
+        target->started = false;   // der erste PCM-Block meldet service_started (Formathandler)
+    }
+    sink_(events::log("info", "Primary: " + target->name + " (SId " + std::to_string(target->sid) +
+                              ", vordecodiert, Ausgabe uebernommen)"));
+    updateServiceState();
 }
 
 // Review M1: nach FIG 0/0 Change-Flag jeden laufenden Dienst gegen die
@@ -1393,6 +1517,7 @@ bool DabCore::startServiceLocked(int index, uint32_t sid, uint8_t scids, Slot sl
         rs->audio = std::make_unique<AudioPipeline>(slot, sid, sink_, slot == Slot::Primary ? audioSink_.get() : nullptr);
         rs->audio->setVolume(vol);
         rs->audio->setMute(mute);
+        rs->audio->setSpectrumFlag(&audioSpectrumOn_);
     } else {
         auto pd = std::make_unique<packetdata>();
         fic.packetData(index, *pd);
@@ -1481,20 +1606,27 @@ bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, co
         sink_(events::log("error", "Aufnahmeformat " + fmt.kind + " folgt spaeter (wav, mp3)"));
         return false;
     }
+    bool isPrimary = slot == Slot::Primary;
     {
         std::lock_guard<std::mutex> lk(serviceM_);
         auto* rs = findLocked(slot, sid);
+        // sid angegeben: in jedem Slot suchen (Mehrfachaufnahme 28.09.2026 -
+        // der Slot eines Dienstes wechselt bei Befoerderung/Abloesung)
+        if (!rs && sid >= 0)
+            for (auto& r : services_)
+                if (r->sid == static_cast<uint32_t>(sid) && r->audio) { rs = r.get(); break; }
         if (!rs || !rs->audio) {
             sink_(events::log("warn", "start_recording: kein Audiodienst im Slot"));
             return false;
         }
+        isPrimary = rs->slot == Slot::Primary;
         std::string err;
         if (!rs->audio->startRec(path, fmt, err)) { sink_(events::log("error", err)); return false; }
         updateServiceState();
     }
     // Vorlauf aus dem Ring (Entscheidung 18, Plan M4 1.6): die Schreiber
     // koennen nicht anhaengen, deshalb als eigene Datei <name>_vorlauf.<ext>.
-    if (preS > 0.0 && slot == Slot::Primary && timeshift_ && timeshift_->attached()) {
+    if (preS > 0.0 && isPrimary && timeshift_ && timeshift_->attached()) {
         const double have = timeshift_->buffer().bufferedSeconds();
         const double pre = std::min(preS, have);
         if (pre < 1.0) {
@@ -1518,8 +1650,9 @@ bool DabCore::startRecording(Slot slot, int64_t sid, const std::string& path, co
 
 void DabCore::stopRecording(Slot slot, int64_t sid) {
     std::lock_guard<std::mutex> lk(serviceM_);
+    // sid angegeben: gilt in jedem Slot (siehe startRecording)
     for (auto& rs : services_)
-        if (rs->slot == slot && (sid < 0 || rs->sid == static_cast<uint32_t>(sid)) && rs->audio)
+        if ((sid >= 0 ? rs->sid == static_cast<uint32_t>(sid) : rs->slot == slot) && rs->audio)
             rs->audio->stopWav();
     updateServiceState();
 }
@@ -1823,6 +1956,7 @@ bool DabCore::tuneChannel(const std::string& channel, bool scan) {
         std::lock_guard<std::mutex> lk(serviceM_);
         retuning_ = true;
         pendingSelect_.reset();   // Vormerkung gilt je Kanal
+        predecodeSkip_.clear();
         stopAllServicesLocked();
     }
     struct RetuneGuard {

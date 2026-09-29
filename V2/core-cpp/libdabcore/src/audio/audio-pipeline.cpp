@@ -12,6 +12,11 @@ namespace dabcore {
 
 using namespace std::chrono_literals;
 
+namespace {
+constexpr int SPEC_FFT = 1024;    // Crossmixer SpectrumAnalyzer fftOrder 10
+constexpr int SPEC_BANDS = 48;
+}
+
 AudioPipeline::AudioPipeline(Slot slot, uint32_t sid, EventSink sink, IAudioSink* audioSink)
     : slot_(slot), sid_(sid), sink_(std::move(sink)), audio_(audioSink) {
     // Der Sink wird erst mit dem ersten PCM-Block gestartet, sonst meldet
@@ -31,7 +36,32 @@ void AudioPipeline::stop() {
     spaceCv_.notify_all();
     if (thread_.joinable()) thread_.join();
     stopWav();
+    std::lock_guard<std::mutex> lk(sinkM_);
     if (audio_ && sinkStarted_) audio_->stop();
+    audio_ = nullptr;
+    sinkStarted_ = false;
+}
+
+bool AudioPipeline::detachSink() {
+    std::lock_guard<std::mutex> lk(sinkM_);
+    const bool was = audio_ != nullptr && sinkStarted_;
+    audio_ = nullptr;
+    sinkStarted_ = false;
+    handover_ = false;
+    return was;
+}
+
+void AudioPipeline::attachSink(IAudioSink* sink, bool running) {
+    std::lock_guard<std::mutex> lk(sinkM_);
+    audio_ = sink;
+    sinkStarted_ = sink != nullptr && running;
+    handover_ = sinkStarted_;
+    lastLevel_ = {};
+}
+
+bool AudioPipeline::hasSink() {
+    std::lock_guard<std::mutex> lk(sinkM_);
+    return audio_ != nullptr;
 }
 
 void AudioPipeline::push(const complex16* pcm, int nPairs, int rate, bool ps, bool sbr, bool stereo) {
@@ -64,7 +94,10 @@ void AudioPipeline::setMute(bool muted) { muted_ = muted; }
 // des Zustands den aufgelaufenen Zaehler einmal wegwerfen.
 void AudioPipeline::setStarved(bool starved) {
     const bool was = starved_.exchange(starved);
-    if (was && !starved && audio_) audio_->takeMissed();
+    if (was && !starved) {
+        std::lock_guard<std::mutex> lk(sinkM_);
+        if (audio_) audio_->takeMissed();
+    }
 }
 
 bool AudioPipeline::startRec(const std::string& path, const RecFormat& format, std::string& error) {
@@ -74,7 +107,7 @@ bool AudioPipeline::startRec(const std::string& path, const RecFormat& format, s
     rec_ = std::move(w);
     recording_ = true;
     lastRecState_ = std::chrono::steady_clock::now();
-    sink_(events::recordingState(slot_, sid_, true, rec_->path(), 0, 0.0));
+    sink_(events::recordingState(slot_.load(), sid_, true, rec_->path(), 0, 0.0));
     return true;
 }
 
@@ -87,13 +120,56 @@ void AudioPipeline::stopWav() {
     double s = rec_->seconds();
     rec_.reset();
     recording_ = false;
-    sink_(events::recordingState(slot_, sid_, false, p, b, s));
+    sink_(events::recordingState(slot_.load(), sid_, false, p, b, s));
 }
 
 void AudioPipeline::emitRecordingState(bool active) {
     std::lock_guard<std::mutex> lk(wavM_);
     if (!rec_ || !rec_->isOpen()) return;
-    sink_(events::recordingState(slot_, sid_, active, rec_->path(), rec_->bytes(), rec_->seconds()));
+    sink_(events::recordingState(slot_.load(), sid_, active, rec_->path(), rec_->bytes(), rec_->seconds()));
+}
+
+// Vorlauf: 200 ms Stille, damit der Ausgabepuffer im Betrieb nicht um Null
+// pendelt (die Bloecke kommen superframe-weise in 120-ms-Schueben; ohne
+// Vorlauf reisst jeder Jitter den PortAudio-Callback leer).
+void AudioPipeline::writePrelude() {
+    std::vector<float> silence(static_cast<size_t>(2 * 48000 / 5), 0.0f);
+    audio_->write(silence.data(), static_cast<uint32_t>(silence.size()));
+}
+
+// Ein Abschnitt PCM (L/R verschachtelt, 48 kHz) -> 48 logarithmische Baender
+// 40 Hz..16 kHz wie Crossmixer SpectrumAnalyzer::timerCallback: Mono-Summe,
+// Hann, FFT 1024, je Band das Maximum, dB bezogen auf Vollaussteuerung
+// (Sinus mit Amplitude 1 -> 0 dB), u8 in 0,5-dB-Stufen ab -90 dB.
+void AudioPipeline::emitSpectrum(const float* pcm, int frames) {
+    if (frames < SPEC_FFT) return;
+    if (!fft_) {
+        fft_ = std::make_unique<fftHandler>(SPEC_FFT, false);
+        fftBuf_.resize(SPEC_FFT);
+        hann_.resize(SPEC_FFT);
+        for (int i = 0; i < SPEC_FFT; ++i)
+            hann_[i] = 0.5f - 0.5f * std::cos(2.0f * 3.14159265f * static_cast<float>(i) / (SPEC_FFT - 1));
+    }
+    const float* p = pcm + 2 * (frames - SPEC_FFT);   // die letzten 1024 Rahmen des Abschnitts
+    for (int i = 0; i < SPEC_FFT; ++i)
+        fftBuf_[i] = Complex(0.5f * (p[2 * i] + p[2 * i + 1]) * hann_[i], 0.0f);
+    fft_->fft(fftBuf_);
+    const float binHz = 48000.0f / SPEC_FFT;
+    const float fMin = 40.0f, fMax = 16000.0f;
+    const float logRange = std::log(fMax / fMin);
+    std::vector<uint8_t> bands(SPEC_BANDS);
+    for (int b = 0; b < SPEC_BANDS; ++b) {
+        const float f0 = fMin * std::exp(logRange * static_cast<float>(b) / SPEC_BANDS);
+        const float f1 = fMin * std::exp(logRange * static_cast<float>(b + 1) / SPEC_BANDS);
+        const int k0 = std::max(1, static_cast<int>(std::floor(f0 / binHz)));
+        const int k1 = std::min(SPEC_FFT / 2, std::max(k0 + 1, static_cast<int>(std::ceil(f1 / binHz))));
+        float m = 0.0f;
+        for (int k = k0; k < k1; ++k) m = std::max(m, std::abs(fftBuf_[k]));
+        m /= SPEC_FFT / 4.0f;   // Hann halbiert die Amplitude: Vollaussteuerung -> 0 dB
+        const float db = m > 1e-6f ? 20.0f * std::log10(m) : -120.0f;
+        bands[b] = static_cast<uint8_t>(std::clamp(std::lround((db + 90.0f) * 2.0f), 0L, 255L));
+    }
+    sink_(events::audioSpectrum(bands));
 }
 
 void AudioPipeline::run() {
@@ -104,7 +180,10 @@ void AudioPipeline::run() {
         if (flushPending_.exchange(false)) {
             // eigener PCM-Ring (bis 1,4 s) und Ausgabepuffer des Sinks
             ring_.FlushRingBuffer();
-            if (audio_) { audio_->flush(); audio_->takeMissed(); }
+            {
+                std::lock_guard<std::mutex> lk(sinkM_);
+                if (audio_) { audio_->flush(); audio_->takeMissed(); }
+            }
             quietUntil_ = std::chrono::steady_clock::now() + 1s;
             spaceCv_.notify_one();
         }
@@ -119,6 +198,15 @@ void AudioPipeline::run() {
             block.resize(amount);
             ring_.getDataFromBuffer(block.data(), amount);
             spaceCv_.notify_one();
+            // Vordecodierter Hintergrunddienst ohne Aufnahme: nur den Ring
+            // leeren, die 48-k-Konvertierung spart sich der Thread (das
+            // Backend hat den Superframe schon dekodiert, mehr braucht die
+            // Vorhaltung nicht).
+            if (!recording_ && !hasSink()) {
+                rate = rate_.load();
+                amount = static_cast<uint32_t>(rate / 10);
+                continue;
+            }
             int size = converter_.convert(block.data(), static_cast<int32_t>(amount), rate, out);
             // WAV-Dump vor der Lautstaerke (int16 wie v1 converter dump)
             if (recording_) {
@@ -130,16 +218,30 @@ void AudioPipeline::run() {
                 std::lock_guard<std::mutex> lk(wavM_);
                 if (rec_) rec_->write(wavBuf.data(), static_cast<uint32_t>(size / 2));
             }
+            std::lock_guard<std::mutex> sl(sinkM_);
             if (audio_) {
                 if (!sinkStarted_) {
                     sinkStarted_ = true;
+                    handover_ = false;
                     audio_->start();
-                    // Vorlauf: 200 ms Stille, damit der Ausgabepuffer im
-                    // Betrieb nicht um Null pendelt (die Bloecke kommen
-                    // superframe-weise in 120-ms-Schueben; ohne Vorlauf
-                    // reisst jeder Jitter den PortAudio-Callback leer).
-                    std::vector<float> silence(static_cast<size_t>(2 * 48000 / 5), 0.0f);
-                    audio_->write(silence.data(), static_cast<uint32_t>(silence.size()));
+                    audio_->takeMissed();   // Luecke vor dem Start zaehlt nicht
+                    writePrelude();
+                } else if (handover_) {
+                    // Ausgabe vom Vorgaenger uebernommen: dessen Rest im
+                    // Ausgabepuffer (bis ~0,7 s) verwerfen, dann wie beim
+                    // Start mit Vorlauf weiter.
+                    handover_ = false;
+                    audio_->flush();
+                    audio_->takeMissed();
+                    writePrelude();
+                    quietUntil_ = std::chrono::steady_clock::now() + 1s;
+                }
+                // Equalizer-Anzeige vor Lautstaerke/Mute (zeigt das Programm,
+                // nicht den Regler): zwei Abschnitte je Block -> ~20 Hz
+                if (spectrumOn_ && spectrumOn_->load()) {
+                    const int frames = size / 2;
+                    emitSpectrum(out.data(), frames / 2);
+                    emitSpectrum(out.data() + 2 * (frames / 2), frames - frames / 2);
                 }
                 int vol = volume_.load();
                 if (muted_) {
