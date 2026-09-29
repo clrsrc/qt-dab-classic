@@ -4,6 +4,44 @@
 Anwendungslogik in Rust, Oberfläche mit Tauri 2 und Svelte 5. Der Empfangspfad
 geht auf Qt-DAB von Jan van Katwijk (Lazy Chair Computing) zurück. Lizenz GPLv3.*
 
+## v3.1.0 – September 2026
+
+- **EPG-Übersicht über alle Sender** – das EPG-Panel zeigt ein Raster: je
+  Zeile ein Sender mit Logo, nach rechts der Zeitstrahl des Tages mit Linie
+  für die aktuelle Uhrzeit. Zuerst stehen die Stationsspeicher in ihrer
+  Reihenfolge, danach die übrigen Sender mit Sendeplan – über alle
+  Ensembles, deren Sendepläne im Cache liegen. Senderspalte und Zeitachse
+  bleiben beim Blättern stehen, „Jetzt“ springt zur aktuellen Uhrzeit. Ein
+  Klick auf eine Sendung öffnet die Details; Umschalten, Aufnahme-Timer und
+  Umschalt-Timer gelten auch für Sender anderer Kanäle.
+- **Sofort-Umschaltung im Ensemble** – die Audiodienste des eingestellten
+  Ensembles werden im Hintergrund mitdekodiert; ein Senderwechsel innerhalb
+  des Ensembles ist nach etwa 20 ms hörbar. Schaltbar unter Einstellungen,
+  Standard an (etwa 2 % CPU je Sender). Neues Kommando `set_predecode` im
+  Protokoll.
+- **Schnellerer Kanalwechsel** – der Empfänger stimmt ohne Neustart des
+  Datenstroms um, die Grobfrequenzschätzung läuft bis zur FIC-Dekodierung,
+  die AGC merkt sich die Stufe je Kanal. Die Dienstliste bleibt beim Wechsel
+  stehen und der gewählte Dienst startet, sobald er in der FIC vollständig
+  ist.
+- **Mehrfachaufnahme** – ein zweiter Aufnahme-Timer auf einen anderen Sender
+  desselben Kanals läuft parallel im Hintergrund; die Statusleiste zeigt
+  „REC +n“ mit der Liste der Aufnahmen. Solange nur Hintergrundaufnahmen
+  laufen, bleibt der Senderwechsel innerhalb des Ensembles frei.
+- **Titel je Sender** – Ensemble-Tab und Senderliste zeigen zu jedem Sender
+  des eingestellten Ensembles den laufenden Titel bzw. Lauftext in einer
+  zweiten Zeile.
+- **Grafik-Equalizer im Display** – Spektrumanzeige des Hörprogramms mit
+  48 Bändern von 40 Hz bis 16 kHz, schaltbar unter Einstellungen > Audio.
+  Neues Kommando `set_audio_spectrum` und Ereignis `audio_spectrum` im
+  Protokoll.
+- **Ruhige Anzeige** – der Bereich für Logo und Slideshow, die Jetzt/Danach-
+  Zeile und der Equalizer haben eine feste Höhe; beim Senderwechsel bleibt
+  die Aufteilung des Fensters gleich.
+- **Infobereich** – der Knopf „▾“ in der Titelleiste legt das Fenster in den
+  Infobereich der Taskleiste; ein Klick auf das Symbol holt es zurück, das
+  Menü bietet Anzeigen und Beenden. Der Empfang läuft währenddessen weiter.
+
 ## v3.0.2 – September 2026
 
 - **Umschalten auf Stationsspeicher und Senderliste** – die Dienstauswahl
@@ -87,8 +125,8 @@ geht auf Qt-DAB von Jan van Katwijk (Lazy Chair Computing) zurück. Lizenz GPLv3
 
 | Datei | Inhalt |
 |---|---|
-| `DAB-Classic-v3.0.2-portable-win64.zip` | Vollpaket mit WebView2-Laufzeit (Fixed Version) im Ordner `webview2\`, läuft auf jedem Windows 10/11 x64 |
-| `DAB-Classic-v3.0.2-portable-win64-lite.zip` | Ohne WebView2-Laufzeit, nutzt die vom System (Microsoft Edge) bereitgestellte Evergreen-Laufzeit |
+| `DAB-Classic-v3.1.0-portable-win64.zip` | Vollpaket mit WebView2-Laufzeit (Fixed Version) im Ordner `webview2\`, läuft auf jedem Windows 10/11 x64 |
+| `DAB-Classic-v3.1.0-portable-win64-lite.zip` | Ohne WebView2-Laufzeit, nutzt die vom System (Microsoft Edge) bereitgestellte Evergreen-Laufzeit |
 
 Beide Pakete enthalten `dab-classic.exe`, den Empfangskern `core\` mit
 Bibliotheken, die TII-Senderdatenbank `tii\`, `zadig-2.9.exe` für die

@@ -1,5 +1,5 @@
 ============================================================
-  DAB Classic v3.0.2 - DAB+-Empfaenger fuer HackRF One und RTL-SDR
+  DAB Classic v3.1.0 - DAB+-Empfaenger fuer HackRF One und RTL-SDR
   Portable-Version fuer Windows 10/11 (64 Bit)
 ============================================================
 
@@ -32,8 +32,12 @@ INHALT
   - Senderliste ueber alle gefundenen Ensembles, Band-III-Scan ueber alle
     38 Kanaele
   - Senderlogos und Dia-Show (MOT), Lauftext (DLS) mit Titel/Interpret (DL+)
-  - EPG (Sendeplaene) mit Jetzt/Danach-Anzeige und Timer-Anlage per Klick
-  - Aufnahme als WAV, Timer zum Umschalten und Aufnehmen, Sleep-Timer
+  - EPG (Sendeplaene) als Uebersicht ueber alle Sender, Jetzt/Danach-
+    Anzeige und Timer-Anlage per Klick
+  - Sofort-Umschaltung zwischen den Sendern eines Ensembles
+  - Aufnahme als WAV, auch mehrere Sender eines Kanals gleichzeitig,
+    Timer zum Umschalten und Aufnehmen, Sleep-Timer
+  - Grafik-Equalizer-Anzeige im Display
   - Timeshift: Live-Programm anhalten, zurueckspulen und die letzten
     Minuten nachtraeglich als WAV sichern
   - Notfallwarnung (EWS nach ETSI TS 104 089) mit Alarmfenster,
@@ -51,7 +55,7 @@ INHALT
 
 2. PORTABLE-ORDNER ENTPACKEN UND STARTEN
 ----------------------------------------
-  1. ZIP "DAB-Classic-v3.0.2-portable-win64.zip" an einen beliebigen
+  1. ZIP "DAB-Classic-v3.1.0-portable-win64.zip" an einen beliebigen
      Ort entpacken (Festplatte oder USB-Stick), z. B. D:\DAB-Classic\.
      Der Pfad darf Leerzeichen und Umlaute enthalten.
      Zwei Pakete stehen zur Wahl: das grosse (ca. 330 MB) bringt die
@@ -188,16 +192,22 @@ INHALT
 -------------------------
   Von oben nach unten:
     Titelleiste     Programmname, KERN-Anzeige (gruen = Kern laeuft),
-                    AUFNAHME-Kennung, Minimieren, Schliessen. Das Fenster
-                    laesst sich an der Titelleiste verschieben und am Rand
-                    in der Groesse aendern.
+                    AUFNAHME-Kennung, Infobereich, Minimieren, Schliessen.
+                    Der Knopf mit dem Pfeil nach unten legt das Fenster in
+                    den Infobereich der Taskleiste; ein Klick auf das
+                    Symbol holt es zurueck, das Menue des Symbols bietet
+                    "Anzeigen" und "Beenden". Der Empfang laeuft weiter.
+                    Das Fenster laesst sich an der Titelleiste verschieben
+                    und am Rand in der Groesse aendern.
     Anzeige         Ensemble (EId), Dienst, Bitrate, Codec, Stereo/Mono,
                     Programmtyp (Genre aus dem Sendersignal, Tooltip zeigt
                     die gemeldete Sprache), FIC-Qualitaet, LIVE bzw.
                     "TIMESHIFT -m:ss",
                     Kanal/Frequenz/SNR, Senderlogo bzw.
                     Dia-Show, Jetzt/Danach aus dem EPG, Lauftext (DLS) mit
-                    Titel/Interpret (DL+), Aussteuerung L/R.
+                    Titel/Interpret (DL+), Grafik-Equalizer (48 Baender,
+                    40 Hz bis 16 kHz), Aussteuerung L/R. Der Bildbereich
+                    hat eine feste Hoehe, auch ohne Logo oder Dia-Show.
     Transport       Vorheriger/naechster Dienst, Stopp, Stumm, EPG-, EWF-,
                     TMR- und REC-Knopf, Lautstaerkeregler.
     Timeshift       Pause/Weiter, -30 s, +30 s, LIVE, Pufferbalken mit
@@ -227,20 +237,26 @@ INHALT
                     Programmtyp je Dienst (Popmusik, Nachrichten, ...);
                     das Auswahlfeld "Alle Genres" filtert die Liste nach
                     Programmtyp. Tooltip: Genre, Sprache, Kurzlabel.
+                    Unter dem Namen steht der laufende Titel bzw. der
+                    Lauftext des Senders.
     Senderliste     Alle Dienste aller bekannten Ensembles, gruppiert je
                     Ensemble; Klick = Umschalten auch ueber Kanalgrenzen,
                     Filter (trifft auch das Genre), Genre-Auswahl, "nur
                     Audio", Rechtsklick/Drag = Speicher belegen, "Leeren"
-                    (Abschnitt 4).
+                    (Abschnitt 4). Sender des eingestellten Ensembles
+                    zeigen den laufenden Titel in einer zweiten Zeile.
     Scan            Ergebnisse des Band-III-Scans.
     Einstellungen   Gruppen Geraet/Empfang (Geraet, RTL-SDR-Index, PPM,
                     Antennenspeisung fuer aktive Antennen am HackRF - 3,3 V /
                     max. 50 mA, nur mit aktiver Antenne einschalten -,
                     AGC, manueller Gain, Merker je Geraet/Kanal), Audio
-                    (Ausgabegeraet - siehe unten, Lautstaerke), Notfallwarnung (EWS
+                    (Ausgabegeraet - siehe unten, Lautstaerke, Grafik-
+                    Equalizer im Display), Notfallwarnung (EWS
                     auswerten, automatisch umschalten, Warnton), EPG
                     (Broadcast-EPG, TPEG-Verkehrsmeldungen, Internet-
-                    Ergaenzung per RadioDNS - siehe unten), Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
+                    Ergaenzung per RadioDNS - siehe unten, Sender des
+                    Ensembles vordecodieren fuer die Sofort-Umschaltung,
+                    etwa 2 % CPU je Sender), Aufnahme/Timer (Aufnahmeordner mit Ordnerdialog,
                     Belegung der Ordner, Obergrenze fuer Durchsage-Mitschnitte,
                     Vor-/Nachlauf, Sleep-Timer), Timeshift (Puffergroesse
                     in Minuten), Allgemein (Sprache, Autostart, Kurzlabel
@@ -386,6 +402,14 @@ adiodns\hosts.json).
   Speicherwechsel sowie der Scan gesperrt. Ein Versuch oeffnet den Dialog
   "Aufnahme laeuft" mit "Aufnahme beenden und wechseln" oder "Abbrechen".
   Ein Notfall-Alarm mit automatischer Umschaltung hat Vorrang.
+
+  Mehrfachaufnahme: Wird ein Aufnahme-Timer faellig, waehrend bereits eine
+  Aufnahme auf einem anderen Sender desselben Kanals laeuft, nimmt DAB
+  Classic den zweiten Sender parallel im Hintergrund auf. Die Statusleiste
+  zeigt "REC +n" (Tooltip: Liste der Hintergrundaufnahmen). Solange nur
+  Hintergrundaufnahmen laufen, bleibt der Senderwechsel innerhalb des
+  Ensembles frei; Kanalwechsel und Scan sind gesperrt, ebenso der Wechsel
+  auf einen Sender, der gerade im Hintergrund aufgenommen wird.
 
 
 8. TIMER, VOR-/NACHLAUF, SLEEP-TIMER
