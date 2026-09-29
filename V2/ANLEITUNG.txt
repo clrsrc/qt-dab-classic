@@ -403,13 +403,19 @@ adiodns\hosts.json).
   "Aufnahme laeuft" mit "Aufnahme beenden und wechseln" oder "Abbrechen".
   Ein Notfall-Alarm mit automatischer Umschaltung hat Vorrang.
 
-  Mehrfachaufnahme: Wird ein Aufnahme-Timer faellig, waehrend bereits eine
-  Aufnahme auf einem anderen Sender desselben Kanals laeuft, nimmt DAB
-  Classic den zweiten Sender parallel im Hintergrund auf. Die Statusleiste
-  zeigt "REC +n" (Tooltip: Liste der Hintergrundaufnahmen). Solange nur
+  Hintergrund- und Mehrfachaufnahme: Wird ein Aufnahme-Timer auf einen
+  anderen Sender desselben Kanals faellig, waehrend ein Sender gehoert
+  wird, laeuft der gehoerte Sender weiter und DAB Classic nimmt den Sender
+  des Timers im Hintergrund auf - auch parallel zu einer laufenden
+  Aufnahme. Nur wenn der Timer einen anderen Kanal braucht oder gerade
+  nichts gehoert wird, stimmt er selbst ab. Die Statusleiste zeigt
+  "REC +n" (Tooltip: Liste der Hintergrundaufnahmen). Solange nur
   Hintergrundaufnahmen laufen, bleibt der Senderwechsel innerhalb des
   Ensembles frei; Kanalwechsel und Scan sind gesperrt, ebenso der Wechsel
   auf einen Sender, der gerade im Hintergrund aufgenommen wird.
+  Hintergrundaufnahmen beginnen mit dem Vorlauf des Timers; die
+  zusaetzliche Vorlauf-Datei aus dem Timeshift-Puffer gibt es nur beim
+  gehoerten Sender.
 
 
 8. TIMER, VOR-/NACHLAUF, SLEEP-TIMER

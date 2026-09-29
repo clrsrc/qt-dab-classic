@@ -430,6 +430,8 @@ pub struct Scheduler {
     run: Option<TimerRun>,
     /// Timer, fuer den zuletzt "blockiert durch Aufnahme" gemeldet wurde.
     blocked: Option<u32>,
+    /// Hintergrundaufnahme wartet auf ihren Dienst: (Timer, Frist).
+    bg_wait: Option<(u32, i64)>,
     /// Anzahl beim Start aus v1 importierter Timer (Hinweis).
     pub imported_v1: usize,
 }
@@ -462,7 +464,7 @@ impl Scheduler {
         for t in timers.timers.iter_mut().filter(|t| t.fired && t.kind.is_record() && t.duration_s == 0) {
             t.active = false;
         }
-        let s = Self { timers, path, run: None, blocked: None, imported_v1: imported };
+        let s = Self { timers, path, run: None, blocked: None, bg_wait: None, imported_v1: imported };
         if imported > 0 || (!s.path.is_file() && dirs.root.is_dir()) {
             if let Err(e) = s.timers.save(&s.path) {
                 log::warn!("timers.json: {e}");
@@ -721,11 +723,14 @@ impl App {
                 .background
                 .iter()
                 .any(|r| r.active && if t.sid != 0 { r.sid == t.sid } else { r.service.eq_ignore_ascii_case(t.service.trim()) });
-            // Mehrfachaufnahme (28.09.2026): laeuft eine Aufnahme, nimmt ein
-            // faelliger Aufnahme-Timer auf einen ANDEREN Dienst desselben Kanals
-            // im Hintergrund auf (Vordecodierung) - Hoerdienst und laufende
-            // Aufnahme bleiben. Alles andere wartet wie bisher.
-            let background = t.kind.is_record() && !chain && self.recording_any() && same_channel && !target_is_current && !target_bg;
+            // Mehrfachaufnahme (28.09.2026): ein faelliger Aufnahme-Timer auf
+            // einen ANDEREN Dienst desselben Kanals nimmt im Hintergrund auf
+            // (Vordecodierung) - Hoerdienst und laufende Aufnahme bleiben. Das
+            // gilt auch ohne laufende Aufnahme, sobald ein Dienst gehoert wird
+            // (29.09.2026): der Timer nimmt auf, er schaltet nicht um. Ohne
+            // Hoerdienst oder auf einem anderen Kanal stimmt er wie bisher ab.
+            let listening = self.state.current.is_some();
+            let background = t.kind.is_record() && !chain && (self.recording_any() || listening) && same_channel && !target_is_current && !target_bg;
             let blocked = !background && ((self.state.recording && !chain) || (!self.rec.background.is_empty() && (!same_channel || target_bg)));
             if blocked {
                 if self.sched.blocked != Some(t.id) {
@@ -734,7 +739,7 @@ impl App {
                 }
             } else if background {
                 self.sched.blocked = None;
-                let (f, fired) = self.run_start_background(&t, post);
+                let (f, fired) = self.run_start_background(&t, now, post);
                 fx.append(f);
                 changed |= fired;
             } else if self.state.device.is_none() {
@@ -790,11 +795,33 @@ impl App {
 
     /// Aufnahme-Timer auf einen weiteren Dienst desselben Kanals: Hintergrund-
     /// aufnahme ohne Hoerdienstwechsel (Mehrfachaufnahme). Dienst noch nicht
-    /// in der Liste: naechster Tick (bis das Fenster vorbei ist -> verpasst).
-    /// Rueckgabe: (Effekte, Timer hat gefeuert).
-    fn run_start_background(&mut self, t: &Timer, post: i64) -> (Effects, bool) {
+    /// in der Liste: naechster Tick, nach [`FIRE_TIMEOUT_S`] fehlgeschlagen
+    /// (wie der Weg ueber den Hoerdienst). Rueckgabe: (Effekte, Timer hat
+    /// gefeuert).
+    fn run_start_background(&mut self, t: &Timer, now: i64, post: i64) -> (Effects, bool) {
         let svc = if t.sid != 0 { self.state.service(t.sid, t.scids).cloned() } else { self.state.service_by_name(&t.service).cloned() };
-        let Some(svc) = svc else { return (Effects::default(), false) };
+        let Some(svc) = svc else {
+            let deadline = match self.sched.bg_wait {
+                Some((id, deadline)) if id == t.id => deadline,
+                _ => {
+                    self.sched.bg_wait = Some((t.id, now + FIRE_TIMEOUT_S));
+                    now + FIRE_TIMEOUT_S
+                }
+            };
+            if now < deadline {
+                return (Effects::default(), false);
+            }
+            self.sched.bg_wait = None;
+            if let Some(x) = self.sched.timers.get_mut(t.id) {
+                x.active = false;
+                x.fired = true;
+            }
+            let mut fx = Effects::default();
+            fx.events.push(self.timer_status(t, TimerFireStatus::Failed));
+            fx.events.push(AppEvent::Notice { level: NoticeLevel::Warn, text: format!("timer {}: {}", t.label(), AppError::NoService) });
+            return (fx, true);
+        };
+        self.sched.bg_wait = None;
         if let Some(x) = self.sched.timers.get_mut(t.id) {
             x.fired = true;
             x.sid = svc.sid;
@@ -1149,7 +1176,7 @@ mod tests {
         let mut a = app();
         a.state.channel = Some("5C".into());
         tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf"), (0xD220, "Dlf Kultur")]);
-        started(&mut a, 0xD220);
+        // Kein Hoerdienst: der Timer waehlt seinen Dienst selbst
         let mut t = timer(TimerKind::EpgRecord, "5C", 0xD210, "Dlf", T0, 600);
         t.title = "Informationen am Mittag".into();
         let (out, _) = a.timer_add(t, false, T0 - 1000).unwrap();
@@ -1237,6 +1264,69 @@ mod tests {
         assert!(a.recording_background().is_empty());
         assert!(a.state.recording, "Aufnahme des Hoerdienstes laeuft weiter");
         assert!(!a.sched.timers.get(id).unwrap().active);
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
+    }
+
+    /// 29.09.2026: wird ein Dienst gehoert und ein Aufnahme-Timer auf einen
+    /// anderen Dienst desselben Kanals faellig, laeuft der Hoerdienst weiter
+    /// und der Timer nimmt im Hintergrund auf - auch ohne laufende Aufnahme.
+    #[test]
+    fn record_timer_on_other_service_keeps_listening_and_records_in_background() {
+        let mut a = app();
+        a.state.channel = Some("11D".into());
+        tune(&mut a, "11D", 0x1E1C, &[(0xE1C4, "WDR 4"), (0xE1C0, "WDR 5")]);
+        started(&mut a, 0xE1C4);
+        let (out, _) = a.timer_add(timer(TimerKind::EpgRecord, "11D", 0xE1C0, "WDR 5", T0, 600), false, T0 - 1000).unwrap();
+        let id = out.id.unwrap();
+        let fx = a.scheduler_tick(T0 - 120);
+        assert!(!fx.commands.iter().any(|c| matches!(c, Command::SelectService { slot: ServiceSlot::Primary, .. })), "kein Umschalten: {:?}", fx.commands);
+        assert!(fx.commands.contains(&Command::SelectService { sid: 0xE1C0, scids: 0, slot: ServiceSlot::Background }), "{:?}", fx.commands);
+        assert!(fx.commands.iter().any(|c| matches!(c, Command::StartRecording { slot: ServiceSlot::Background, sid: Some(0xE1C0), .. })), "{:?}", fx.commands);
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::TimerStatus { status: TimerFireStatus::RecordingStarted, .. })));
+        assert_eq!(a.state.current.as_ref().unwrap().sid, 0xE1C4, "Hoerdienst unveraendert");
+        assert!(!a.state.recording, "Hoerdienst nimmt nicht auf");
+        assert!(!a.sched.is_running());
+        assert_eq!(a.recording_background().len(), 1);
+        assert_eq!(a.recording_background()[0].timer_id, Some(id));
+        // Nachlauf vorbei: die Hintergrundaufnahme endet, der Hoerdienst bleibt
+        let fx = a.scheduler_tick(T0 + 900);
+        assert_eq!(fx.commands, vec![Command::StopRecording { slot: ServiceSlot::Background, sid: Some(0xE1C0) }]);
+        assert!(a.recording_background().is_empty());
+        assert_eq!(a.state.current.as_ref().unwrap().sid, 0xE1C4);
+        // Timer auf den Hoerdienst selbst: Aufnahme des Hoerdienstes wie bisher
+        let (out, _) = a.timer_add(timer(TimerKind::EpgRecord, "11D", 0xE1C4, "WDR 4", T0 + 3600, 600), false, T0 + 1000).unwrap();
+        let fx = a.scheduler_tick(T0 + 3600 - 120);
+        assert!(fx.commands.iter().any(|c| matches!(c, Command::StartRecording { slot: ServiceSlot::Primary, .. })), "{:?}", fx.commands);
+        assert_eq!(a.rec.info.timer_id, out.id);
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
+    }
+
+    /// Hintergrundaufnahme, deren Dienst nicht in der Liste steht: warten,
+    /// nach FIRE_TIMEOUT_S fehlgeschlagen.
+    #[test]
+    fn background_timer_without_its_service_fails_after_the_timeout() {
+        let mut a = app();
+        a.state.channel = Some("11D".into());
+        tune(&mut a, "11D", 0x1E1C, &[(0xE1C4, "WDR 4")]);
+        started(&mut a, 0xE1C4);
+        let (out, _) = a.timer_add(timer(TimerKind::EpgRecord, "11D", 0xE1C0, "WDR 5", T0, 600), false, T0 - 1000).unwrap();
+        let id = out.id.unwrap();
+        let fx = a.scheduler_tick(T0 - 120);
+        assert!(fx.commands.is_empty() && fx.events.is_empty(), "{:?}", fx.events);
+        assert!(!a.sched.timers.get(id).unwrap().fired);
+        let fx = a.scheduler_tick(T0 - 120 + FIRE_TIMEOUT_S);
+        assert!(fx.commands.is_empty());
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::TimerStatus { status: TimerFireStatus::Failed, .. })), "{:?}", fx.events);
+        let t = a.sched.timers.get(id).unwrap();
+        assert!(t.fired && !t.active);
+        assert_eq!(a.state.current.as_ref().unwrap().sid, 0xE1C4);
+        // Erscheint der Dienst rechtzeitig, startet die Aufnahme
+        let (out, _) = a.timer_add(timer(TimerKind::EpgRecord, "11D", 0xE1C1, "1LIVE", T0 + 3600, 600), false, T0 + 1000).unwrap();
+        assert!(a.scheduler_tick(T0 + 3600 - 120).commands.is_empty());
+        a.handle_event(&Event::ServiceAdded { service: svc(0xE1C1, "1LIVE") }, Instant::now());
+        let fx = a.scheduler_tick(T0 + 3600 - 119);
+        assert!(fx.commands.iter().any(|c| matches!(c, Command::StartRecording { slot: ServiceSlot::Background, sid: Some(0xE1C1), .. })), "{:?}", fx.commands);
+        assert_eq!(a.recording_background()[0].timer_id, out.id);
         let _ = std::fs::remove_dir_all(&a.dirs.root);
     }
 
