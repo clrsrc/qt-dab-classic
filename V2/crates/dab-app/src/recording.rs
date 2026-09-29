@@ -49,6 +49,12 @@ pub struct Recording {
     /// veraltet und darf die Sperre nicht wieder setzen (Review 16.09.2026,
     /// Befund 7).
     pub(crate) stop_pending: bool,
+    /// Hintergrundaufnahmen (Mehrfachaufnahme, 28.09.2026): Timer auf
+    /// weitere Dienste desselben Ensembles nehmen ueber den Background-
+    /// Slot des Kerns (Vordecodierung) auf, waehrend Hoerdienst und dessen
+    /// Aufnahme unberuehrt bleiben. Zuordnung der `recording_state` ueber
+    /// den Pfad (der Slot kann bei Befoerderung wechseln).
+    pub background: Vec<RecordingInfo>,
 }
 
 /// Gehoert ein `recording_state`-Pfad des Kerns zu unserer Datei? Der Kern
@@ -189,7 +195,26 @@ impl App {
     pub fn recording_on_event(&mut self, ev: &Event) -> Effects {
         let mut fx = Effects::default();
         match ev {
-            Event::RecordingState { slot: ServiceSlot::Primary, sid, active, path, bytes, seconds } => {
+            Event::RecordingState { slot, sid, active, path, bytes, seconds } => {
+                // Hintergrundaufnahme? Ueber den Pfad zuordnen (Slot-unabhaengig)
+                if let Some(i) = self
+                    .rec
+                    .background
+                    .iter()
+                    .position(|r| matches!((path.as_deref(), r.path.as_deref()), (Some(p), Some(m)) if same_file(p, m)))
+                {
+                    let r = &mut self.rec.background[i];
+                    r.bytes = *bytes;
+                    r.seconds = *seconds;
+                    if !*active {
+                        self.rec.background.remove(i);
+                    }
+                    fx.events.push(self.background_changed());
+                    return fx;
+                }
+                if *slot != ServiceSlot::Primary {
+                    return fx;
+                }
                 // Pfad passt zur eigenen Datei?
                 let matches_mine = matches!((path.as_deref(), self.rec.info.path.as_deref()), (Some(p), Some(m)) if same_file(p, m));
                 // Ohne Pfad nicht zuzuordnen: gilt als eigene Aufnahme (der
@@ -236,6 +261,10 @@ impl App {
             }
             Event::Exiting { .. } | Event::DeviceClosed => {
                 self.rec.stop_pending = false;
+                if !self.rec.background.is_empty() {
+                    self.rec.background.clear();
+                    fx.events.push(self.background_changed());
+                }
                 if self.rec.info.active || self.state.recording {
                     self.rec.info.active = false;
                     self.rec.info.timer_id = None;
@@ -265,6 +294,90 @@ impl App {
 
     pub fn is_recording(&self) -> bool {
         self.state.recording || self.rec.info.active
+    }
+
+    // -----------------------------------------------------------------------
+    // Hintergrundaufnahmen (Mehrfachaufnahme, 28.09.2026)
+    // -----------------------------------------------------------------------
+
+    pub fn recording_background(&self) -> &[RecordingInfo] {
+        &self.rec.background
+    }
+
+    /// Irgendeine Aufnahme (Hoerdienst oder Hintergrund): Kanalwechsel und
+    /// Scan sind dann gesperrt, weil alle Dienste des Kanals enden wuerden.
+    pub fn recording_any(&self) -> bool {
+        self.is_recording() || !self.rec.background.is_empty()
+    }
+
+    /// Wird `sid` gerade im Hintergrund aufgenommen? Dann darf er nicht zum
+    /// Hoerdienst werden (Regel: kein Umschalten bei Aufnahme - er waere
+    /// sonst ein aufgenommener Primary).
+    pub fn recording_background_has(&self, sid: u32) -> bool {
+        self.rec.background.iter().any(|r| r.active && r.sid == sid)
+    }
+
+    fn background_changed(&self) -> AppEvent {
+        AppEvent::BackgroundRecordingsChanged { recordings: self.rec.background.clone() }
+    }
+
+    /// Hintergrundaufnahme eines weiteren Dienstes desselben Ensembles
+    /// (Timer): der Dienst laeuft im Kern als Background (bei Vordecodierung
+    /// ohnehin, sonst startet ihn `select_service background`), die Aufnahme
+    /// haengt an seiner Pipeline. Kein Vorlauf (der Timeshift-Ring gehoert
+    /// dem Hoerdienst). Der Hoerdienst selbst geht nur ueber `recording_start`.
+    pub fn recording_start_background(&mut self, sid: u32, scids: u8, title: Option<&str>, timer: (u32, Option<i64>)) -> Result<Effects, AppError> {
+        if self.state.current.as_ref().map(|c| c.sid == sid).unwrap_or(false) || self.recording_background_has(sid) {
+            return Err(AppError::Recording);
+        }
+        let svc = self.state.service(sid, scids).cloned().ok_or(AppError::NoService)?;
+        let name = svc.name.trim().to_string();
+        let title = title.map(|t| t.trim().to_string()).unwrap_or_default();
+        let dir = self.recording_dir();
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            return Err(AppError::Other(format!("{}: {e}", dir.display())));
+        }
+        let path = dir.join(file_name(&Local::now(), &name, &title));
+        self.rec.background.push(RecordingInfo {
+            active: true,
+            path: Some(path.display().to_string()),
+            bytes: 0,
+            seconds: 0.0,
+            sid,
+            service: name,
+            title,
+            started_at: crate::state::unix_now(),
+            timer_id: Some(timer.0),
+            stop_at: timer.1,
+        });
+        let mut fx = Effects::default();
+        fx.commands.push(Command::SelectService { sid, scids, slot: ServiceSlot::Background });
+        fx.commands.push(Command::StartRecording { path, format: RecFormat::Wav, slot: ServiceSlot::Background, sid: Some(sid), pre_s: 0.0 });
+        fx.events.push(self.background_changed());
+        Ok(fx)
+    }
+
+    /// Hintergrundaufnahme beenden (ohne: nichts).
+    pub fn recording_stop_background(&mut self, sid: u32) -> Effects {
+        let mut fx = Effects::default();
+        let before = self.rec.background.len();
+        self.rec.background.retain(|r| r.sid != sid);
+        if self.rec.background.len() == before {
+            return fx;
+        }
+        fx.commands.push(Command::StopRecording { slot: ServiceSlot::Background, sid: Some(sid) });
+        fx.events.push(self.background_changed());
+        fx
+    }
+
+    /// Alles beenden (Rueckfrage "Aufnahme beenden und wechseln").
+    pub fn recording_stop_all(&mut self) -> Result<Effects, AppError> {
+        let mut fx = self.recording_stop()?;
+        let sids: Vec<u32> = self.rec.background.iter().map(|r| r.sid).collect();
+        for sid in sids {
+            fx.append(self.recording_stop_background(sid));
+        }
+        Ok(fx)
     }
 }
 

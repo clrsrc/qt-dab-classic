@@ -242,6 +242,12 @@
         <span class="lbl"></span>
         <span class="k">{audioStatus()}</span>
 
+        <!-- Grafik-Equalizer-Anzeige im Display (audio_spectrum, Vorbild Crossmixer) -->
+        <span class="lbl">{t("settings.spectrum")}</span>
+        <span class="row">
+          <input type="checkbox" checked={st.audio_spectrum} onchange={(e) => patchSettings({ audio_spectrum: chk(e) })} />
+          <span class="k">{t("settings.spectrum_hint")}</span>
+        </span>
         <span class="lbl">{t("settings.volume")}</span>
         <span class="row">
           <input type="number" class="short" min="0" max="100" step="5" value={st.volume_percent} onchange={(e) => patchSettings({ volume_percent: Math.max(0, Math.min(100, num(e))) })} />
@@ -273,6 +279,12 @@
         <span class="row">
           <input type="checkbox" checked={st.tpeg_enabled} onchange={(e) => patchSettings({ tpeg_enabled: chk(e) })} />
           <span class="k">{t("settings.tpeg_hint")}</span>
+        </span>
+        <!-- Vordecodierung aller Audiodienste (set_predecode): Senderwechsel im Ensemble ohne Verzoegerung -->
+        <span class="lbl">{t("settings.predecode")}</span>
+        <span class="row">
+          <input type="checkbox" checked={st.predecode_enabled} onchange={(e) => patchSettings({ predecode_enabled: chk(e) })} />
+          <span class="k">{t("settings.predecode_hint")}</span>
         </span>
         <!-- Hybrid Radio / RadioDNS (dab_app::radiodns), Standard aus -->
         <span class="lbl">{t("settings.radiodns")}</span>

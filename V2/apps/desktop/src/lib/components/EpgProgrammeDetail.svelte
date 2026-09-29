@@ -6,8 +6,19 @@
   import { epgApi, fmtClock, fmtDuration, progressOf, remainingMin, type Programme, type TimerFromEpgRequest } from "$lib/epg";
   import { t, tError } from "$lib/i18n.svelte";
   import { notify, s, ui } from "$lib/state.svelte";
+  import { stationsApi } from "$lib/stations";
 
-  let { programme, serviceName, sid, onclose }: { programme: Programme; serviceName: string; sid: number; onclose: () => void } = $props();
+  // `eid`/`channel`/`scids`: Sender der EPG-Uebersicht, auch aus einem anderen
+  // Ensemble; ohne sie gilt das eingestellte Ensemble.
+  let {
+    programme,
+    serviceName,
+    sid,
+    eid = null,
+    channel = "",
+    scids = 0,
+    onclose,
+  }: { programme: Programme; serviceName: string; sid: number; eid?: number | null; channel?: string; scids?: number; onclose: () => void } = $props();
 
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -15,12 +26,15 @@
   const p = $derived(programme);
   const running = $derived(progressOf(p.start_unix, p.duration_min, ui.now) !== null);
   const past = $derived(p.start_unix * 1000 + p.duration_min * 60000 <= ui.now);
-  const isCurrent = $derived(!!s.current && s.current.sid === sid);
+  const sameEnsemble = $derived(eid == null || s.ensemble?.eid === eid);
+  const isCurrent = $derived(!!s.current && s.current.sid === sid && sameEnsemble);
+  // Sender eines anderen Ensembles braucht den Kanal (Speicher oder Senderliste)
+  const reachable = $derived(sameEnsemble || !!channel);
 
   function request(kind: TimerFromEpgRequest["kind"]): TimerFromEpgRequest {
     return {
-      channel: s.channel ?? s.ensemble?.channel ?? "",
-      eid: s.ensemble?.eid ?? 0,
+      channel: channel || (s.channel ?? s.ensemble?.channel ?? ""),
+      eid: eid ?? s.ensemble?.eid ?? 0,
       sid,
       service: serviceName,
       title: p.long_name || p.medium_name,
@@ -46,7 +60,8 @@
 
   async function switchNow() {
     try {
-      await api.selectService(sid, 0);
+      if (eid != null && channel) await stationsApi.tune({ channel, eid, sid, scids });
+      else await api.selectService(sid, scids);
     } catch (e) {
       error = tError(e);
     }
@@ -72,9 +87,9 @@
     <div class="dim genres">{t("epg.genres")}: {p.genres.join(", ")}</div>
   {/if}
   <div class="actions">
-    <button class="btn" disabled={isCurrent || s.recording} onclick={switchNow}>{t("epg.switch")}</button>
-    <button class="btn" disabled={busy || past} onclick={() => addTimer("record")}>{t("epg.record")}</button>
-    <button class="btn" disabled={busy || past || running} onclick={() => addTimer("switch")}>{t("epg.switch_timer")}</button>
+    <button class="btn" disabled={isCurrent || s.recording || !reachable} onclick={switchNow}>{t("epg.switch")}</button>
+    <button class="btn" disabled={busy || past || !reachable} onclick={() => addTimer("record")}>{t("epg.record")}</button>
+    <button class="btn" disabled={busy || past || running || !reachable} onclick={() => addTimer("switch")}>{t("epg.switch_timer")}</button>
   </div>
 </div>
 

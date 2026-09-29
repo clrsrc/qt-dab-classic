@@ -75,6 +75,18 @@ pub fn recording_status(shared: State<'_, Shared>) -> R<RecordingInfo> {
     Ok(lock_app(&shared)?.recording_info().clone())
 }
 
+/// Hintergrundaufnahmen (Mehrfachaufnahme) fuer die Momentaufnahme beim Start.
+#[tauri::command]
+pub fn recording_background(shared: State<'_, Shared>) -> R<Vec<RecordingInfo>> {
+    Ok(lock_app(&shared)?.recording_background().to_vec())
+}
+
+/// Alle Aufnahmen beenden (Rueckfrage "Aufnahme beenden und wechseln").
+#[tauri::command]
+pub fn recording_stop_all(handle: AppHandle, shared: State<'_, Shared>) -> R<()> {
+    act(&handle, &shared, |a| a.recording_stop_all().map(|fx| ((), fx)))
+}
+
 // ---------------------------------------------------------------------------
 // Sleep-Timer
 // ---------------------------------------------------------------------------

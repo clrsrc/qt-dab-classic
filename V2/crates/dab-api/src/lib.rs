@@ -267,6 +267,15 @@ pub enum Command {
     // Background-Slot laufen lassen; seine Datengruppen kommen als `TdcGroup`.
     // Standard an; `false` beendet den vom Kern gestarteten Dienst.
     SetTpeg { enabled: bool },
+    // Vordecodierung (28.09.2026): alle Audiodienste des Ensembles als
+    // Background mitlaufen lassen; `SelectService` primary auf einen davon
+    // haengt im Kern nur die Ausgabe um (kein Backend-Neustart, kein Warten
+    // auf den ersten Superframe). Standard aus im Kern, die App schaltet
+    // nach ihrer Einstellung; `false` beendet die vordecodierten Dienste.
+    SetPredecode { enabled: bool },
+    // Grafik-Equalizer-Anzeige (28.09.2026): `AudioSpectrum` ~20 Hz vom
+    // Primary-Dienst; das Frontend schaltet es bei verstecktem Fenster ab.
+    SetAudioSpectrum { enabled: bool },
 
     // Diagnose. Scopes: `spectrum` und `iq` getrennt schaltbar, gemeinsame
     // Rate 1..10 Hz (Standard 5; der Kern klemmt); beide aus = kein Aufwand.
@@ -435,6 +444,8 @@ pub enum Event {
     /// dBFS = Wert / 2 - 120 (0 = -120 dBFS, 240 = 0 dBFS). Nur mit
     /// `SetScopes { spectrum: true }`, hoechstens `rate_hz`-mal je Sekunde.
     Spectrum { bins_b64: String },
+    /// Equalizer-Anzeige: 48 Baender (u8, 0,5 dB ab -90 dBFS), siehe `SetAudioSpectrum`.
+    AudioSpectrum { bands_b64: String },
     /// Konstellation eines OFDM-Symbols (Symbol 2, wie das v1-IQ-Scope):
     /// 1536 Traeger nach der Differenzdemodulation, in Frequenzreihenfolge
     /// (k = -768..-1, 1..768), auf den Einheitskreis normiert, als 3072
@@ -541,6 +552,9 @@ pub struct CoreState {
     /// TPEG-Hintergrunddienst automatisch starten (`SetTpeg`); additiv 17.09.2026.
     #[serde(default = "default_true")]
     pub tpeg_enabled: bool,
+    /// Vordecodierung aller Audiodienste (`SetPredecode`); additiv 28.09.2026.
+    #[serde(default)]
+    pub predecode_enabled: bool,
     /// ECC des Ensembles (FIG 0/9), 0 = unbekannt; additiv 17.09.2026.
     #[serde(default)]
     pub ensemble_ecc: u8,
@@ -553,6 +567,9 @@ pub struct CoreState {
     pub tii_dx_mode: bool,
     #[serde(default)]
     pub scopes: ScopeSettings,
+    /// Equalizer-Anzeige an (`SetAudioSpectrum`); additiv 28.09.2026.
+    #[serde(default)]
+    pub audio_spectrum: bool,
     /// Letzter SNR-Wert in dB (0, solange keiner vorliegt).
     #[serde(default)]
     pub snr: f32,
@@ -582,6 +599,7 @@ impl Event {
                 | Event::FrequencyOffset { .. }
                 | Event::AudioLevel { .. }
                 | Event::Spectrum { .. }
+                | Event::AudioSpectrum { .. }
                 | Event::IqSamples { .. }
                 | Event::TimeshiftState { .. }
                 | Event::FileProgress { .. }
@@ -696,6 +714,10 @@ mod tests {
         assert_eq!(ev, Event::MotObject { eid: 0x10BC, sid: 0xD210, content_type: 0x0203, name: "d210_Dlf_32x32.png".into(), data_b64: "iVBORw0KGgo=".into() });
         assert_eq!(serde_json::to_string(&Command::SetEpg { enabled: false }).unwrap(), r#"{"type":"set_epg","enabled":false}"#);
         assert_eq!(serde_json::to_string(&Command::SetTpeg { enabled: false }).unwrap(), r#"{"type":"set_tpeg","enabled":false}"#);
+        assert_eq!(serde_json::to_string(&Command::SetPredecode { enabled: true }).unwrap(), r#"{"type":"set_predecode","enabled":true}"#);
+        assert_eq!(serde_json::to_string(&Command::SetAudioSpectrum { enabled: true }).unwrap(), r#"{"type":"set_audio_spectrum","enabled":true}"#);
+        let ev: Event = serde_json::from_str(r#"{"type":"audio_spectrum","bands_b64":"AAEC"}"#).unwrap();
+        assert!(ev.is_latest_wins() && matches!(ev, Event::AudioSpectrum { .. }));
         let js = r#"{"type":"tdc_group","sid":3771731974,"group_type":0,"data_b64":"/w8="}"#;
         let ev: Event = serde_json::from_str(js).unwrap();
         assert_eq!(ev, Event::TdcGroup { sid: 0xE0D01006, group_type: 0, data_b64: "/w8=".into() });

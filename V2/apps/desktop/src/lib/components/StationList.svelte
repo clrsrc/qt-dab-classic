@@ -7,7 +7,7 @@
   import { confirm, openMenu } from "$lib/dialogs.svelte";
   import { t, tError } from "$lib/i18n.svelte";
   import { startServiceDrag, storePreset } from "$lib/presets";
-  import { notify, s, togglePanel, ui } from "$lib/state.svelte";
+  import { notify, nowPlaying, s, togglePanel, ui } from "$lib/state.svelte";
   import { groupStations, hexEid, stationsApi, type StationEntry } from "$lib/stations";
   import { matchesPty, metaTooltip, ptyName, ptyOptions } from "$lib/metadata";
   import Logo from "./Logo.svelte";
@@ -99,6 +99,7 @@
         <span class="grow">{g.ensemble || "–"} <span class="eid">({hexEid(g.eid)})</span></span>
         <span class="meta">{t("stations.group_services", { n: g.entries.length })}</span>
       </button>
+      {@const tuned = s.ensemble?.eid === g.eid && s.channel === g.channel}
       {#each g.entries as e (`${e.sid}:${e.scids}`)}
         <button
           class="row svc"
@@ -111,7 +112,11 @@
           title={e.is_audio ? [metaTooltip(e), t("stations.row_hint")].filter(Boolean).join("\n") : ""}
         >
           {#if e.is_audio}<Logo eid={e.eid} sid={e.sid} size="small" name={e.name} px={16} />{/if}
-          <span class="grow">{e.name}{e.scids ? ` (${e.scids})` : ""}</span>
+          <span class="grow">
+            <span class="nm">{e.name}{e.scids ? ` (${e.scids})` : ""}</span>
+            <!-- nur das eingestellte Ensemble hat PAD (Vordecodierung) -->
+            {#if tuned && e.is_audio}{@const np = nowPlaying(e.sid)}{#if np}<span class="np" title={np}>{np}</span>{/if}{/if}
+          </span>
           <span class="meta pty">{e.is_audio ? ptyName(e.pty) : ""}</span>
           <span class="meta">{e.is_audio ? `${e.bitrate_kbps} kbps` : t("services.data")}</span>
           <span class="meta">{e.sid.toString(16).toUpperCase().padStart(4, "0")}</span>
@@ -135,6 +140,10 @@
   .grp .ch { width: 30px; font-family: var(--mono); }
   .grp .eid { font-weight: normal; color: #2f8a4a; font-family: var(--mono); }
   .svc { padding-left: 14px; }
+  .svc .grow { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+  .nm, .np { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .np { font-size: 9px; color: var(--green-dim); font-family: var(--font); }
+  .row.active .np { color: #40c060; }
   .row.data { color: #2f6a3a; }
   .empty { padding: 10px 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
   .dim { color: var(--green-dim); }

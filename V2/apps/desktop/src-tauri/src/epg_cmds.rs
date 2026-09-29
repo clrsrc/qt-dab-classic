@@ -4,7 +4,7 @@
 //! `current_media{logo_data_url, now_next}` ueber die Effekte der App-Schicht.
 
 use crate::{lock_app, Shared};
-use dab_app::{App, LogoSize, NowNext, Programme};
+use dab_app::{App, EpgGridRow, LogoSize, NowNext, Programme};
 use serde::Serialize;
 use std::sync::MutexGuard;
 use tauri::State;
@@ -38,6 +38,19 @@ pub fn epg_services(shared: State<'_, Shared>, eid: u16, day: u32) -> R<Vec<EpgS
 #[tauri::command]
 pub fn epg_programmes(shared: State<'_, Shared>, eid: u16, sid: u32, day: u32) -> R<Vec<Programme>> {
     Ok(app(&shared)?.epg.programmes_for_day(eid, sid, day))
+}
+
+/// Tage (yyyymmdd) mit Sendeplan-Daten ueber alle Ensembles im Cache.
+#[tauri::command]
+pub fn epg_grid_days(shared: State<'_, Shared>) -> R<Vec<u32>> {
+    Ok(app(&shared)?.epg.all_days())
+}
+
+/// EPG-Uebersicht eines Tages ueber alle Sender: Favoriten in Speicher-
+/// Reihenfolge, dann die uebrigen; nur Dienste mit Sendungen an dem Tag.
+#[tauri::command]
+pub fn epg_grid(shared: State<'_, Shared>, day: u32) -> R<Vec<EpgGridRow>> {
+    Ok(app(&shared)?.epg_grid(day))
 }
 
 /// Laufende und naechste Sendung eines Dienstes des aktuellen Ensembles.

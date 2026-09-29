@@ -8,7 +8,7 @@
 
 use base64::Engine as _;
 use dab_api::{Codec, Event, ServiceInfo, ServiceSlot};
-use dab_app::{App, AppEvent, DataDirs, LogoSize, Presets, Settings};
+use dab_app::{App, AppEvent, DataDirs, LogoSize, Preset, Presets, Settings, StationEntry};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -107,6 +107,78 @@ fn objects_flow_into_cache_presets_and_display() {
     let again = App::with(DataDirs::with_root(&root, true), Settings::default(), Presets::default());
     assert_eq!(again.logos.sizes(0x10BC, 0xD210), vec![(32, 32), (128, 128), (320, 240)]);
     assert_eq!(again.epg.days(0x10BC), vec![day]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// EPG-Uebersicht ueber alle Sender: Favoriten in Speicher-Reihenfolge, dann
+/// die uebrigen nach Senderliste; Dienste ohne Sendeplan fehlen.
+#[test]
+fn grid_lists_presets_first_then_stations() {
+    let root = tmp("grid");
+    let dirs = DataDirs::with_root(&root, true);
+    dirs.ensure().unwrap();
+    let mut a = App::with(dirs, Settings::default(), Presets::default());
+    let day = 20260414;
+    let read = |sid: &str| std::fs::read_to_string(data_dir().join(format!("20260414_{sid}_SI.xml"))).unwrap();
+    // zwei Ensembles im Cache; 0xD220 liegt im zweiten, damit die Reihenfolge nicht am Ensemble haengt
+    a.epg.store_object(0x10BC, 0xD210, day, &read("D210")).unwrap();
+    a.epg.store_object(0x10BC, 0xD230, day, &read("D230")).unwrap();
+    a.epg.store_object(0x10EC, 0xD220, day, &read("D220")).unwrap();
+    a.epg.store_object(0x10EC, 0xD391, day, &read("D210")).unwrap();
+    let station = |channel: &str, eid: u16, ensemble: &str, sid: u32, name: &str| StationEntry {
+        channel: channel.into(),
+        eid,
+        ensemble: ensemble.into(),
+        sid,
+        scids: 0,
+        name: name.into(),
+        is_audio: true,
+        bitrate_kbps: 96,
+        pty: 0,
+        short_name: String::new(),
+        language: 0,
+        last_seen_unix: 0,
+    };
+    a.state.stations = vec![
+        station("5C", 0x10BC, "DR Deutschland", 0xD210, "Dlf             "),
+        station("5C", 0x10BC, "DR Deutschland", 0xD230, "Dlf Nova"),
+        station("5C", 0x10BC, "DR Deutschland", 0x1A45, "ENERGY"),
+        station("11D", 0x10EC, "WDR", 0xD220, "WDR 5"),
+    ];
+    let preset = |channel: &str, eid: u16, sid: u32, name: &str| Preset {
+        channel: channel.into(),
+        eid,
+        sid,
+        scids: 0,
+        name: name.into(),
+        short_name: String::new(),
+        logo_path: None,
+        logo_data_url: None,
+        stored_at: 0,
+    };
+    // Slot 2 vor Slot 5; Slot 3 ist ein Favorit ohne Sendeplan
+    a.presets.set(1, preset("11D", 0x10EC, 0xD220, "WDR 5"));
+    a.presets.set(2, preset("5C", 0x10BC, 0x1A45, "ENERGY"));
+    a.presets.set(4, preset("5C", 0x10BC, 0xD210, "Dlf"));
+
+    let rows = a.epg_grid(day);
+    let got: Vec<(u16, u32, &str, &str, Option<usize>)> = rows.iter().map(|r| (r.eid, r.sid, r.name.as_str(), r.channel.as_str(), r.preset)).collect();
+    assert_eq!(
+        got,
+        vec![
+            (0x10EC, 0xD220, "WDR 5", "11D", Some(1)),
+            (0x10BC, 0xD210, "Dlf", "5C", Some(4)),
+            (0x10BC, 0xD230, "Dlf Nova", "5C", None),
+            // nur im Cache bekannt: Hex-SId, kein Kanal
+            (0x10EC, 0xD391, "D391", "", None),
+        ]
+    );
+    assert!(rows.iter().all(|r| !r.programmes.is_empty()));
+    assert_eq!(rows[1].programmes.len(), a.epg.programmes_for_day(0x10BC, 0xD210, day).len());
+    // Folgetag: nur der Uebertrag ueber Mitternacht, sonst nichts
+    assert!(a.epg_grid(20260415).iter().all(|r| r.programmes.iter().all(|p| p.start_local.date() == chrono::NaiveDate::from_ymd_opt(2026, 4, 14).unwrap())));
+    assert!(a.epg_grid(20260420).is_empty());
+    assert_eq!(a.epg.all_days(), vec![day]);
     let _ = std::fs::remove_dir_all(&root);
 }
 

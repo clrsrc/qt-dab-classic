@@ -5,6 +5,7 @@
 
 use dab_api::{AudioDevice, Codec, Event, EwsPhase, Gain, ServiceInfo, ServiceSlot, SourceKind};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct DeviceState {
@@ -52,6 +53,52 @@ impl DlPlusState {
     pub fn title(&self) -> Option<&str> { self.tag(1) }
     /// ITEM.ARTIST (4)
     pub fn artist(&self) -> Option<&str> { self.tag(4) }
+}
+
+/// PAD-Stand je Dienst, alle Slots ("was laeuft gerade wo", 28.09.2026):
+/// mit der Vordecodierung (`set_predecode`) liefert der Kern DLS und DL+
+/// fuer jeden Audiodienst des Ensembles. Schluessel in `AppState::pad` ist
+/// die SId. Slides bleiben beim Primary (Groesse, Anzeige nur im Display).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+pub struct ServicePad {
+    pub dls: String,
+    pub dl_plus: Option<DlPlusState>,
+    /// Laufender Titel/Interpret: aus DL+ ITEM.TITLE/ITEM.ARTIST, solange
+    /// `item_running`; ohne DL+ aus dem DLS-Text (dab_music::split_dls).
+    /// Beide None = Moderation/unbekannt (dann zeigt die Liste den DLS).
+    pub title: Option<String>,
+    pub artist: Option<String>,
+}
+
+impl ServicePad {
+    pub fn note_dls(&mut self, text: &str) {
+        self.dls = text.to_string();
+        if self.dl_plus.is_none() {
+            let (artist, title) = dab_music::split_dls(text);
+            self.artist = artist;
+            self.title = title;
+        }
+    }
+    pub fn note_dl_plus(&mut self, dp: DlPlusState) {
+        let clean = |s: Option<&str>| s.map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+        if dp.item_running {
+            self.title = clean(dp.title());
+            self.artist = clean(dp.artist());
+        } else {
+            self.title = None;
+            self.artist = None;
+        }
+        self.dl_plus = Some(dp);
+    }
+    /// Anzeigetext fuer Listen: "Interpret – Titel", sonst der DLS.
+    pub fn now_playing(&self) -> String {
+        match (&self.artist, &self.title) {
+            (Some(a), Some(t)) => format!("{a} – {t}"),
+            (None, Some(t)) => t.clone(),
+            (Some(a), None) => a.clone(),
+            (None, None) => self.dls.clone(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -169,6 +216,9 @@ pub struct AppState {
     pub dls: String,
     pub dl_plus: Option<DlPlusState>,
     pub slide: Option<SlideState>,
+    /// PAD je Dienst des Ensembles (alle Slots), Schluessel SId; leer nach
+    /// Kanal-/Ensemblewechsel. Fuer Ensemble-Tab und Senderliste.
+    pub pad: BTreeMap<u32, ServicePad>,
     pub level: (f32, f32),
     pub gain: Gain,
     pub agc: bool,
@@ -235,6 +285,7 @@ impl AppState {
         self.fic_total = 0;
         self.ensemble = None;
         self.services.clear();
+        self.pad.clear();
         // Kanalwechsel/Geraet zu: der Kern leert den Timeshift-Ring (Entscheidung 4).
         self.timeshift.reset();
         self.clear_service();
@@ -309,6 +360,7 @@ impl AppState {
     /// Wendet ein Kern-Ereignis auf den Zustand an. Gibt `true` zurueck, wenn
     /// sich etwas Sichtbares geaendert hat (Latest-wins-Werte zaehlen nicht).
     pub fn apply(&mut self, ev: &Event) {
+        self.apply_pad(ev);
         match ev {
             Event::Ready { core_version, .. } => {
                 self.core_alive = true;
@@ -369,6 +421,7 @@ impl AppState {
                 let changed = self.ensemble.as_ref().map(|e| e.eid != *eid).unwrap_or(false);
                 if changed {
                     self.services.clear();
+                    self.pad.clear();
                 }
                 // ECC behalten, wenn dasselbe Ensemble ohne ECC erneut gemeldet wird.
                 let ecc = if *ecc != 0 { *ecc } else if changed { 0 } else { self.ensemble.as_ref().map(|e| e.ecc).unwrap_or(0) };
@@ -508,6 +561,19 @@ impl AppState {
                 for s in &state.services {
                     self.upsert_service(s.clone());
                 }
+                // PAD-Stand aller laufenden Dienste (Vordecodierung) uebernehmen
+                for r in &state.running {
+                    if !r.is_audio || (r.dls.is_none() && r.dl_plus.is_none()) {
+                        continue;
+                    }
+                    let p = self.pad.entry(r.sid).or_default();
+                    if let Some(d) = &r.dls {
+                        p.note_dls(d);
+                    }
+                    if let Some(dp) = &r.dl_plus {
+                        p.note_dl_plus(DlPlusState { item_running: dp.item_running, item_toggle: dp.item_toggle, tags: dp.tags.clone() });
+                    }
+                }
                 if let Some((sid, scids)) = state.primary {
                     if self.current.is_none() {
                         self.current = Some(CurrentService { sid, scids, codec: None, stereo: false });
@@ -520,6 +586,21 @@ impl AppState {
                 self.scan.active = false;
                 self.clear_reception();
             }
+            _ => {}
+        }
+    }
+
+    /// PAD je Dienst fuer alle Slots (Vordecodierung): DLS und DL+ jedes
+    /// laufenden Dienstes landen in `pad`, der Primary zusaetzlich wie bisher
+    /// in `dls`/`dl_plus` (siehe `apply`).
+    fn apply_pad(&mut self, ev: &Event) {
+        match ev {
+            Event::Dls { sid, text, .. } => self.pad.entry(*sid).or_default().note_dls(text),
+            Event::DlPlus { sid, item_toggle, item_running, tags, .. } => self
+                .pad
+                .entry(*sid)
+                .or_default()
+                .note_dl_plus(DlPlusState { item_running: *item_running, item_toggle: *item_toggle, tags: tags.clone() }),
             _ => {}
         }
     }
@@ -589,5 +670,30 @@ mod tests {
         assert_eq!(st.dls, "");
         st.apply(&Event::Dls { slot: ServiceSlot::Primary, sid: 1, text: "fg".into() });
         assert_eq!(st.dls, "fg");
+    }
+
+    /// Vordecodierung: DLS/DL+ jedes Dienstes landen je SId in `pad`, mit
+    /// Titel/Interpret aus DL+ (solange item_running) oder aus dem DLS.
+    #[test]
+    fn pad_per_service_for_all_slots() {
+        let mut st = AppState::default();
+        st.apply(&Event::Dls { slot: ServiceSlot::Background, sid: 0xD210, text: "Nachrichten".into() });
+        st.apply(&Event::Dls { slot: ServiceSlot::Background, sid: 0x1057, text: "Queen - Radio Ga Ga".into() });
+        st.apply(&Event::DlPlus { slot: ServiceSlot::Primary, sid: 0x12E9, item_toggle: false, item_running: true, tags: vec![(1, "Wonderwall".into()), (4, "Oasis".into())] });
+        assert_eq!(st.pad[&0xD210].now_playing(), "Nachrichten");
+        assert_eq!(st.pad[&0x1057].artist.as_deref(), Some("Queen"));
+        assert_eq!(st.pad[&0x1057].now_playing(), "Queen – Radio Ga Ga");
+        assert_eq!(st.pad[&0x12E9].now_playing(), "Oasis – Wonderwall");
+        // DL+ item_running=false: Moderation, Titel weg; DLS zaehlt dann nicht
+        // mehr als Titel (DL+ ist massgeblich)
+        st.apply(&Event::DlPlus { slot: ServiceSlot::Primary, sid: 0x12E9, item_toggle: true, item_running: false, tags: vec![] });
+        st.apply(&Event::Dls { slot: ServiceSlot::Primary, sid: 0x12E9, text: "Jetzt: Moderation - live".into() });
+        assert_eq!(st.pad[&0x12E9].title, None);
+        assert_eq!(st.pad[&0x12E9].now_playing(), "Jetzt: Moderation - live");
+        // Ensemblewechsel leert die Tabelle
+        st.apply(&Event::EnsembleFound { eid: 0x10BC, name: "A".into(), channel: "5C".into(), ecc: 0 });
+        assert_eq!(st.pad.len(), 3);
+        st.apply(&Event::EnsembleFound { eid: 0x1234, name: "B".into(), channel: "5C".into(), ecc: 0 });
+        assert!(st.pad.is_empty());
     }
 }

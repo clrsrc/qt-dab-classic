@@ -13,6 +13,8 @@ import { win } from "./window";
 export const tm = $state({
   timers: [] as Timer[],
   recording: null as RecordingInfo | null,
+  /** Hintergrundaufnahmen (Mehrfachaufnahme: Timer auf weitere Dienste des Ensembles). */
+  background: [] as RecordingInfo[],
   sleep: null as SleepState | null,
   /** Letzter Aufnahmepfad (fuer den Hinweis nach dem Stopp). */
   lastFile: "" as string,
@@ -65,6 +67,14 @@ export function applyTimerAppEvent(ev: AppEvent | TimerAppEvent): boolean {
       }
       return true;
     }
+    case "background_recordings_changed": {
+      const before = new Set(tm.background.map((r) => r.path ?? ""));
+      const after = new Set(e.recordings.map((r) => r.path ?? ""));
+      for (const r of e.recordings) if (!before.has(r.path ?? "")) notify("info", t("rec.started", { file: fileName(r.path) }), 5000);
+      for (const r of tm.background) if (!after.has(r.path ?? "")) notify("info", t("rec.stopped", { file: fileName(r.path), size: fmtBytes(r.bytes) }), 6000);
+      tm.background = e.recordings;
+      return true;
+    }
     case "sleep_changed":
       tm.sleep = e.sleep;
       return true;
@@ -80,6 +90,8 @@ export function applyTimerAppEvent(ev: AppEvent | TimerAppEvent): boolean {
 
 /** Kern-Ereignis `recording_state` (Primary): Laufzeit/Bytes fortschreiben. */
 export function applyRecordingState(e: Record<string, unknown>): void {
+  // Hintergrundaufnahme (ueber den Pfad, der Slot kann wechseln): pflegt die Rust-Seite
+  if (typeof e.path === "string" && tm.background.some((r) => r.path === e.path)) return;
   const active = !!e.active;
   const cur = tm.recording ?? { active: false, path: null, bytes: 0, seconds: 0, sid: 0, service: "", title: "", started_at: 0, timer_id: null, stop_at: null };
   tm.recording = {
@@ -97,9 +109,10 @@ export function applyRecordingState(e: Record<string, unknown>): void {
 /** Beim Start: Momentaufnahme holen und die Umschaltsperre-Rueckfrage anmelden. */
 export async function initTimers(): Promise<void> {
   installRecordingGuard();
-  const [timers, recording, sleep] = await Promise.all([api.timersList(), api.recordingStatus(), api.sleepStatus()]);
+  const [timers, recording, background, sleep] = await Promise.all([api.timersList(), api.recordingStatus(), api.recordingBackground(), api.sleepStatus()]);
   tm.timers = timers.timers;
   tm.recording = recording;
+  tm.background = background;
   tm.sleep = sleep;
 }
 

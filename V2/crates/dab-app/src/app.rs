@@ -61,6 +61,8 @@ pub enum AppEvent {
     TimersChanged { timers: crate::timer::Timers },
     TimerStatus { id: u32, kind: crate::timer::TimerKind, service: String, title: String, status: crate::timer::TimerFireStatus },
     RecordingChanged { recording: crate::recording::RecordingInfo },
+    /// Hintergrundaufnahmen (Mehrfachaufnahme, crate::recording), bei jeder Aenderung und 1 Hz.
+    BackgroundRecordingsChanged { recordings: Vec<crate::recording::RecordingInfo> },
     SleepChanged { sleep: Option<crate::sleep::SleepState> },
     SleepElapsed { action: crate::sleep::SleepAction },
     /// TII / Debug-Panel (crate::tii): Senderliste geaendert, Zaehler (1 Hz bei offenem Panel).
@@ -300,7 +302,8 @@ impl App {
             // Ohne Koordinaten (None/None) bleibt es beim ungefilterten Verhalten.
             .cmd(Command::SetHomeLocation { lat: s.home_lat, lon: s.home_lon })
             .cmd(Command::SetEpg { enabled: s.epg_enabled })
-            .cmd(Command::SetTpeg { enabled: s.tpeg_enabled });
+            .cmd(Command::SetTpeg { enabled: s.tpeg_enabled })
+            .cmd(Command::SetPredecode { enabled: s.predecode_enabled });
         fx.append(self.debug_startup());
         fx.append(self.timeshift_startup());
         // Durchsagen-Unterordner auf die Obergrenze beschneiden und die
@@ -647,7 +650,7 @@ impl App {
         Ok(match cmd {
             Command::OpenDevice { source } => self.open_device(source),
             Command::SetChannel { channel } => {
-                if self.state.recording {
+                if self.recording_any() {
                     return Err(AppError::Recording);
                 }
                 self.set_channel(&channel)
@@ -739,7 +742,9 @@ impl App {
     }
 
     pub fn select_service(&mut self, sid: u32, scids: u8) -> Result<Effects, AppError> {
-        if self.state.recording {
+        // Hoerdienst nimmt auf, oder das Ziel wird im Hintergrund aufgenommen
+        // (es wuerde zum aufgenommenen Hoerdienst): kein Umschalten bei Aufnahme
+        if self.state.recording || self.recording_background_has(sid) {
             return Err(AppError::Recording);
         }
         if self.state.scan.active {
@@ -844,7 +849,7 @@ impl App {
     }
 
     pub fn start_scan(&mut self, channels: Vec<String>, mode: ScanMode) -> Result<Effects, AppError> {
-        if self.state.recording {
+        if self.recording_any() {
             return Err(AppError::Recording);
         }
         if self.state.is_file_source() || self.state.device.is_none() {
@@ -890,6 +895,9 @@ impl App {
         if old.tpeg_enabled != s.tpeg_enabled {
             fx = fx.cmd(Command::SetTpeg { enabled: s.tpeg_enabled });
             fx.append(self.tpeg_set_enabled(s.tpeg_enabled));
+        }
+        if old.predecode_enabled != s.predecode_enabled {
+            fx = fx.cmd(Command::SetPredecode { enabled: s.predecode_enabled });
         }
         if old.home_lat != s.home_lat || old.home_lon != s.home_lon {
             // Entfernungen/Sortierung der TPEG-Liste haengen am Heimatort
@@ -938,6 +946,14 @@ impl App {
     pub(crate) fn tune_to(&mut self, slot: Option<usize>, channel: &str, sid: u32, scids: u8, name: &str, now: Instant) -> Result<Effects, AppError> {
         if self.state.recording {
             return Err(AppError::Recording);
+        }
+        // Hintergrundaufnahmen: Kanalwechsel gesperrt, und ihr Dienst darf
+        // nicht zum Hoerdienst werden (kein Umschalten bei Aufnahme)
+        if !self.rec.background.is_empty() {
+            let same = self.state.channel.as_deref().map(|c| c.eq_ignore_ascii_case(channel.trim())).unwrap_or(false);
+            if !same || self.recording_background_has(sid) {
+                return Err(AppError::Recording);
+            }
         }
         if self.state.scan.active {
             return Err(AppError::Scanning);

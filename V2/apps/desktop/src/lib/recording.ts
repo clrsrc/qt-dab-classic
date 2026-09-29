@@ -38,20 +38,25 @@ export async function recordingGuard(retry: () => Promise<void>): Promise<void> 
   if (asking) return;
   asking = true;
   try {
+    // Alle laufenden Aufnahmen (Hoerdienst + Hintergrund) benennen
     let file = "";
     try {
-      file = (await api.recordingStatus()).path ?? "";
+      const [main, bg] = await Promise.all([api.recordingStatus(), api.recordingBackground()]);
+      file = [main.active ? main.path : null, ...bg.map((r) => r.path)]
+        .filter((p): p is string => !!p)
+        .map((p) => p.split(/[\\/]/).pop() ?? "")
+        .join(", ");
     } catch {
       // ohne Pfad geht es auch
     }
     const ok = await confirm(
       t("rec.locked_title"),
-      t("rec.locked_text", { file: file.split(/[\\/]/).pop() ?? "" }),
+      t("rec.locked_text", { file }),
       t("rec.stop_and_switch"),
       t("modal.cancel"),
     );
     if (!ok) return;
-    await api.recordingStop();
+    await api.recordingStopAll();
     await retry();
   } finally {
     asking = false;

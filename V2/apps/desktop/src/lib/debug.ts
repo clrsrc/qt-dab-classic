@@ -134,7 +134,7 @@ export const debugApi: DebugTransport = new TauriDebugTransport();
 export const SPECTRUM_BINS = 2048;
 export const IQ_CARRIERS = 1536;
 
-export type ScopeKind = "spectrum" | "iq";
+export type ScopeKind = "spectrum" | "iq" | "audio";
 type ScopeListener = (kind: ScopeKind, data: Uint8Array | Int8Array) => void;
 const scopeListeners = new Set<ScopeListener>();
 
@@ -168,6 +168,14 @@ export function feedScopeEvent(ev: CoreEvent): boolean {
     if (scopeListeners.size) {
       const bins = b64ToBytes(String(ev.bins_b64));
       for (const l of scopeListeners) l("spectrum", bins);
+    }
+    return true;
+  }
+  // Equalizer-Anzeige (AudioSpectrum.svelte): 48 Baender, ohne Zaehler
+  if (ev.type === "audio_spectrum") {
+    if (scopeListeners.size) {
+      const bands = b64ToBytes(String(ev.bands_b64));
+      for (const l of scopeListeners) l("audio", bands);
     }
     return true;
   }

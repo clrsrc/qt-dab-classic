@@ -296,6 +296,21 @@ impl From<&Programme> for ProgrammeBrief {
     }
 }
 
+/// Zeile der EPG-Uebersicht ueber alle Sender (Panel-Raster: Sender in den
+/// Zeilen, Zeitstrahl in den Spalten).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct EpgGridRow {
+    /// Kanal aus Speicher bzw. Senderliste; leer, wenn der Dienst in keiner von beiden steht.
+    pub channel: String,
+    pub eid: u16,
+    pub sid: u32,
+    pub scids: u8,
+    pub name: String,
+    /// Speicherplatz (0..9), wenn der Dienst ein Favorit ist.
+    pub preset: Option<usize>,
+    pub programmes: Vec<Programme>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct NowNext {
     pub sid: u32,
@@ -628,6 +643,25 @@ impl EpgCache {
         v
     }
 
+    /// Tage mit Daten ueber alle Ensembles (aufsteigend).
+    pub fn all_days(&self) -> Vec<u32> {
+        let mut v: Vec<u32> = self.index.keys().map(|(_, _, d)| *d).collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// Dienste (EId, SId) aller Ensembles mit Dateien fuer `day` oder den
+    /// Vortag (Uebertrag); ob daraus Sendungen in den Tag fallen, zeigt
+    /// erst [`programmes_for_day`](Self::programmes_for_day).
+    pub fn keys_near_day(&self, day: u32) -> Vec<(u16, u32)> {
+        let prev = date_of(day).map(|d| day_of(d - chrono::Duration::days(1)));
+        let mut v: Vec<(u16, u32)> = self.index.keys().filter(|(_, _, d)| *d == day || Some(*d) == prev).map(|(e, s, _)| (*e, *s)).collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
     pub fn programmes(&self, eid: u16, sid: u32, day: u32) -> &[Programme] {
         self.index.get(&(eid, sid, day)).map(Vec::as_slice).unwrap_or(&[])
     }
@@ -782,6 +816,42 @@ impl App {
     pub fn now_next_for(&self, sid: u32) -> Option<NowNext> {
         let eid = self.state.ensemble.as_ref()?.eid;
         self.epg.now_next(eid, sid, Local::now().naive_local())
+    }
+
+    /// EPG-Uebersicht eines Tages ueber alle Ensembles im Cache: zuerst die
+    /// Favoriten in der Reihenfolge der Speicherplaetze, dann die uebrigen
+    /// Dienste in der Reihenfolge der Senderliste, zuletzt Dienste, die nur
+    /// der Cache kennt. Dienste ohne Sendungen an dem Tag fehlen.
+    pub fn epg_grid(&self, day: u32) -> Vec<EpgGridRow> {
+        let mut open: Vec<(u16, u32)> = self.epg.keys_near_day(day);
+        let mut rows = Vec::new();
+        let mut take = |open: &mut Vec<(u16, u32)>, channel: &str, eid: u16, sid: u32, scids: u8, name: &str, preset: Option<usize>| {
+            let Some(i) = open.iter().position(|k| *k == (eid, sid)) else { return };
+            open.remove(i);
+            let programmes = self.epg.programmes_for_day(eid, sid, day);
+            if programmes.is_empty() {
+                return;
+            }
+            rows.push(EpgGridRow { channel: channel.to_string(), eid, sid, scids, name: name.trim().to_string(), preset, programmes });
+        };
+        for (slot, p) in self.presets.slots.iter().enumerate() {
+            if let Some(p) = p {
+                // Name bevorzugt aus der Senderliste (Favoriten-Import kennt nur den aufgefuellten Namen)
+                let name = self.station(&p.channel, p.eid, p.sid, p.scids).map(|e| e.name.as_str()).unwrap_or(&p.name);
+                take(&mut open, &p.channel, p.eid, p.sid, p.scids, name, Some(slot));
+            }
+        }
+        for e in self.state.stations.iter().filter(|e| e.is_audio) {
+            take(&mut open, &e.channel, e.eid, e.sid, e.scids, &e.name, None);
+        }
+        let current = self.state.ensemble.as_ref().map(|e| e.eid);
+        for (eid, sid) in open.clone() {
+            let live = (current == Some(eid)).then(|| self.state.services.iter().find(|s| s.sid == sid)).flatten();
+            let name = live.map(|s| s.name.trim().to_string()).unwrap_or_else(|| format!("{sid:04X}"));
+            let channel = if live.is_some() { self.state.channel.clone().unwrap_or_default() } else { String::new() };
+            take(&mut open, &channel, eid, sid, 0, &name, None);
+        }
+        rows
     }
 
     /// Dienste mit EPG-Daten an einem Tag, mit Namen aus der Senderliste.

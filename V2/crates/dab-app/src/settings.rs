@@ -62,6 +62,13 @@ pub struct Settings {
     /// TEC-Verkehrsmeldungen dekodieren (crate::tpeg), Standard an (Punkt 3,
     /// 17.09.2026). Nur Broadcast, kein Internet.
     pub tpeg_enabled: bool,
+    /// Vordecodierung (`set_predecode`, 28.09.2026): alle Audiodienste des
+    /// Ensembles laufen im Kern mit, ein Senderwechsel im Ensemble ist dann
+    /// sofort hoerbar (~2 % CPU je Dienst). Standard an.
+    pub predecode_enabled: bool,
+    /// Grafik-Equalizer-Anzeige im Display (28.09.2026, Vorbild Crossmixer);
+    /// das Frontend bestellt `audio_spectrum` nur bei sichtbarem Fenster.
+    pub audio_spectrum: bool,
     /// Hybrid Radio (crate::radiodns): Logos und Sendeplaene fuer Dienste ohne
     /// Broadcast-EPG per RadioDNS/SPI ueber IP nachladen. Standard AUS - die
     /// App spricht dann nie mit dem Internet (17.09.2026).
@@ -153,6 +160,8 @@ impl Default for Settings {
             audio_device_name: None,
             epg_enabled: true,
             tpeg_enabled: true,
+            predecode_enabled: true,
+            audio_spectrum: true,
             radiodns_enabled: false,
             preset_short_labels: true,
             autostart: true,
@@ -244,6 +253,7 @@ mod tests {
         assert_eq!(s.music_mp3_kbps, 256);
         assert!(s.epg_enabled);
         assert!(s.tpeg_enabled);
+        assert!(s.predecode_enabled);
     }
 
     #[test]

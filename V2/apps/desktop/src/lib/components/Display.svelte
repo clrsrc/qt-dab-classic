@@ -4,12 +4,13 @@
   import { channelMhz } from "$lib/core";
   import { dialogs } from "$lib/dialogs.svelte";
   import { t, tError } from "$lib/i18n.svelte";
-  import { currentService, dlPlusTitle, notify, s, slideUrl, ui } from "$lib/state.svelte";
+  import { currentService, dlPlusTitle, notify, s, ui } from "$lib/state.svelte";
   import { fmtClock, remainingMin } from "$lib/epg";
   import { fmtOffset } from "$lib/timeshift";
   import { linkify } from "$lib/linkify";
   import { languageName, ptyName } from "$lib/metadata";
   import Logo from "./Logo.svelte";
+  import AudioSpectrum from "./AudioSpectrum.svelte";
 
   const svc = $derived(currentService());
   const codec = $derived(s.current?.codec);
@@ -26,7 +27,6 @@
     // Opener-Plugin kann ablehnen (Scope, fehlender Browser): melden statt stumm (Befund 12).
     openUrl(url).catch((x) => notify("warn", tError(x)));
   };
-  const slide = $derived(slideUrl());
   const slideSrc = (x: { mime: string; data_b64: string }) => `data:${x.mime || "image/jpeg"};base64,${x.data_b64}`;
   // Vergroesserung: Index im Streifen (-1 = zu).
   let zoomIdx = $state(-1);
@@ -91,27 +91,29 @@
     {/if}
     <span class="dim">{fileText}</span>
   </div>
-  {#if slide || s.logo_data_url || s.slides.length}
-    <div class="media">
+  <!-- Bildbereich immer in voller Hoehe freihalten, auch ohne Logo/Bilder: beim
+       Wechsel auf einen Sender ohne Slideshow verrutscht nichts (Stefan 29.09.2026). -->
+  <div class="media">
+    {#if s.current || s.logo_data_url}
       <Logo
         eid={s.ensemble?.eid ?? null}
         sid={s.current?.sid ?? null}
         src={s.logo_data_url}
         name={svc?.name ?? ""}
         size="medium"
-        px={s.slides.length ? 96 : 64}
+        px={96}
         zoomable
       />
-      <!-- Bilderstreifen: bis zu 5 verschiedene Slideshow-Bilder, neuestes rechts (Stefan 16.09.2026). -->
-      <div class="strip">
-        {#each s.slides as sl, i (sl.data_b64.slice(0, 64) + sl.name)}
-          <button type="button" class="slide-btn" class:newest={i === s.slides.length - 1} onclick={() => (zoomIdx = i)} aria-label={sl.name || t("logo.alt")}>
-            <img src={slideSrc(sl)} alt={sl.name ?? "slide"} draggable="false" />
-          </button>
-        {/each}
-      </div>
+    {/if}
+    <!-- Bilderstreifen: bis zu 5 verschiedene Slideshow-Bilder, neuestes rechts (Stefan 16.09.2026). -->
+    <div class="strip">
+      {#each s.slides as sl, i (sl.data_b64.slice(0, 64) + sl.name)}
+        <button type="button" class="slide-btn" class:newest={i === s.slides.length - 1} onclick={() => (zoomIdx = i)} aria-label={sl.name || t("logo.alt")}>
+          <img src={slideSrc(sl)} alt={sl.name ?? "slide"} draggable="false" />
+        </button>
+      {/each}
     </div>
-  {/if}
+  </div>
   {#if zoomSrc}
     <div class="overlay" onmousedown={(e) => e.target === e.currentTarget && (zoomIdx = -1)} role="presentation">
       <div class="dialog zoom" role="dialog" aria-modal="true" aria-label={s.slides[zoomIdx]?.name || t("logo.alt")}>
@@ -124,17 +126,16 @@
       </div>
     </div>
   {/if}
-  {#if s.now_next && (s.now_next.now || s.now_next.next)}
-    <div class="epgline" title={s.now_next.now?.legacy_time || s.now_next.next?.legacy_time ? t("epg.legacy_hint") : ""}>
-      {#if s.now_next.now}
-        <span class="dim">{t("epg.now")}</span> <span class="hi">{fmtClock(s.now_next.now.start_unix)} {s.now_next.now.title}</span>
-        <span class="amber">· {t("epg.remaining", { min: remainingMin(s.now_next.now.start_unix, s.now_next.now.duration_min, ui.now) })}</span>
-      {/if}
-      {#if s.now_next.next}
-        <span class="dim"> {t("epg.next")}</span> <span>{fmtClock(s.now_next.next.start_unix)} {s.now_next.next.title}</span>
-      {/if}
-    </div>
-  {/if}
+  <!-- Zeile bleibt auch ohne Sendeplan stehen (feste Hoehe) -->
+  <div class="epgline" title={s.now_next?.now?.legacy_time || s.now_next?.next?.legacy_time ? t("epg.legacy_hint") : ""}>
+    {#if s.now_next?.now}
+      <span class="dim">{t("epg.now")}</span> <span class="hi">{fmtClock(s.now_next.now.start_unix)} {s.now_next.now.title}</span>
+      <span class="amber">· {t("epg.remaining", { min: remainingMin(s.now_next.now.start_unix, s.now_next.now.duration_min, ui.now) })}</span>
+    {/if}
+    {#if s.now_next?.next}
+      <span class="dim"> {t("epg.next")}</span> <span>{fmtClock(s.now_next.next.start_unix)} {s.now_next.next.title}</span>
+    {/if}
+  </div>
   <div class="dlp">
     {#if dlp}
       <span class="hi">{#each titleSegments as seg, i (i)}{#if seg.url}<a href={seg.url} onclick={(e) => openLink(e, seg.url ?? "")}>{seg.text}</a>{:else}{seg.text}{/if}{/each}</span>
@@ -149,6 +150,13 @@
       >{#if dlsSegments.length}{#each dlsSegments as seg, i (i)}{#if seg.url}<a href={seg.url} onclick={(e) => openLink(e, seg.url ?? "")}>{seg.text}</a>{:else}{seg.text}{/if}{/each}{:else}&nbsp;{/if}</span
     >
   </div>
+  <!-- Grafik-Equalizer-Anzeige (Einstellung audio_spectrum, Vorbild Crossmixer) -->
+  {#if ui.settings?.audio_spectrum !== false}
+    <!-- Platz bleibt waehrend des Umschaltens stehen; die Anzeige selbst laeuft nur mit Dienst -->
+    <div class="eqslot">
+      {#if s.current}<AudioSpectrum />{/if}
+    </div>
+  {/if}
   <div class="vu">
     <span class="dim">L</span><span class="bar"><i style="width:{vu(s.level[0])}%"></i></span>
     <span class="dim">R</span><span class="bar"><i style="width:{vu(s.level[1])}%"></i></span>
@@ -167,7 +175,9 @@
   .tech .ts.paused { color: var(--amber, #e8b23a); animation: blink 1s steps(2, start) infinite; }
   .name { font-size: 16px; font-weight: bold; color: var(--green-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
   .name.pending { color: var(--amber); animation: blink 1s steps(2, start) infinite; }
-  .media { display: flex; gap: 6px; align-items: center; min-width: 0; }
+  /* Hoehe = Slideshow-Bild (128) + Rahmen */
+  .media { display: flex; gap: 6px; align-items: center; min-width: 0; height: 130px; flex: none; }
+  .eqslot { height: 48px; flex: none; }
   .strip { display: flex; gap: 4px; align-items: center; flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; justify-content: flex-end; }
   .strip img { height: 128px; max-width: 220px; object-fit: contain; border: 1px solid transparent; }
   .slide-btn { all: unset; cursor: zoom-in; display: inline-flex; line-height: 0; min-width: 0; flex: 0 0 auto; }
@@ -177,9 +187,9 @@
   .zoomnav { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--text-dim); }
   .dlp a, .ticker a { color: inherit; text-decoration: underline; text-decoration-style: dotted; cursor: pointer; }
   .dlp a:hover, .ticker a:hover { color: var(--green-hi); }
-  .epgline { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .epgline { font-size: 11px; height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .epgline .amber { color: var(--amber); }
-  .dlp { font-size: 11px; min-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dlp { font-size: 11px; height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ticker { font-size: 11px; height: 16px; overflow: hidden; white-space: nowrap; position: relative; border-top: 1px solid #0f2a16; }
   .ticker span { display: inline-block; }
   .ticker span.scroll { animation: ticker 24s linear infinite; padding-left: 100%; }

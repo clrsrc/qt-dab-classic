@@ -42,6 +42,19 @@ export interface EpgService {
   name: string;
 }
 
+/** Zeile der EPG-Uebersicht ueber alle Sender (spiegelt dab-app::epg::EpgGridRow). */
+export interface EpgGridRow {
+  /** Kanal aus Speicher bzw. Senderliste; leer = unbekannt (kein Umschalten moeglich). */
+  channel: string;
+  eid: number;
+  sid: number;
+  scids: number;
+  name: string;
+  /** Speicherplatz 0..9, wenn der Dienst ein Favorit ist. */
+  preset: number | null;
+  programmes: Programme[];
+}
+
 /** Vertrag mit dem Timer-Modul (Kommando `timer_add_from_epg`). */
 export interface TimerFromEpgRequest {
   channel: string;
@@ -68,6 +81,10 @@ export interface EpgTransport {
   services(eid: number, day: number): Promise<EpgService[]>;
   programmes(eid: number, sid: number, day: number): Promise<Programme[]>;
   nowNext(sid: number): Promise<NowNext | null>;
+  /** Tage mit Sendeplan ueber alle Ensembles im Cache. */
+  gridDays(): Promise<number[]>;
+  /** Uebersicht eines Tages: Favoriten in Speicher-Reihenfolge, dann die uebrigen Sender mit Sendeplan. */
+  grid(day: number): Promise<EpgGridRow[]>;
   /** Timer des anderen Moduls anlegen; Err-String kommt als Exception. */
   timerAddFromEpg(req: TimerFromEpgRequest): Promise<number>;
 }
@@ -84,6 +101,12 @@ class TauriEpgTransport implements EpgTransport {
   }
   nowNext(sid: number) {
     return invoke<NowNext | null>("epg_now_next", { sid });
+  }
+  gridDays() {
+    return invoke<number[]>("epg_grid_days");
+  }
+  grid(day: number) {
+    return invoke<EpgGridRow[]>("epg_grid", { day });
   }
   timerAddFromEpg(req: TimerFromEpgRequest) {
     return invoke<number>("timer_add_from_epg", { req });

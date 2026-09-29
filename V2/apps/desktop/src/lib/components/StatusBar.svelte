@@ -11,6 +11,8 @@
   const clock = $derived(new Date(ui.now).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }));
   // Timer/Aufnahme/Sleep (lib/timers.svelte.ts)
   const recOn = $derived(s.recording || !!tm.recording?.active);
+  // Hintergrundaufnahmen (Mehrfachaufnahme): Zaehler mit Dienst/Laufzeit im Tooltip
+  const bgTip = $derived(t("rec.bg_tip", { list: tm.background.map((r) => `${r.service}: ${fmtClock(r.seconds)}`).join("\n") }));
   const nextT = $derived(nextTimer(ui.now));
   const sleepLeft = $derived(sleepRemaining(ui.now));
   const msg = $derived.by(() => {
@@ -43,6 +45,7 @@
   <span class="led" class:on={motFresh()}>{t("mot")}</span>
   <span class="msg {msg.level}">{msg.text}</span>
   {#if recOn}<span class="led" style="color: var(--red)" title={tm.recording?.path ?? ""}>● REC {fmtClock(tm.recording?.seconds ?? 0)}</span>{/if}
+  {#if tm.background.length}<span class="led" style="color: var(--red)" title={bgTip}>● REC +{tm.background.length}</span>{/if}
   {#if tm.sleep}<span class="led on" title={t("sleep.label")}>{t("sleep.remaining", { time: fmtClock(sleepLeft) })}</span>{/if}
   {#if tiiLabel}<span class="led on" title={t("tii.title")} style="font-weight:normal;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">TII {tiiLabel}</span>{/if}
   <span class="clock">{clock}</span>

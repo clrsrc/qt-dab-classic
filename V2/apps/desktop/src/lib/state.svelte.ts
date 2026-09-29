@@ -3,7 +3,7 @@
 // angewendet, die auch die Rust-Seite verarbeitet. Komponenten lesen nur
 // hieraus und rufen `api` fuer Aktionen.
 
-import { api, type AppEvent, type AppState, type CoreEvent, type Presets, type ServiceInfo, type Settings } from "./core";
+import { api, type AppEvent, type AppState, type CoreEvent, type Presets, type ServiceInfo, type ServicePad, type Settings } from "./core";
 import { applyDebugAppEvent, emptyDebugState, feedScopeEvent } from "./debug";
 import { emitEpgEvent } from "./epg";
 import { setLang, t, tError } from "./i18n.svelte";
@@ -28,6 +28,7 @@ export function emptyState(): AppState {
     dls: "",
     dl_plus: null,
     slide: null,
+    pad: {},
     slides: [],
     level: [0, 0],
     gain: { lna: 40, vga: 40, amp: false },
@@ -163,6 +164,55 @@ function clearService() {
   s.now_next = null;
 }
 
+// PAD je Dienst (alle Slots, Vordecodierung) - Spiegel von dab-app state.rs
+// ServicePad::note_dls/note_dl_plus, damit Rust-Wahrheit und Anzeige
+// dieselben Titel zeigen.
+function padOf(sid: number): ServicePad {
+  const k = String(sid);
+  let p = s.pad[k];
+  if (!p) {
+    p = { dls: "", dl_plus: null, title: null, artist: null };
+    s.pad[k] = p;
+  }
+  return p;
+}
+/** dab_music::split_dls: "Interpret - Titel", sonst alles Titel. */
+function splitDls(text: string): [string | null, string | null] {
+  const t = text.trim();
+  if (!t) return [null, null];
+  const i = t.indexOf(" - ");
+  if (i >= 0) {
+    const l = t.slice(0, i).trim();
+    const r = t.slice(i + 3).trim();
+    if (l && r) return [l, r];
+  }
+  return [null, t];
+}
+function padNoteDls(sid: number, text: string) {
+  const p = padOf(sid);
+  p.dls = text;
+  if (!p.dl_plus) [p.artist, p.title] = splitDls(text);
+}
+function padNoteDlPlus(sid: number, dp: NonNullable<AppState["dl_plus"]>) {
+  const p = padOf(sid);
+  const tag = (ct: number) => (dp.tags.find(([c]) => c === ct)?.[1] ?? "").trim() || null;
+  if (dp.item_running) {
+    p.title = tag(1);
+    p.artist = tag(4);
+  } else {
+    p.title = null;
+    p.artist = null;
+  }
+  p.dl_plus = dp;
+}
+/** Listenzeile: "Interpret – Titel", sonst der DLS-Text; leer ohne PAD. */
+export function nowPlaying(sid: number): string {
+  const p = s.pad[String(sid)];
+  if (!p) return "";
+  if (p.artist && p.title) return `${p.artist} – ${p.title}`;
+  return p.title ?? p.artist ?? p.dls;
+}
+
 /** Spiegelt dab-app::timeshift: Kern leert den Ring, Anzeige zurueck auf live. */
 function resetTimeshift() {
   if (s.timeshift.demo) return;
@@ -177,6 +227,7 @@ function clearReception() {
   s.fic_total = 0;
   s.ensemble = null;
   s.services = [];
+  s.pad = {};
   resetTimeshift();
   clearService();
 }
@@ -249,6 +300,7 @@ export function applyCoreEvent(ev: CoreEvent) {
       // (Zapping-Messung 28.09.2026: "hoerbar, aber nicht angezeigt").
       if (s.ensemble && s.ensemble.eid !== e.eid) {
         s.services = [];
+        s.pad = {};
       }
       s.ensemble = { eid: e.eid, name: e.name, channel: e.channel };
       s.channel = e.channel;
@@ -288,10 +340,14 @@ export function applyCoreEvent(ev: CoreEvent) {
       break;
     case "dls":
       if (e.slot === "primary") s.dls = e.text;
+      padNoteDls(e.sid, e.text);
       break;
-    case "dl_plus":
-      if (e.slot === "primary") s.dl_plus = { item_running: e.item_running, item_toggle: e.item_toggle, tags: e.tags };
+    case "dl_plus": {
+      const dp = { item_running: e.item_running, item_toggle: e.item_toggle, tags: e.tags };
+      if (e.slot === "primary") s.dl_plus = dp;
+      padNoteDlPlus(e.sid, dp);
       break;
+    }
     case "mot_slide":
       if (e.slot === "primary") {
         s.slide = { sid: e.sid, mime: e.mime, name: e.name, data_b64: e.data_b64, received_at: Math.floor(Date.now() / 1000) };
@@ -371,6 +427,7 @@ export function applyCoreEvent(ev: CoreEvent) {
       break;
     // Scope-Rohdaten (lib/debug.ts): nicht in den Store, direkt an die Canvas-Komponenten
     case "spectrum":
+    case "audio_spectrum":
     case "iq_samples":
       feedScopeEvent(ev);
       break;
@@ -402,6 +459,7 @@ export function applyAppEvent(ev: AppEvent) {
       s.fic_total = 0;
       s.ensemble = null;
       s.services = [];
+      s.pad = {};
       break;
     case "preset_status":
       ui.presetStatus = { ...ev, at: Date.now() };

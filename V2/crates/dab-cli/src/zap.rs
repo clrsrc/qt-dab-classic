@@ -216,7 +216,7 @@ pub fn run(backend: &IpcBackend, opt: ZapOptions) -> Result<()> {
     let on_event = |app: &mut App, ev: &Event, fe: &mut Frontend, sink: &mut Sink, sw: Option<&mut Switch>, run_effects: &mut dyn FnMut(Effects, &mut Frontend, &mut Sink, Option<&mut Switch>, f64) -> Result<()>| -> Result<()> {
         let now = Instant::now();
         let now_s = el(t0);
-        if !matches!(ev, Event::Spectrum { .. } | Event::IqSamples { .. } | Event::AudioLevel { .. } | Event::Tii { .. } | Event::ServiceStats { .. }) {
+        if !matches!(ev, Event::Spectrum { .. } | Event::AudioSpectrum { .. } | Event::IqSamples { .. } | Event::AudioLevel { .. } | Event::Tii { .. } | Event::ServiceStats { .. }) {
             sink.line(now_s, "core", serde_json::to_value(ev)?);
         }
         let swallowed = app.is_expected_stop(ev);

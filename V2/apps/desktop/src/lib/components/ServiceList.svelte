@@ -3,7 +3,7 @@
   import { t, tError } from "$lib/i18n.svelte";
   import { startServiceDrag } from "$lib/presets";
   import { matchesPty, metaTooltip, ptyName, ptyOptions } from "$lib/metadata";
-  import { notify, s } from "$lib/state.svelte";
+  import { notify, nowPlaying, s } from "$lib/state.svelte";
   import Logo from "./Logo.svelte";
 
   // Genre-Filter (Programmtyp FIG 0/17): 0 = alle; Datendienste bleiben sichtbar.
@@ -45,7 +45,11 @@
         title={metaTooltip(svc)}
       >
         {#if svc.is_audio}<Logo eid={s.ensemble?.eid ?? null} sid={svc.sid} size="small" name={svc.name} px={16} />{/if}
-        <span class="grow">{svc.name.trim()}{svc.scids ? ` (${svc.scids})` : ""}</span>
+        <span class="grow">
+          <span class="nm">{svc.name.trim()}{svc.scids ? ` (${svc.scids})` : ""}</span>
+          <!-- Vordecodierung: DLS bzw. DL+-Titel jedes Dienstes ("was laeuft gerade wo") -->
+          {#if svc.is_audio}{@const np = nowPlaying(svc.sid)}{#if np}<span class="np" title={np}>{np}</span>{/if}{/if}
+        </span>
         <span class="meta pty">{svc.is_audio ? ptyName(svc.pty) : ""}</span>
         <span class="meta">{svc.is_audio ? `${svc.bitrate_kbps} kbps` : t("services.data")}</span>
         <span class="meta">{svc.sid.toString(16).toUpperCase().padStart(4, "0")}</span>
@@ -58,6 +62,10 @@
   .services { display: flex; flex-direction: column; flex: 1 1 120px; min-height: 80px; }
   .list { flex: 1; margin: 3px 4px; }
   .row.data { color: #2f6a3a; }
+  .row .grow { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+  .nm, .np { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .np { font-size: 9px; color: var(--green-dim); font-family: var(--font); }
+  .row.active .np { color: #40c060; }
   .pty { min-height: 14px; padding: 0 2px; font-size: 9px; margin-left: 6px; font-weight: normal; letter-spacing: 0; text-transform: none; }
   .meta.pty { font-family: var(--font); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; }
 </style>

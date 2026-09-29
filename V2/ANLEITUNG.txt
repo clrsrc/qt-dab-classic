@@ -247,10 +247,14 @@ INHALT
                     auf den Speichertasten, sichtbare Panels, Datenordner,
                     Kern-Version und Kern-Neustart), TII/Debug (Heimatkoordinaten,
                     TII-Auswertung, Schwelle, DX-Modus, Scope-Rate).
-    EPG             Tagesknoepfe (heute, morgen, ...), Dienstwahl, Sende-
-                    plan mit laufender Sendung; Klick auf eine Sendung
-                    zeigt Details mit "Umschalten", "Aufnehmen" (Aufnahme-
-                    Timer) und "Umschalt-Timer".
+    EPG             Uebersicht ueber alle Sender mit Sendeplan: je Zeile
+                    ein Sender mit Logo, nach rechts der Zeitstrahl des
+                    Tages (Tagesknoepfe heute, morgen, ...; "Jetzt" springt
+                    zur aktuellen Uhrzeit). Zuerst die Speicher in ihrer
+                    Reihenfolge, dann die uebrigen Sender; Sender ohne
+                    Sendeplan fehlen. Klick auf eine Sendung zeigt Details
+                    mit "Umschalten", "Aufnehmen" (Aufnahme-Timer) und
+                    "Umschalt-Timer" - auch fuer Sender anderer Kanaele.
     Timer           Timerliste mit Typ, Dienst, Start, Dauer, Status;
                     "Neu", Bearbeiten, Loeschen, aktiv/inaktiv.
     Debug           Spektrum, Konstellation, SNR-Verlauf (120 s), Zaehler

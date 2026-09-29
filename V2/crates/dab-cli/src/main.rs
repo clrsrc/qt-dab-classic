@@ -567,6 +567,7 @@ fn event_name(ev: &Event) -> &'static str {
         Event::NoSignal { .. } => "no_signal",
         Event::Snr { .. } => "snr",
         Event::AdcClip { .. } => "adc_clip",
+        Event::AudioSpectrum { .. } => "audio_spectrum",
         Event::FicQuality { .. } => "fic_quality",
         Event::FrequencyOffset { .. } => "frequency_offset",
         Event::EnsembleFound { .. } => "ensemble_found",

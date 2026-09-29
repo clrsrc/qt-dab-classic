@@ -335,13 +335,18 @@ impl Timers {
     }
 
     /// Konfliktpruefung fuer einen neuen oder geaenderten Timer (`cand.id` wird ignoriert).
-    pub fn conflict(&self, cand: &Timer, now: i64, pre_s: i64, post_s: i64, recording_active: bool) -> Option<Conflict> {
+    /// `recording_channel`: Kanal einer laufenden Aufnahme (None = keine).
+    pub fn conflict(&self, cand: &Timer, now: i64, pre_s: i64, post_s: i64, recording_channel: Option<&str>) -> Option<Conflict> {
         if cand.start_unix <= now {
             return Some(Conflict::Past);
         }
         let (from, _) = cand.window(pre_s, post_s);
-        if recording_active && cand.kind.is_record() && from <= now {
-            return Some(Conflict::RecordingActive);
+        // Laufende Aufnahme: ein sofort faelliger Aufnahme-Timer geht nur auf
+        // demselben Kanal (Hintergrundaufnahme, Mehrfachaufnahme 28.09.2026)
+        if let Some(rc) = recording_channel {
+            if cand.kind.is_record() && from <= now && !cand.channel.eq_ignore_ascii_case(rc) {
+                return Some(Conflict::RecordingActive);
+            }
         }
         for t in &self.timers {
             if t.id == cand.id || !t.active || t.is_stale(now, pre_s, post_s) {
@@ -352,6 +357,11 @@ impl Timers {
             }
             if t.same_service(cand) {
                 continue; // gleicher Dienst: Aufnahmen werden nacheinander gestartet
+            }
+            // Zwei Aufnahme-Timer auf demselben Kanal laufen parallel (der zweite
+            // im Hintergrund, Vordecodierung); erst ein anderer Kanal stoert
+            if t.kind.is_record() && cand.kind.is_record() && !t.channel.is_empty() && t.channel.eq_ignore_ascii_case(&cand.channel) {
+                continue;
             }
             if cand.overlaps(t, pre_s, post_s) {
                 return Some(Conflict::Overlap { other: t.clone() });
@@ -484,6 +494,12 @@ impl App {
         (self.settings.record_pre_s as i64, self.settings.record_post_s as i64)
     }
 
+    /// Kanal der laufenden Aufnahme(n) fuer die Konfliktpruefung; "" wenn
+    /// unbekannt (dann zaehlt jeder sofort faellige Aufnahme-Timer als Konflikt).
+    fn recording_channel(&self) -> Option<&str> {
+        self.recording_any().then(|| self.state.channel.as_deref().unwrap_or(""))
+    }
+
     fn timers_changed(&self) -> Effects {
         self.sched.save();
         let mut fx = Effects::default();
@@ -506,7 +522,7 @@ impl App {
         cand.id = 0;
         cand.active = true;
         cand.fired = false;
-        if let Some(c) = self.sched.timers.conflict(&cand, now, pre, post, self.state.recording) {
+        if let Some(c) = self.sched.timers.conflict(&cand, now, pre, post, self.recording_channel()) {
             if !force || c == Conflict::Past {
                 return Ok((AddOutcome { id: None, conflict: Some(c) }, Effects::default()));
             }
@@ -553,7 +569,7 @@ impl App {
             return Err(AppError::NoService);
         }
         if timer.active && !timer.fired {
-            if let Some(c) = self.sched.timers.conflict(&timer, now, pre, post, self.state.recording) {
+            if let Some(c) = self.sched.timers.conflict(&timer, now, pre, post, self.recording_channel()) {
                 if !force || c == Conflict::Past {
                     return Ok((AddOutcome { id: None, conflict: Some(c) }, Effects::default()));
                 }
@@ -576,6 +592,9 @@ impl App {
         if self.rec.info.timer_id == Some(id) && self.rec.info.active {
             fx.append(self.recording_stop().unwrap_or_default());
         }
+        if let Some(sid) = self.rec.background.iter().find(|r| r.timer_id == Some(id)).map(|r| r.sid) {
+            fx.append(self.recording_stop_background(sid));
+        }
         fx.append(self.timers_changed());
         Ok(fx)
     }
@@ -588,9 +607,13 @@ impl App {
             t.fired = false;
         }
         let stop = !t.active && self.rec.info.timer_id == Some(id) && self.rec.info.active;
+        let stop_bg = (!t.active).then(|| self.rec.background.iter().find(|r| r.timer_id == Some(id)).map(|r| r.sid)).flatten();
         let mut fx = Effects::default();
         if stop {
             fx.append(self.recording_stop().unwrap_or_default());
+        }
+        if let Some(sid) = stop_bg {
+            fx.append(self.recording_stop_background(sid));
         }
         if self.sched.run.as_ref().map(|r| r.id == id).unwrap_or(false) {
             self.sched.run = None;
@@ -626,6 +649,10 @@ impl App {
         for t in to_stop {
             if self.rec.info.timer_id == Some(t.id) && (self.rec.info.active || self.state.recording) {
                 fx.append(self.recording_stop().unwrap_or_default());
+                fx.events.push(self.timer_status(&t, TimerFireStatus::RecordingStopped));
+            }
+            if let Some(sid) = self.rec.background.iter().find(|r| r.timer_id == Some(t.id)).map(|r| r.sid) {
+                fx.append(self.recording_stop_background(sid));
                 fx.events.push(self.timer_status(&t, TimerFireStatus::RecordingStopped));
             }
             if let Some(x) = self.sched.timers.get_mut(t.id) {
@@ -680,11 +707,36 @@ impl App {
             let chain = self.rec.info.timer_id.is_some()
                 && self.rec.info.active
                 && self.sched.timers.get(self.rec.info.timer_id.unwrap_or(0)).map(|cur| cur.same_service(&t)).unwrap_or(false);
-            if self.state.recording && !chain {
+            let same_channel = t.channel.is_empty()
+                || self.state.is_file_source()
+                || self.state.channel.as_deref().map(|c| c.eq_ignore_ascii_case(&t.channel)).unwrap_or(false);
+            let names_current = |a: &App| a.state.current_service().map(|s| s.name.trim().eq_ignore_ascii_case(t.service.trim())).unwrap_or(false);
+            let target_is_current = if t.sid != 0 {
+                self.state.current.as_ref().map(|c| c.sid == t.sid).unwrap_or(false)
+            } else {
+                names_current(self)
+            };
+            let target_bg = self
+                .rec
+                .background
+                .iter()
+                .any(|r| r.active && if t.sid != 0 { r.sid == t.sid } else { r.service.eq_ignore_ascii_case(t.service.trim()) });
+            // Mehrfachaufnahme (28.09.2026): laeuft eine Aufnahme, nimmt ein
+            // faelliger Aufnahme-Timer auf einen ANDEREN Dienst desselben Kanals
+            // im Hintergrund auf (Vordecodierung) - Hoerdienst und laufende
+            // Aufnahme bleiben. Alles andere wartet wie bisher.
+            let background = t.kind.is_record() && !chain && self.recording_any() && same_channel && !target_is_current && !target_bg;
+            let blocked = !background && ((self.state.recording && !chain) || (!self.rec.background.is_empty() && (!same_channel || target_bg)));
+            if blocked {
                 if self.sched.blocked != Some(t.id) {
                     self.sched.blocked = Some(t.id);
                     fx.events.push(self.timer_status(&t, TimerFireStatus::Blocked));
                 }
+            } else if background {
+                self.sched.blocked = None;
+                let (f, fired) = self.run_start_background(&t, post);
+                fx.append(f);
+                changed |= fired;
             } else if self.state.device.is_none() {
                 if let Some(x) = self.sched.timers.get_mut(t.id) {
                     x.active = false;
@@ -734,6 +786,40 @@ impl App {
             fx.append(self.run_try_select());
         }
         fx
+    }
+
+    /// Aufnahme-Timer auf einen weiteren Dienst desselben Kanals: Hintergrund-
+    /// aufnahme ohne Hoerdienstwechsel (Mehrfachaufnahme). Dienst noch nicht
+    /// in der Liste: naechster Tick (bis das Fenster vorbei ist -> verpasst).
+    /// Rueckgabe: (Effekte, Timer hat gefeuert).
+    fn run_start_background(&mut self, t: &Timer, post: i64) -> (Effects, bool) {
+        let svc = if t.sid != 0 { self.state.service(t.sid, t.scids).cloned() } else { self.state.service_by_name(&t.service).cloned() };
+        let Some(svc) = svc else { return (Effects::default(), false) };
+        if let Some(x) = self.sched.timers.get_mut(t.id) {
+            x.fired = true;
+            x.sid = svc.sid;
+            x.scids = svc.scids;
+            if let Some(e) = &self.state.ensemble {
+                x.eid = e.eid;
+            }
+        }
+        let title = if t.title.trim().is_empty() { None } else { Some(t.title.as_str()) };
+        let stop_at = t.end_unix().map(|e| e + post);
+        let mut fx = Effects::default();
+        match self.recording_start_background(svc.sid, svc.scids, title, (t.id, stop_at)) {
+            Ok(f) => {
+                fx.append(f);
+                fx.events.push(self.timer_status(t, TimerFireStatus::RecordingStarted));
+            }
+            Err(e) => {
+                if let Some(x) = self.sched.timers.get_mut(t.id) {
+                    x.active = false;
+                }
+                fx.events.push(self.timer_status(t, TimerFireStatus::Failed));
+                fx.events.push(AppEvent::Notice { level: NoticeLevel::Warn, text: format!("timer {}: {e}", t.label()) });
+            }
+        }
+        (fx, true)
     }
 
     /// Dienst in der Liste suchen; gefunden: waehlen (oder schon aktiv: fertig).
@@ -990,24 +1076,28 @@ mod tests {
         let (pre, post) = (120, 300);
         let now = T0 - 10_000;
         // Vergangenheit
-        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "5C", 1, "X", now - 1, 60), now, pre, post, false), Some(Conflict::Past));
+        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "5C", 1, "X", now - 1, 60), now, pre, post, None), Some(Conflict::Past));
         // Ueberschneidung anderer Dienst (Nachlauf des ersten reicht bis T0+3900, Vorlauf des neuen ab T0+3780)
-        let c = ts.conflict(&timer(TimerKind::EpgRecord, "11D", 0xE1C0, "WDR 5", T0 + 3900, 600), now, pre, post, false);
+        let c = ts.conflict(&timer(TimerKind::EpgRecord, "11D", 0xE1C0, "WDR 5", T0 + 3900, 600), now, pre, post, None);
         assert!(matches!(c, Some(Conflict::Overlap { ref other }) if other.service == "Dlf"), "{c:?}");
+        // Zweiter Aufnahme-Timer auf demselben Kanal: parallel im Hintergrund, kein Konflikt
+        assert_eq!(ts.conflict(&timer(TimerKind::EpgRecord, "5C", 0xD220, "Dlf Kultur", T0 + 60, 600), now, pre, post, None), None);
+        // Laufende Aufnahme auf 5C: sofort faelliger Aufnahme-Timer auf 5C geht (Hintergrund)
+        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "5C", 7, "W", now + 60, 60), now, pre, post, Some("5C")), None);
         // Gleicher Dienst direkt danach: kein Konflikt
-        assert_eq!(ts.conflict(&timer(TimerKind::EpgRecord, "5C", 0xD210, "Dlf", T0 + 3600, 600), now, pre, post, false), None);
+        assert_eq!(ts.conflict(&timer(TimerKind::EpgRecord, "5C", 0xD210, "Dlf", T0 + 3600, 600), now, pre, post, None), None);
         // Umschalt-Timer in einem Aufnahmefenster anderen Dienstes: Konflikt
-        assert!(matches!(ts.conflict(&timer(TimerKind::EpgSwitch, "5C", 0xD220, "Dlf Kultur", T0 + 60, 0), now, pre, post, false), Some(Conflict::Overlap { .. })));
+        assert!(matches!(ts.conflict(&timer(TimerKind::EpgSwitch, "5C", 0xD220, "Dlf Kultur", T0 + 60, 0), now, pre, post, None), Some(Conflict::Overlap { .. })));
         // Zwei Umschalt-Timer: kein Konflikt
-        assert_eq!(ts.conflict(&timer(TimerKind::ManualSwitch, "5C", 5, "Y", T0 + 7200, 0), now, pre, post, false), None);
+        assert_eq!(ts.conflict(&timer(TimerKind::ManualSwitch, "5C", 5, "Y", T0 + 7200, 0), now, pre, post, None), None);
         // Nach dem Fenster: kein Konflikt
-        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "11D", 6, "Z", T0 + 4100, 60), now, pre, post, false), None);
+        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "11D", 6, "Z", T0 + 4100, 60), now, pre, post, None), None);
         // Laufende Aufnahme, Fenster beginnt sofort (Vorlauf)
-        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "11D", 6, "Z", now + 60, 60), now, pre, post, true), Some(Conflict::RecordingActive));
-        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "11D", 6, "Z", now + 600, 60), now, pre, post, true), None);
+        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "11D", 6, "Z", now + 60, 60), now, pre, post, Some("5C")), Some(Conflict::RecordingActive));
+        assert_eq!(ts.conflict(&timer(TimerKind::ManualRecord, "11D", 6, "Z", now + 600, 60), now, pre, post, Some("5C")), None);
         // Inaktive Timer zaehlen nicht
         ts.timers[0].active = false;
-        assert_eq!(ts.conflict(&timer(TimerKind::EpgRecord, "11D", 0xE1C0, "WDR 5", T0 + 3900, 600), now, pre, post, false), None);
+        assert_eq!(ts.conflict(&timer(TimerKind::EpgRecord, "11D", 0xE1C0, "WDR 5", T0 + 3900, 600), now, pre, post, None), None);
     }
 
     #[test]
@@ -1101,6 +1191,78 @@ mod tests {
         let _ = std::fs::remove_dir_all(&a.dirs.root);
     }
 
+    /// Mehrfachaufnahme (28.09.2026): waehrend der Hoerdienst aufnimmt, nimmt
+    /// ein Aufnahme-Timer auf einen anderen Dienst desselben Kanals im
+    /// Hintergrund auf - kein Umschalten, keine Blockade.
+    #[test]
+    fn second_record_timer_same_channel_records_in_background() {
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf"), (0xD220, "Dlf Kultur"), (0x1A45, "ENERGY")]);
+        started(&mut a, 0xD210);
+        let fx = a.recording_start(None, None).unwrap();
+        let mine = fx.commands.iter().find_map(|c| match c { Command::StartRecording { path, .. } => Some(path.clone()), _ => None }).unwrap();
+        a.handle_event(&Event::RecordingState { slot: ServiceSlot::Primary, sid: 0xD210, active: true, path: Some(mine.clone()), bytes: 10, seconds: 1.0 }, Instant::now());
+        // Zweiter Aufnahme-Timer desselben Kanals: kein Konflikt beim Anlegen
+        let (out, _) = a.timer_add(timer(TimerKind::EpgRecord, "5C", 0xD220, "Dlf Kultur", T0, 600), false, T0 - 1000).unwrap();
+        let id = out.id.unwrap();
+        // Faellig (Vorlauf 120 s): Hintergrundaufnahme statt Blockade
+        let fx = a.scheduler_tick(T0 - 120);
+        assert!(fx.commands.contains(&Command::SelectService { sid: 0xD220, scids: 0, slot: ServiceSlot::Background }), "{:?}", fx.commands);
+        let (path, slot, sid) = fx
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                Command::StartRecording { path, slot, sid, .. } => Some((path.clone(), *slot, *sid)),
+                _ => None,
+            })
+            .expect("start_recording");
+        assert_eq!((slot, sid), (ServiceSlot::Background, Some(0xD220)));
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::TimerStatus { status: TimerFireStatus::RecordingStarted, .. })));
+        assert!(fx.events.iter().any(|e| matches!(e, AppEvent::BackgroundRecordingsChanged { .. })));
+        assert_eq!(a.state.current.as_ref().unwrap().sid, 0xD210, "Hoerdienst unveraendert");
+        assert_eq!(a.recording_background().len(), 1);
+        assert!(a.sched.timers.get(id).unwrap().fired);
+        // Kern bestaetigt (Slot background): Laufzeit fortgeschrieben, Hoerdienst-Aufnahme unberuehrt
+        a.handle_event(&Event::RecordingState { slot: ServiceSlot::Background, sid: 0xD220, active: true, path: Some(path.clone()), bytes: 2000, seconds: 2.0 }, Instant::now());
+        assert_eq!(a.recording_background()[0].bytes, 2000);
+        assert_eq!(a.rec.info.sid, 0xD210);
+        assert_eq!(a.rec.info.bytes, 10);
+        // Sperren: Kanalwechsel nein, Hoerdienst-Wechsel nein (er nimmt auf)
+        assert_eq!(a.command(Command::SetChannel { channel: "11D".into() }).unwrap_err(), AppError::Recording);
+        assert_eq!(a.select_service(0x1A45, 0).unwrap_err(), AppError::Recording);
+        // Nachlauf vorbei: nur die Hintergrundaufnahme endet
+        let fx = a.scheduler_tick(T0 + 900);
+        assert_eq!(fx.commands, vec![Command::StopRecording { slot: ServiceSlot::Background, sid: Some(0xD220) }]);
+        assert!(a.recording_background().is_empty());
+        assert!(a.state.recording, "Aufnahme des Hoerdienstes laeuft weiter");
+        assert!(!a.sched.timers.get(id).unwrap().active);
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
+    }
+
+    /// Nur eine Hintergrundaufnahme: Hoerdienst-Wechsel im Ensemble bleibt
+    /// erlaubt; Kanalwechsel und der aufgenommene Dienst selbst sind gesperrt.
+    #[test]
+    fn background_recording_alone_allows_switching_within_ensemble() {
+        let mut a = app();
+        a.state.channel = Some("5C".into());
+        tune(&mut a, "5C", 0x10BC, &[(0xD210, "Dlf"), (0xD220, "Dlf Kultur"), (0x1A45, "ENERGY")]);
+        started(&mut a, 0xD210);
+        let fx = a.recording_start_background(0xD220, 0, Some("Sendung"), (9, Some(T0 + 600))).unwrap();
+        assert!(matches!(fx.commands[1], Command::StartRecording { slot: ServiceSlot::Background, sid: Some(0xD220), .. }));
+        assert!(!a.state.recording, "keine Sperre des Hoerdienstes");
+        assert!(a.select_service(0x1A45, 0).is_ok());
+        assert_eq!(a.select_service(0xD220, 0).unwrap_err(), AppError::Recording);
+        assert_eq!(a.command(Command::SetChannel { channel: "11D".into() }).unwrap_err(), AppError::Recording);
+        assert_eq!(a.tune_to(None, "11D", 0xE1C0, 0, "WDR 5", Instant::now()).unwrap_err(), AppError::Recording);
+        assert!(a.tune_to(None, "5C", 0xD210, 0, "Dlf", Instant::now()).is_ok());
+        // Ende per Kern (active=false mit Pfad) raeumt auf
+        let path = a.recording_background()[0].path.clone().unwrap();
+        a.handle_event(&Event::RecordingState { slot: ServiceSlot::Background, sid: 0xD220, active: false, path: Some(PathBuf::from(path)), bytes: 1, seconds: 1.0 }, Instant::now());
+        assert!(a.recording_background().is_empty());
+        let _ = std::fs::remove_dir_all(&a.dirs.root);
+    }
+
     #[test]
     fn timer_waits_while_manual_recording_runs() {
         let mut a = app();
@@ -1151,11 +1313,18 @@ mod tests {
         };
         let (id, _) = a.timer_add_from_epg(req.clone(), T0 - 100).unwrap();
         assert_eq!(a.sched.timers.get(id).unwrap().kind, TimerKind::EpgRecord);
-        // Ueberschneidung anderer Dienst -> Schluessel
+        // Ueberschneidung anderer Dienst auf ANDEREM Kanal -> Schluessel; auf
+        // demselben Kanal laeuft die zweite Aufnahme im Hintergrund (Mehrfachaufnahme)
         let mut r2 = req.clone();
-        r2.sid = 0xD220;
-        r2.service = "Dlf Kultur".into();
+        r2.sid = 0xE1C0;
+        r2.service = "WDR 5".into();
+        r2.channel = "11D".into();
         assert_eq!(a.timer_add_from_epg(r2, T0 - 100).unwrap_err().to_string(), "timer.conflict.overlap");
+        let mut r2b = req.clone();
+        r2b.sid = 0xD220;
+        r2b.service = "Dlf Kultur".into();
+        let (id2, _) = a.timer_add_from_epg(r2b, T0 - 100).unwrap();
+        a.timer_delete(id2).unwrap();
         let mut r3 = req.clone();
         r3.start_unix = T0 - 200;
         r3.kind = "switch".into();

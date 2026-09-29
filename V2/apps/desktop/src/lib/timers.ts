@@ -79,6 +79,7 @@ export type TimerAppEvent =
   | { type: "timers_changed"; timers: Timers }
   | { type: "timer_status"; id: number; kind: TimerKind; service: string; title: string; status: TimerFireStatus }
   | { type: "recording_changed"; recording: RecordingInfo }
+  | { type: "background_recordings_changed"; recordings: RecordingInfo[] }
   | { type: "sleep_changed"; sleep: SleepState | null }
   | { type: "sleep_elapsed"; action: SleepAction };
 

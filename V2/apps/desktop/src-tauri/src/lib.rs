@@ -15,6 +15,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 mod epg_cmds;
 /// Timer/Aufnahme/Sleep/Alarmfenster (eigenes Modul, Registrierung unten).
 mod timer_cmds;
+/// Infobereich (Tray): Fenster verstecken/wiederherstellen, Beenden.
+mod tray;
 /// TII/Debug-Panel (eigenes Modul, Registrierung unten).
 mod debug_cmds;
 /// Senderliste ueber alle Ensembles (eigenes Modul, Registrierung unten).
@@ -318,6 +320,7 @@ fn latest_key(ev: &Event) -> &'static str {
         Event::FrequencyOffset { .. } => "foff",
         Event::AudioLevel { .. } => "level",
         Event::Spectrum { .. } => "spectrum",
+        Event::AudioSpectrum { .. } => "audio_spectrum",
         Event::IqSamples { .. } => "iq",
         Event::TimeshiftState { .. } => "ts",
         Event::FileProgress { .. } => "file",
@@ -517,6 +520,11 @@ pub fn run() {
                     let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width, height }));
                 }
             }
+            // Infobereich-Symbol (Vorbild Crossmixer): Linksklick stellt das
+            // Fenster wieder her, Menue Anzeigen/Beenden (tray.rs).
+            if let Err(e) = tray::install(&handle) {
+                log::warn!("Infobereich-Symbol: {e}");
+            }
             if let Err(e) = spawn_core(&handle, "start") {
                 log::error!("Kern konnte nicht gestartet werden: {e}");
                 let _ = handle.emit(APP_EVENT, AppEvent::Notice { level: NoticeLevel::Error, text: format!("core: {e}") });
@@ -560,6 +568,8 @@ pub fn run() {
             epg_cmds::epg_services,
             epg_cmds::epg_programmes,
             epg_cmds::epg_now_next,
+            epg_cmds::epg_grid_days,
+            epg_cmds::epg_grid,
             epg_cmds::logo_data_url,
             epg_cmds::logo_sizes,
             timer_cmds::timers_list,
@@ -572,6 +582,8 @@ pub fn run() {
             timer_cmds::recording_stop,
             timer_cmds::recording_toggle,
             timer_cmds::recording_status,
+            timer_cmds::recording_background,
+            timer_cmds::recording_stop_all,
             timer_cmds::sleep_set,
             timer_cmds::sleep_cancel,
             timer_cmds::sleep_status,

@@ -40,6 +40,7 @@ export type Command =
   | { type: "set_agc"; enabled: boolean }
   | { type: "set_ppm"; ppm: number }
   | { type: "set_antenna_power"; enabled: boolean }
+  | { type: "set_audio_spectrum"; enabled: boolean }
   | { type: "select_service"; sid: number; scids: number; slot: ServiceSlot }
   | { type: "stop_service"; slot: ServiceSlot }
   | { type: "start_scan"; channels: string[]; mode: "single" | "to_data" | "continuous" }
@@ -100,6 +101,8 @@ export interface AppState {
   dls: string;
   dl_plus: { item_running: boolean; item_toggle: boolean; tags: [number, string][] } | null;
   slide: Slide | null;
+  /** PAD je Dienst des Ensembles (alle Slots, Vordecodierung), Schluessel SId als String (serde-BTreeMap). */
+  pad: Record<string, ServicePad>;
   /** Letzte bis zu 5 verschiedene Slideshow-Bilder des Dienstes, aelteste zuerst (nur Frontend, Display-Streifen). */
   slides: Slide[];
   level: [number, number];
@@ -254,6 +257,14 @@ export interface RadioDnsStatus {
   schedules: number;
   last_unix: number;
   error: string | null;
+}
+
+/** dab-app state.rs ServicePad: DLS/DL+ je Dienst, Titel/Interpret abgeleitet. */
+export interface ServicePad {
+  dls: string;
+  dl_plus: { item_running: boolean; item_toggle: boolean; tags: [number, string][] } | null;
+  title: string | null;
+  artist: string | null;
 }
 
 /** MOT-SlideShow-Bild des laufenden Dienstes (Kern-Ereignis mot_slide). */
@@ -413,6 +424,10 @@ export interface Settings {
   epg_enabled: boolean;
   /** TPEG-Paketdienst im Kern mitlaufen lassen (set_tpeg) und TEC-Verkehrsmeldungen dekodieren. */
   tpeg_enabled: boolean;
+  /** Vordecodierung: alle Audiodienste des Ensembles laufen im Kern mit (set_predecode), Senderwechsel im Ensemble sofort. */
+  predecode_enabled: boolean;
+  /** Grafik-Equalizer-Anzeige im Display (audio_spectrum vom Kern). */
+  audio_spectrum: boolean;
   /** Hybrid Radio: Logos/Sendeplaene per RadioDNS aus dem Internet nachladen (Standard aus). */
   radiodns_enabled: boolean;
   /** Speichertasten zeigen das Kurzlabel (FIG 1 Zeichen-Flags) statt des vollen Namens. */
@@ -541,6 +556,10 @@ export interface Transport {
   recordingStop(): Promise<void>;
   recordingToggle(): Promise<void>;
   recordingStatus(): Promise<RecordingInfo>;
+  /** Hintergrundaufnahmen (Timer auf weitere Dienste des Ensembles). */
+  recordingBackground(): Promise<RecordingInfo[]>;
+  /** Hoerdienst- und Hintergrundaufnahmen beenden (Rueckfrage der Umschaltsperre). */
+  recordingStopAll(): Promise<void>;
   sleepSet(minutes: number, action: SleepAction): Promise<void>;
   sleepCancel(): Promise<void>;
   sleepStatus(): Promise<SleepState | null>;
@@ -687,6 +706,12 @@ class TauriTransport implements Transport {
   }
   recordingStatus() {
     return invoke<RecordingInfo>("recording_status");
+  }
+  recordingBackground() {
+    return invoke<RecordingInfo[]>("recording_background");
+  }
+  recordingStopAll() {
+    return invoke<void>("recording_stop_all");
   }
   sleepSet(minutes: number, action: SleepAction) {
     return invoke<void>("sleep_set", { minutes, action });
