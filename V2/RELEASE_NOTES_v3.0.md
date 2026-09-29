@@ -4,6 +4,19 @@
 Anwendungslogik in Rust, Oberfläche mit Tauri 2 und Svelte 5. Der Empfangspfad
 geht auf Qt-DAB von Jan van Katwijk (Lazy Chair Computing) zurück. Lizenz GPLv3.*
 
+## v3.1.1 – September 2026
+
+- **Aufnahme-Timer im Hintergrund** – wird ein Aufnahme-Timer auf einen
+  anderen Sender des eingestellten Kanals fällig, läuft der gehörte Sender
+  weiter und die Aufnahme des Timer-Senders läuft im Hintergrund; die
+  Statusleiste zeigt „REC +n“ mit der Liste der Aufnahmen. Der Timer stimmt
+  selbst ab, wenn er einen anderen Kanal braucht oder gerade kein Sender
+  gehört wird. Der Senderwechsel innerhalb des Ensembles bleibt während
+  der Hintergrundaufnahme frei.
+- **Rückmeldung des Timers** – ein Hintergrund-Timer wartet bis zu 45 s auf
+  seinen Sender in der Dienstliste und meldet danach seinen Status;
+  nachfolgende Timer laufen planmäßig.
+
 ## v3.1.0 – September 2026
 
 - **EPG-Übersicht über alle Sender** – das EPG-Panel zeigt ein Raster: je
